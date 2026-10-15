@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="explorer-token" content="__TOKEN__"><title>이미지 조합 · CLOSERS Explorer</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/compose.css"></head>
+<body class="composer-page">
+  <main class="editor-root">
+    <header><div><div class="eyebrow">LOCAL IMAGE COMPOSER</div><h1>일러스트 · 프레임 조합</h1><p class="muted">원하는 이미지를 겹쳐 배치하고 PNG로 저장하세요.</p></div><a href="/" class="button secondary">라이브러리</a></header>
+    <section class="editor-toolbar" aria-label="조합 저장">
+      <button id="export-png">PNG 저장</button><button id="save-project" class="secondary">조합 설정 저장</button><button id="load-project" class="secondary">조합 불러오기</button>
+      <button id="save-template" class="secondary">프레임 템플릿 저장</button><button id="load-template" class="secondary">프레임 템플릿 추가</button><button id="new-project" class="secondary">새 조합</button>
+      <input id="project-file" type="file" accept=".json,application/json" hidden><input id="template-file" type="file" accept=".json,application/json" hidden>
+    </section>
+    <p id="editor-status" role="status">이미지를 추가하면 편집을 시작할 수 있습니다.</p>
+    <div class="editor-layout">
+      <section class="image-picker panel" aria-label="이미지 선택"><h2>라이브러리 이미지</h2>
+        <label for="image-query">파일명 · CMF 검색</label><input id="image-query" type="search" placeholder="DLG_FRAME, PORTRAIT…">
+        <div class="picker-presets"><button id="find-illustrations" class="secondary">로딩 일러스트 후보</button><button id="find-frames" class="secondary">프레임 후보</button><button id="find-all" class="secondary">전체</button></div>
+        <p class="muted">이름으로 찾은 후보입니다. 조합 용도는 직접 지정할 수 있습니다.</p>
+        <div id="image-results"></div><div class="picker-pagination"><button id="image-prev" class="secondary">이전</button><span id="image-page"></span><button id="image-next" class="secondary">다음</button></div>
+      </section>
+      <section class="canvas-panel panel" aria-label="합성 화면">
+        <div class="canvas-controls"><label>출력 너비<input id="canvas-width" type="number" min="1" max="8192" value="1024"></label><label>출력 높이<input id="canvas-height" type="number" min="1" max="8192" value="1024"></label><label><input id="canvas-transparent" type="checkbox" checked> 투명 배경</label><label>배경색<input id="canvas-color" type="color" value="#172033"></label></div>
+        <div id="canvas-stage"><canvas id="composition-canvas" width="700" height="700" tabindex="0" aria-label="이미지 조합 화면. 선택한 레이어를 드래그해 이동하고 오른쪽 아래 손잡이로 크기를 바꿀 수 있습니다."></canvas></div>
+        <p id="canvas-summary" class="muted"></p><p class="muted">드래그: 이동 · 오른쪽 아래 손잡이: 크기 조절 · 방향키: 1px 이동 (Shift: 10px). 체크 무늬는 저장되지 않습니다. PNG는 위 출력 크기로 저장됩니다.</p>
+      </section>
+      <section class="layer-panel panel" aria-label="레이어 편집"><h2>레이어</h2><p class="muted">목록 위쪽이 화면의 앞쪽입니다.</p><div id="layers"></div>
+        <div class="layer-actions"><button id="layer-up" class="secondary">앞으로</button><button id="layer-down" class="secondary">뒤로</button><button id="duplicate-layer" class="secondary">조각 복제</button><button id="remove-layer" class="secondary">삭제</button></div>
+        <fieldset id="layer-fields" disabled><legend>선택 레이어</legend>
+          <label>레이어 이름<input id="layer-name" maxlength="200"></label><label>용도<select id="layer-role"><option value="illustration">일러스트</option><option value="frame">프레임</option><option value="fragment">프레임 조각</option></select></label>
+          <div class="field-pair"><label>X<input id="layer-x" type="number" step="0.1"></label><label>Y<input id="layer-y" type="number" step="0.1"></label></div>
+          <div class="field-pair"><label>너비<input id="layer-width" type="number" min="0.01" step="0.1"></label><label>높이<input id="layer-height" type="number" min="0.01" step="0.1"></label></div>
+          <label><input id="layer-ratio" type="checkbox" checked> 크기 변경 시 비율 유지</label>
+          <div class="layer-actions"><button id="fit-layer" type="button" class="secondary">화면에 맞춤</button><button id="fill-layer" type="button" class="secondary">화면 채움</button><button id="native-layer" type="button" class="secondary">원본 크기</button></div>
+          <label>불투명도<input id="layer-opacity" type="range" min="0" max="100" value="100"></label><label><input id="layer-visible" type="checkbox" checked> 보이기</label><label><input id="layer-locked" type="checkbox"> 드래그·크기 편집 잠금</label>
+          <h3>원본 자르기 영역</h3><div class="field-pair"><label>X<input id="crop-x" type="number" min="0" step="0.1"></label><label>Y<input id="crop-y" type="number" min="0" step="0.1"></label></div><div class="field-pair"><label>너비<input id="crop-width" type="number" min="0.01" step="0.1"></label><label>높이<input id="crop-height" type="number" min="0.01" step="0.1"></label></div><button id="reset-crop" type="button" class="secondary">자르기 초기화</button>
+          <p id="layer-source" class="muted"></p>
+        </fieldset>
+      </section>
+    </div>
+    <details><summary>조합 저장과 원본 해상도 안내</summary><p>PNG와 조합 JSON은 브라우저에서 PC로 내려받습니다. 여러 프레임 조각은 레이어로 배치해 템플릿으로 저장하고 다른 조합에 추가하세요. 원본 파일은 그대로 유지되며 합성 입력은 축소 미리보기와 분리합니다. DDS/TGA는 Pillow로 원본 해상도에서 변환합니다. 인게임 배치를 자동으로 재현하는 기능은 아닙니다.</p><p>출력은 한 변 8192px·총 16,777,216픽셀, 입력은 한 이미지 16,777,216픽셀·64 MiB, 동시에 불러온 원본은 합계 33,554,432픽셀, 레이어는 20개까지입니다. 설정 복원 시 원본 출처와 해시를 확인하며, 원본이 변경되거나 사라졌다면 오류를 표시하고 현재 조합을 유지합니다.</p></details>
+  </main><div id="editor-toast" role="alert" hidden></div>
+  <script src="/composition-core.js"></script><script src="/compose.js"></script>
+</body></html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="explorer-token" content="__TOKEN__">
+  <title>CLOSERS Explorer</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brandmark">C</span><div>CLOSERS<span>RESOURCE EXPLORER</span></div></div>
+    <div class="nav-label">라이브러리</div>
+    <nav id="categories" aria-label="파일 분류"></nav>
+    <div class="sidebar-bottom"><span class="online-dot"></span> 로컬 작업 공간<div id="workspace" class="muted path"></div><p>파일은 이 컴퓨터에서 처리됩니다.</p></div>
+  </aside>
+  <main>
+    <header><div><div class="eyebrow">GAME ASSET LIBRARY</div><h1>리소스 탐색기</h1><p class="muted">게임 데이터를 살펴보고, 필요한 리소스를 정리하세요.</p></div><div class="actions"><button id="manage-data" class="secondary">데이터 관리</button><a class="button secondary" href="/model" target="_blank" rel="noopener">3D 보기</a><a id="open-composer" class="button secondary" href="/compose" target="_blank" rel="noopener">이미지 조합</a><a id="manifest" class="button secondary" href="#">↓ 목록 CSV</a></div></header>
+    <section class="source-panel" aria-label="작업 설정">
+      <div class="field"><label for="source">원본 CMF 폴더 또는 파일</label><div class="input-row"><input id="source" placeholder="D:\Games\CLOSERS\DAT" spellcheck="false"><button id="browse-source" class="secondary">찾기</button><button id="compare" class="secondary">원본 변경 비교</button><button id="scan">폴더 분석</button><button id="process">분석하고 바로 추출</button></div></div>
+      <div class="field"><label for="output">추출 결과 폴더</label><div class="input-row"><input id="output" spellcheck="false"><button id="browse-output" class="secondary">찾기</button><button id="open-output" class="secondary">저장 폴더 열기</button></div></div>
+      <div class="field"><label for="verify">완료 파일 재검증</label><select id="verify"><option value="sha256">전체 SHA-256 검증 (기본)</option><option value="fast">빠른 재개: 크기·수정 시각 확인</option></select><small class="muted">빠른 재개는 크기와 수정 시각이 같은 내용 변경을 찾지 못합니다. 통합 추출에도 현재 검색 조건을 적용합니다.</small><label><input id="retry-errors" type="checkbox"> 이전 아카이브·본문 복원 실패도 다시 시도</label><small class="muted">기본은 같은 원본·복원기 버전의 복원 실패를 재사용합니다. 실패는 남으며, 다시 압축을 풀지는 않습니다.</small></div>
+      <div class="field"><label for="workers">통합 추출 동시 처리</label><select id="workers"><option value="1">CMF 1개 (기본)</option><option value="2">CMF 2개</option><option value="4">CMF 4개</option></select><small class="muted">저장 장치와 파일 크기에 따라 속도가 달라집니다. 다른 작업의 동시 실행을 허용하는 설정은 아닙니다.</small></div>
+    </section>
+    <details id="update-result" hidden><summary>최근 원본 변경 비교</summary><p id="update-counts"></p><p class="muted">크기·수정 시각 기준입니다. 저장 파일과 기존 목록은 유지됩니다. 각 유형의 예시는 최대 100개입니다.</p><pre id="update-examples"></pre></details>
+    <div class="scope-panel"><p>폴더 분석은 목록만 수집합니다. 선택 추출은 체크한 파일만, 검색 결과 추출과 통합 추출은 현재 필터에 맞는 파일을 원본 형식으로 저장합니다. 기타·분류 미확정 파일도 포함됩니다.</p><p id="scope-preview" aria-live="polite"></p></div>
+    <section class="metrics" aria-label="라이브러리 통계">
+      <div><span>원본 아카이브</span><strong id="archive-count">0</strong><small id="archive-bytes">0 B</small></div>
+      <div><span>전체 리소스</span><strong id="entry-count">0</strong><small id="entry-bytes">추출 예상 크기 0 B</small></div>
+      <div><span>추출 완료 기록</span><strong id="extracted-count">0</strong><small>현재 파일 존재 여부는 목록·상세에서 확인</small></div>
+      <div><span>확인 필요</span><strong id="issue-count">0</strong><small>암호화 또는 오류 항목</small></div>
+    </section>
+    <section class="job-panel" aria-live="polite">
+      <div class="job-line"><span id="job-label">준비됨</span><span id="job-numbers" class="muted"></span><button id="cancel" class="danger" disabled>작업 중단</button></div>
+      <progress id="progress" max="100" value="0"></progress><div id="job-current" class="muted truncate">폴더를 분석하면 파일 목록이 표시됩니다.</div>
+      <p id="job-scope" class="muted"></p>
+    </section>
+    <section class="library">
+      <div class="library-heading"><div><h2 id="category-title">모든 리소스</h2><span id="result-count" class="muted">0개 항목</span></div><div class="actions"><button id="compose-selected" class="secondary" disabled>선택 이미지 조합</button><button id="extract-selected" class="secondary" disabled>선택 추출 <span id="selected-count"></span></button><button id="extract-filtered" disabled>현재 검색 결과 추출</button></div></div>
+      <div class="filters"><input id="search" type="search" placeholder="파일명 또는 CMF 경로 검색…" aria-label="리소스 검색"><select id="detail" aria-label="세부 분류"><option value="">모든 세부 분류</option></select><select id="format" aria-label="파일 형식"><option value="">모든 형식</option></select><select id="status" aria-label="처리 상태"><option value="">모든 상태</option><option value="indexed">분석 완료</option><option value="extracted">추출 완료</option><option value="error">오류</option><option value="encrypted">암호화</option><option value="raw">암호화 원본 보존</option></select><div class="view-switch"><button id="list-mode" class="active" aria-label="목록 보기">목록</button><button id="grid-mode" aria-label="카드 보기">카드</button></div></div>
+      <div id="library-model-filters" class="filters" hidden><select id="library-model-character" aria-label="캐릭터 필터"><option value="">모든 캐릭터</option></select><select id="library-model-kind" aria-label="모델 종류 필터"><option value="">모든 종류</option></select><select id="library-model-family" aria-label="의상 분류 필터"><option value="">모든 의상 분류</option></select><select id="library-model-part" aria-label="모델 부위 필터"><option value="">모든 부위</option></select><select id="library-model-variant" aria-label="보조 메시 필터"><option value="">모든 메시</option></select><span class="muted">파일명 기반 분류 · 의상 묶음과 얼굴 연결은 3D 보기에서 이용하세요.</span></div>
+      <div class="filters"><select id="group-axis" aria-label="그룹 기준"><option value="">개별 파일</option><option value="detail">세부 분류 그룹</option><option value="prefix">파일명 그룹 (끝 번호 제외)</option><option value="directory">원본 폴더 그룹</option><option value="archive">CMF 그룹</option><option value="quest_candidate">퀘스트 음성 코드 후보</option></select><button id="group-back" class="secondary" hidden>그룹 목록</button><span id="group-evidence" class="muted"></span></div>
+      <div class="filters"><select id="saved" aria-label="저장 기록"><option value="">모든 저장 상태</option><option value="recorded">저장 경로 기록 있음</option><option value="unrecorded">저장 경로 기록 없음</option></select><select id="duplicate" aria-label="중복 관계"><option value="">모든 출처별 항목</option><option value="name">같은 이름이 있는 항목</option><option value="content">같은 내용 해시가 있는 항목</option></select><span class="muted">같은 이름과 같은 내용은 별개입니다. 중복 항목도 출처별로 표시·저장합니다. 내용 비교는 기록된 SHA-256 기준입니다.</span></div>
+      <div id="group-edit" class="filters" hidden><input id="group-label" placeholder="사용자 그룹 이름" aria-label="사용자 그룹 이름"><input id="group-tags" placeholder="태그" aria-label="그룹 태그"><button id="group-save" class="secondary">이름·태그 저장</button><button id="group-audio" class="secondary">그룹 음성 듣기</button></div>
+      <div class="result-area"><div id="results"></div><div id="empty" hidden><div class="empty-icon">◇</div><h3>리소스 라이브러리를 시작하세요</h3><p>위에서 CMF 폴더를 선택하고 <b>폴더 분석</b>을 눌러 주세요.<br>추출하기 전에도 이미지와 오디오를 확인할 수 있습니다.</p></div></div>
+      <footer class="pagination"><label><input id="select-page" type="checkbox"> 현재 페이지 선택</label><span class="muted">한 페이지 60개 · 선택은 페이지 이동 시 초기화</span><div><button id="prev" class="secondary">← 이전</button><span id="page-label">1 / 1</span><button id="next" class="secondary">다음 →</button></div></footer>
+    </section>
+    <details id="diagnostics"><summary>문제 확인 및 분류 안내 <span id="diagnostic-count"></span></summary><p>세부 분류는 파일명 규칙으로 추정합니다. 기타 파일도 추출 대상입니다. HEADER 인덱스는 본문이 없어 일반 추출과 구분합니다. 미리보기 실패는 저장 실패와 별개입니다.</p><label><input id="raw" type="checkbox"> 암호화 항목을 .encrypted.bin 저장 바이트로 보존 (기본은 정책 제외)</label><div id="errors"></div></details>
+    <details><summary>미지원 데이터 보존 · 인덱스 내보내기</summary><p>저장 바이트 보존은 압축 해제나 복호화를 하지 않습니다. TET는 .TET 확장자를 유지하고, 나머지는 .stored.bin으로 별도 보존합니다. 확장자와 관계없이 원문은 미복원 상태입니다. 스크립트·오류 필터로 범위를 좁힌 뒤 실행하세요.</p><label for="preservation-output">별도 보존 폴더</label><input id="preservation-output" class="path" spellcheck="false"><div class="actions"><button id="preserve-filtered" class="secondary">현재 검색 결과 저장 바이트 보존</button><button id="open-preservation" class="secondary">보존 폴더 열기</button><button id="register-preservation" class="secondary">기존 보존 결과 연결</button><button id="export-index" class="secondary">HEADER 인덱스 내보내기</button></div><p id="preservation-sources" class="muted"></p><p class="muted">인덱스 내보내기는 위 원본 경로의 HEADER.CMF를 사용합니다. 새 하위 폴더에 목록만 저장하며 실제 리소스 본문은 DAT*.CMF에 있습니다.</p></details>
+  </main>
+  <dialog id="preview"><div class="preview-head"><div><div id="preview-kind" class="eyebrow"></div><h2 id="preview-name"></h2></div><button id="close-preview" class="secondary" aria-label="미리보기 닫기">✕</button></div><p id="preview-state" role="status"></p><div id="preview-content"></div><dl id="preview-info"></dl><details><summary>바이너리 헤더 · 최대 512바이트</summary><pre id="preview-hex"></pre></details><div class="preview-footer"><span id="preview-note" class="muted"></span><div class="actions"><a id="download-one" class="button secondary" aria-disabled="true">원본 형식 내려받기</a><a id="download-stored" class="button secondary" aria-disabled="true">보존 바이트 내려받기</a><button id="reveal-one" class="secondary" disabled>파일 위치 확인</button><button id="rescan-one" class="secondary" disabled>이 CMF 다시 분석</button><button id="preserve-one" class="secondary" disabled>이 파일 저장 바이트 보존</button><button id="extract-one">이 파일 추출·재시도</button></div></div></dialog>
+  <dialog id="data-management" aria-labelledby="reset-title">
+    <div class="preview-head"><h2 id="reset-title">데이터 관리 · 전체 초기화</h2><button id="close-management" class="secondary" aria-label="데이터 관리 닫기">✕</button></div>
+    <p>분석 목록, 추출 파일, 오류·버전 이력, 그룹 이름·태그, 미리보기·이미지 조합 캐시와 보고서를 삭제합니다. 삭제한 데이터는 되돌릴 수 없습니다.</p>
+    <p><strong>원본 CMF 파일과 원본 폴더는 유지합니다.</strong> 별도 출력 폴더에서는 목록과 버전 이력에 기록된 추출 파일만 삭제합니다.</p>
+    <label><input id="reset-preserved" type="checkbox"> 연결된 보존 데이터도 삭제</label>
+    <p class="muted">보존 데이터는 원본 CMF 위치가 아니라, 별도로 복사한 .TET·.stored.bin 파일과 보존 기록입니다. 선택하지 않으면 보존 파일과 연결을 유지합니다. 별도 진단 폴더·HEADER 인덱스·브라우저로 내려받은 파일은 초기화 대상에 포함하지 않습니다.</p>
+    <p id="reset-summary" role="status"></p><ul id="reset-folders" aria-label="삭제 대상 파일의 저장 위치"></ul>
+    <label for="reset-confirmation">삭제하려면 아래에 <strong>전체 초기화</strong>를 입력하세요.</label>
+    <input id="reset-confirmation" autocomplete="off" placeholder="전체 초기화">
+    <p id="reset-error" role="alert"></p>
+    <div class="actions"><button id="cancel-management" class="secondary">취소</button><button id="confirm-reset" class="danger" disabled>전체 초기화 실행</button></div>
+  </dialog>
+  <div id="toast" role="alert" hidden></div>
+  <script src="/library.js"></script><script src="/updates.js"></script><script src="/app.js"></script><script src="/management.js"></script>
+</body>
+</html>

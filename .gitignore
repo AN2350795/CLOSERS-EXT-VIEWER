@@ -1,0 +1,47 @@
+# Local source data, generated output, and legacy reference project
+/data/
+/results/
+/diagnostics/
+/CLOSERS_CMFReader/
+
+# Development reports, plans, handoff notes, and benchmark results
+/CLOSERS_Explorer/docs/*_REPORT.md
+/CLOSERS_Explorer/docs/*_PLAN.md
+/CLOSERS_Explorer/docs/*_PROGRESS.md
+/CLOSERS_Explorer/docs/*_HANDOFF.md
+/CLOSERS_Explorer/docs/stream-benchmark.json
+
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Browser test artifacts and local dependencies
+/CLOSERS_Explorer/.browser-test/
+node_modules/
+
+# IDE settings and build output
+.vs/
+.vscode/
+.idea/
+bin/
+obj/
+
+# Local environment settings and logs
+.env
+.env.*
+!.env.example
+!.env.sample
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini
