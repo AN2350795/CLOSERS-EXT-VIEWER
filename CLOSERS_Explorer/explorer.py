@@ -36,6 +36,8 @@ def main():
     process.add_argument('--verify', choices=['sha256', 'fast'], default='sha256')
     process.add_argument('--workers', type=int, choices=[1,2,4], default=1, help='동시에 처리할 CMF 수 (기본 1)')
     commands.add_parser('report', help='통계와 CSV 보고서 갱신')
+    names = commands.add_parser('names', help='게임 NTF에서 한국어 아바타 이름 인덱스 생성')
+    names.add_argument('--executable', required=True, help='해당 게임 설치본의 CW.EXE 경로 (읽기 전용)')
     compare = commands.add_parser('compare', help='원본의 추가·변경·사라짐 비교 (목록·저장 파일 유지)')
     compare.add_argument('paths', nargs='+')
     diagnose = commands.add_parser('diagnose', help='읽기 전용 DB 스냅샷과 실패 헤더 진단')
@@ -50,6 +52,11 @@ def main():
     index.add_argument('path')
     index.add_argument('--destination', required=True, help='아직 없는 별도 폴더')
     args = parser.parse_args()
+    if args.command == 'names':
+        from closers.game_names import build_index
+        result=build_index(args.workspace,args.executable,lambda **v:print(json.dumps(v,ensure_ascii=True),flush=True))
+        print(json.dumps(result,ensure_ascii=True,indent=2))
+        return 0
     if args.command in ('preserve', 'index'):
         last_print = 0
         def preservation_progress(**values):

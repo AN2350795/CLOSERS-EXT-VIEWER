@@ -143,7 +143,7 @@ class Reset:
         for output in outputs:
             add(output)
         for name in ('catalog.csv', 'summary.json', 'update-comparison.json',
-                     'catalog.csv.revision.json', 'summary.json.revision.json'):
+                     'catalog.csv.revision.json', 'summary.json.revision.json', 'game-names.sqlite3'):
             add(workspace / name)
         if delete_preserved:
             for path in preserved | preservation_files | {self.preservations.registry}:

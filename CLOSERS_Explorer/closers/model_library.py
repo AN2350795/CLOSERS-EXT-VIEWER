@@ -43,6 +43,7 @@ class Models:
             raise ValueError('3D 입력은 파일당 32 MiB까지 지원합니다.')
         source = dict(entry_id=row['id'],name=row['name'],archive=row['archive'],ordinal=row['ordinal'],
                       sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),saved_exists=path is not None)
+        self.catalog.game_names.decorate(source)
         return data,row,source
 
     def matches(self,name):

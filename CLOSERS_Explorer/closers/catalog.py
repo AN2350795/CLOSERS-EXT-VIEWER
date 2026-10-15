@@ -63,6 +63,8 @@ class Catalog:
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.db = self.workspace / 'catalog.sqlite3'
         self.local = threading.local()
+        from .game_names import GameNames
+        self.game_names = GameNames(self.workspace)
         with self.connect() as db:
             version = db.execute('PRAGMA user_version').fetchone()[0]
             if version > 4:
@@ -155,6 +157,8 @@ class Catalog:
         db.create_function('resource_group', 4, group_key, deterministic=True)
         from .model_groups import field
         db.create_function('model_field', 2, field, deterministic=True)
+        self.game_names.refresh()
+        db.create_function('game_name', 1, self.game_names.text, deterministic=True)
         return db
 
     @contextmanager
@@ -342,8 +346,7 @@ class Catalog:
         progress(phase='scan', done=result['archives'],archive_failed=result['failed'],entry_failed=0, current='목록 처리 종료', **result)
         return result
 
-    @staticmethod
-    def where(filters):
+    def where(self, filters):
         clauses, values = ['1=1'], []
         for key in ('character','kind','family','part','variant'):
             if filters.get('model_'+key):
@@ -377,9 +380,9 @@ class Catalog:
             if filters['group_axis'] == 'quest_candidate':
                 clauses.append("e.category='audio'")
         if filters.get('q'):
-            clauses.append('(e.name LIKE ? ESCAPE \'\\\' OR a.path LIKE ? ESCAPE \'\\\')')
+            clauses.append('(e.name LIKE ? ESCAPE \'\\\' OR a.path LIKE ? ESCAPE \'\\\' OR game_name(e.name) LIKE ? ESCAPE \'\\\')')
             query = filters['q'].replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-            values.extend((f'%{query}%', f'%{query}%'))
+            values.extend((f'%{query}%', f'%{query}%', f'%{query}%'))
         if 'ids' in filters:
             ids = filters['ids']
             if not isinstance(ids, list) or len(ids) > 200:
@@ -400,8 +403,7 @@ class Catalog:
             items = [self.decorate(dict(row), db) for row in rows]
         return dict(total=total, page=page, limit=limit, items=items)
 
-    @staticmethod
-    def decorate(row, db):
+    def decorate(self, row, db):
         from .library import saved_file
         if row.get('category')=='models':
             from .model_groups import classify
@@ -411,7 +413,7 @@ class Catalog:
         row['same_content_count'] = (db.execute('SELECT count(*) FROM entries WHERE sha256=?', (row['sha256'],)).fetchone()[0]
                                      if row.get('sha256') else 0)
         row['issue'] = issue(row.get('error'), row.get('error_stage'))
-        return row
+        return self.game_names.decorate(row)
 
     def groups(self, filters):
         axis = filters.get('group_axis', 'prefix')

@@ -70,11 +70,12 @@ class ModelGroups:
         with self.lock, self.catalog.connect() as db:
             db.execute('BEGIN')
             revision=db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
-            if refresh or revision!=self.version:
+            version=(revision,self.catalog.game_names.version)
+            if refresh or version!=self.version:
                 rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive
                     FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.category='models' ORDER BY e.id''').fetchall()
-                self.rows=[dict(r,**classify(r['name'])) for r in rows]
-                self.version=revision
+                self.rows=[self.catalog.game_names.decorate(dict(r,**classify(r['name']))) for r in rows]
+                self.version=version
             return self.rows.copy()
 
     @staticmethod
@@ -90,7 +91,7 @@ class ModelGroups:
         elif saved=='missing':rows=[r for r in rows if not self.saved(r)]
         if filters.get('q'):
             q=filters['q'].casefold()
-            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')).casefold()]
+            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+self.catalog.game_names.text(r['name'])).casefold()]
         return rows
 
     def facets(self,filters):
@@ -128,9 +129,19 @@ class ModelGroups:
         items=[]
         for key,rows in sorted(groups.items()):
             # Display count follows filters; bundle detail resolves the entire exact set.
-            items.append(dict(key=key,character=rows[0]['character'],label=CHARACTERS.get(rows[0]['character'],rows[0]['character'])+' · '+rows[0]['set_name'],
+            items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
                               count=len(rows),parts=sorted({r['part'] for r in rows})))
         return self.paginate(items,filters)
+
+    @staticmethod
+    def bundle_label(rows):
+        import os
+        names=[r['game_names'][0] for r in rows if r.get('game_names')]
+        # Show an observed common name prefix only when different parts agree.
+        prefix=os.path.commonprefix(names).strip() if len(set(names))>1 else ''
+        character=CHARACTERS.get(rows[0]['character'],rows[0]['character'])
+        title=prefix if len(prefix)>len(character)+2 else character
+        return title+' · '+rows[0]['set_name']
 
     def browse(self,filters):
         keys=('character','kind','family','part','variant')
@@ -152,7 +163,7 @@ class ModelGroups:
         for row in rows:slots[(row['part'],row['variant'])].append(row)
         has_one_piece=any(part=='ONE_PIECE' and variant=='BASE' for part,variant in slots)
         def choices(rows):
-            return [dict(id=r['id'],name=r['name'],archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r)) for r in rows]
+            return [dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r)) for r in rows]
         result=[]
         for (part,variant),candidates in sorted(slots.items()):
             checked=part in CORE and part!='FACE' and variant in ('BASE','ALPHA') and not(has_one_piece and part in ('UPBODY','LOWBODY'))
@@ -161,7 +172,7 @@ class ModelGroups:
         faces=[r for r in rows if r['part']=='FACE' and r['variant']=='BASE']
         if not faces:faces=[r for r in all_rows if r['kind']=='avatar' and r['character']==character and r['part']=='FACE' and r['set_name']=='BASIC' and r['variant']=='BASE' and r['flag']!=2]
         motions=[r for r in all_rows if r['name'].upper()=='MOTION_'+character+'.X' and r['flag']!=2]
-        return dict(key=key,character=character,label=CHARACTERS.get(character,character)+' · '+rows[0]['set_name'],slots=result,
+        return dict(key=key,character=character,label=self.bundle_label(rows),slots=result,
                     face=dict(candidates=choices(faces),selected=faces[0]['id'] if len(faces)==1 else None),
                     motion=dict(candidates=choices(motions),selected=motions[0]['id'] if len(motions)==1 else None),
                     evidence='같은 캐릭터·의상 코드·타입의 파일명 묶음; 얼굴은 동일 캐릭터 기본 얼굴 후보')

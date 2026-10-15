@@ -2,7 +2,7 @@
 let activeResource = null;
 
 function sourceLine(item){
-  const line=node('div','subline source-path',item.archive);line.title=item.archive;return line;
+  const line=node('div','subline source-path',(item.display_name?item.name+' · ':'')+item.archive);line.title=item.name+'\n'+item.archive;return line;
 }
 
 function describeFilters(f={}){
@@ -76,6 +76,8 @@ function renderLibraryStats(){
 function resourceFields(item){
   const preserved=item.preservations||[],current=preserved.filter(p=>p.current&&p.exists);
   return {
+    '원본 파일명':item.name,
+    ...(item.game_names?{'인게임 이름':item.game_names.join(' / '),'이름 연결':'게임 NTF의 아이템 번호 → 모델 파일명 · 한국어 문자열 키'}:{}),
     '목록 상태':item.archive_status==='ready'?'CMF 목록 해석 완료':item.archive_status==='index'?'별도 인덱스 (본문 없음)':'아카이브 다시 분석 필요',
     '본문 복원':item.status==='extracted'?'복원 완료 기록':item.flag===2?'암호화 플래그 · 기본 정책 제외':item.issue?.stage==='decode'?(item.status==='indexed'?'앞부분 판별 실패 · 전체 복원은 미확인':'본문 복원 실패 · 미지원 가능'):'완전한 본문 복원 미확인',
     '로컬 저장':item.saved_exists?(item.status==='extracted'?'원본 형식 파일 있음':item.status==='raw'?'암호화 저장 바이트 파일 있음':'이전 저장 파일 있음'):item.output?'저장 경로 기록은 있으나 파일 없음':'원본 형식 미저장',
@@ -107,7 +109,7 @@ async function inspectResource(id){
   let item;
   try{
     item=await api('/api/info/'+id);if(seq!==previewGeneration)return;
-    activeResource=item;updateSavedActions();$('preview-name').textContent=item.name;$('preview-kind').textContent=(labels[item.category]||'기타')+' / '+item.detail;
+    activeResource=item;updateSavedActions();$('preview-name').textContent=item.display_name||item.name;$('preview-name').title=(item.game_names||[]).join('\n');$('preview-kind').textContent=(labels[item.category]||'기타')+' / '+item.detail;
     showResourceHistory(item,seq);
     for(const [key,value] of Object.entries(resourceFields(item)))$('preview-info').append(node('dt','',key),node('dd','',String(value)));
     $('preview-hex').textContent=item.hex||'복원된 본문 헤더가 없습니다.';

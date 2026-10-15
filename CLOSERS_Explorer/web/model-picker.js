@@ -4,7 +4,7 @@ export function setupPicker({state,api,operation,loadModel,element}){
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
   let bundle=null;
   function filters(){const p=new URLSearchParams({format:'x',saved:$('model-saved').value,q:$('model-search').value,limit:20,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);return p;}
-  function choices(info){const select=element('select');select.setAttribute('aria-label','파일 출처');select.append(new Option(info.candidates.length?'출처 선택':'후보 없음',''));for(const c of info.candidates)select.append(new Option(c.name+' · '+c.archive+' · #'+c.ordinal,c.id));if(info.selected)select.value=info.selected;return select;}
+  function choices(info){const select=element('select');select.setAttribute('aria-label','파일 출처');select.append(new Option(info.candidates.length?'출처 선택':'후보 없음',''));for(const c of info.candidates)select.append(new Option((c.display_name||c.name)+' · '+c.name+' · '+c.archive+' · #'+c.ordinal,c.id));if(info.selected)select.value=info.selected;return select;}
   function picked(rows){const ids=[];for(const row of rows){if(!row.check.checked)continue;if(!row.select.value)throw Error(row.label+': 사용할 출처를 선택하세요.');ids.push(Number(row.select.value));}return [...new Set(ids)];}
   async function equip(rows,motion,append){
     let ids=picked(rows);if(!ids.length)throw Error('추가할 부위를 선택하세요.');
@@ -37,7 +37,7 @@ export function setupPicker({state,api,operation,loadModel,element}){
     const data=await api('/api/model-browser?'+p),metadata=data;
     keys.forEach((key,i)=>{const select=$('model-'+key),value=select.value;select.replaceChildren(new Option(titles[i],''));for(const f of metadata.facets[key])select.append(new Option(f.label+' · '+f.count.toLocaleString(),f.value));if(value&&!Array.from(select.options).some(o=>o.value===value))select.append(new Option(value+' · 0',value));select.value=value;});
     $('model-results').replaceChildren();
-    for(const item of data.items){const row=element('div');row.className='model-row';row.append(element('span',mode==='sets'?item.label:item.name));
+    for(const item of data.items){const row=element('div');row.className='model-row';const title=element('span',mode==='sets'?item.label:(item.display_name||item.name));title.title=(item.game_names||[]).join('\n');row.append(title);if(item.display_name)row.append(element('small',item.name));
       if(mode==='sets'){row.append(element('small',item.count+'개 파일 · '+item.parts.join(', ')));const button=element('button','묶음 구성');button.onclick=()=>operation(()=>showBundle(item.key));row.append(button);}
       else{row.append(element('small',[item.character,item.family,item.part,item.variant].filter(Boolean).join(' · ')),element('small',item.archive+' · #'+item.ordinal+' · '+(item.saved_exists?'저장됨':'미저장')));const actions=element('div');actions.className='actions';const open=element('button','열기'),add=element('button','부위 추가');add.className='secondary';open.onclick=()=>operation(()=>loadModel([item.id]));add.onclick=()=>operation(async()=>{if(state.ids.includes(item.id))return;if(state.ids.length>=16)throw Error('모델 부위는 16개까지 선택해 주세요.');await loadModel([...state.ids,item.id],state.skeleton);});actions.append(open,add);if(item.set_key){const group=element('button','의상 묶음');group.className='secondary';group.onclick=()=>operation(()=>showBundle(item.set_key));actions.append(group);}row.append(actions);}
       $('model-results').append(row);

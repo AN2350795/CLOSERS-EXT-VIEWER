@@ -1,0 +1,176 @@
+"""Local, source-attributed item names; resource filenames remain unchanged."""
+from collections import defaultdict
+from contextlib import closing
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sqlite3
+import threading
+import uuid
+
+from . import ntf
+
+INDEX_VERSION=1
+
+
+class GameNames:
+    def __init__(self,workspace):
+        self.path=Path(workspace)/'game-names.sqlite3'
+        self.lock=threading.RLock()
+        self.version=None
+        self.file_version=None
+        self.sources=[]
+        self.labels={}
+
+    def refresh(self):
+        with self.lock:
+            try:
+                stat=self.path.stat();version=(stat.st_mtime_ns,stat.st_size)
+            except OSError:version=None
+            stale=False
+            for source in self.sources:
+                try:
+                    current=Path(source['archive']).stat()
+                    stale |= (current.st_size,current.st_mtime_ns)!=(source['size'],source['mtime'])
+                except FileNotFoundError:pass  # The saved index is usable offline.
+                except OSError:stale=True
+            if version==self.file_version:
+                if stale:
+                    self.labels={};self.version=(version,'stale')
+                if stale or self.version==(version,'current') or version is None:return
+            labels={}
+            if version:
+                try:
+                    with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                        if db.execute('PRAGMA user_version').fetchone()[0]!=INDEX_VERSION:raise ValueError()
+                        meta=db.execute("SELECT value FROM metadata WHERE key='sources'").fetchone()
+                        self.sources=json.loads(meta[0]) if meta else []
+                        if not isinstance(self.sources,list) or any(not isinstance(s,dict) or
+                                not isinstance(s.get('archive'),str) or not isinstance(s.get('size'),int) or
+                                not isinstance(s.get('mtime'),int) for s in self.sources):
+                            self.sources=[]
+                            raise ValueError('이름 인덱스 출처 형식이 잘못되었습니다.')
+                        labels=defaultdict(list)
+                        for filename,label,priority in db.execute('SELECT filename,label,MAX(priority) p FROM names GROUP BY filename,label ORDER BY filename,p DESC,label'):
+                            labels[filename].append(label)
+                except (OSError,sqlite3.Error,ValueError):labels={};self.sources=[]
+            self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
+            # A newly loaded index must also be checked against current sources.
+            if version:self._check_sources()
+
+    def _check_sources(self):
+        for source in self.sources:
+            try:
+                stat=Path(source['archive']).stat()
+                if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
+            except FileNotFoundError:continue
+            except OSError:pass
+            self.labels={};self.version=(self.file_version,'stale');break
+
+    def text(self,name):
+        return '\n'.join(self.labels.get(name.replace('\\','/').rsplit('/',1)[-1].upper(),()))
+
+    def decorate(self,row):
+        labels=self.labels.get(row['name'].replace('\\','/').rsplit('/',1)[-1].upper(),())
+        if labels:
+            row['game_names']=list(labels[:100])
+            row['game_name_count']=len(labels)
+            row['display_name']=labels[0]+(f' 외 {len(labels)-1}개' if len(labels)>1 else '')
+        return row
+
+
+def build_index(workspace,executable,progress=None):
+    """Read catalog/source CMFs, verify every row and publish a separate index."""
+    from .catalog import operation_lock
+    workspace=Path(workspace).resolve();executable=Path(executable).resolve()
+    with operation_lock(workspace):
+        return _build(workspace,executable,progress or (lambda **kw:None))
+
+
+def _build(workspace,executable,progress):
+    from .cmf import Archive,Entry
+    from .model_groups import classify
+    key,iv=ntf.script_keys(executable)
+    with closing(sqlite3.connect((workspace/'catalog.sqlite3').as_uri()+'?mode=ro',uri=True)) as db:
+        db.row_factory=sqlite3.Row
+        candidates=db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
+            FROM entries e JOIN archives a ON a.id=e.archive_id
+            WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
+               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' ORDER BY e.id''').fetchall()
+    selected={};source_hashes={};sources=[];entry_tables={}
+    for row in candidates:
+        if not re.fullmatch(r'(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF',row['name']):continue
+        source=Path(row['archive']);before=source.stat()
+        if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
+            raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
+        if row['stored']>ntf.MAX_BYTES:raise ValueError('NTF 저장 크기를 초과했습니다.')
+        with Archive(source) as archive:
+            entry=Entry(row['ordinal'],row['name'],row['size'],row['stored'],row['offset'],row['flag'])
+            # Confirm the current archive's own entry table, not just cached offsets.
+            if source not in entry_tables:entry_tables[source]={e.index:e for e in archive.entries()}
+            actual=entry_tables[source].get(entry.index)
+            if actual!=entry:raise ValueError('NTF 원본 항목이 목록과 일치하지 않습니다.')
+            stored=b''.join(archive.stored_chunks(entry))
+        after=source.stat()
+        if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('NTF를 읽는 동안 원본이 변경되었습니다.')
+        digest=hashlib.sha256(stored).hexdigest()
+        if row['name'] in source_hashes and source_hashes[row['name']]!=digest:
+            raise ValueError('동일 이름의 NTF 출처 내용이 다릅니다: '+row['name'])
+        source_hashes[row['name']]=digest
+        sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
+        selected.setdefault(row['name'],(dict(row),stored))
+    strings={};items={};models=[];counts={}
+    # Strings first to keep only the item columns used by the join.
+    for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),kv[0])):
+        body=ntf.restore(stored,row['size'],key,iv)
+        types,count,start=ntf.header(body)
+        if name.startswith('STRING_TABLE'):
+            if types!=(5,8,8):raise ValueError('미지원 한국어 문자열 NTF 열 구성입니다.')
+            body=body[:start]+ntf.decrypt(body[start:],key,iv)
+        elif name.startswith('ITEM_MODEL'):
+            if len(types)!=36 or types[:5]!=(5,8,8,8,8):raise ValueError('미지원 모델 NTF 열 구성입니다.')
+        elif len(types)!=206 or types[:4]!=(8,5,8,8) or types[11]!=8:raise ValueError('미지원 아이템 NTF 열 구성입니다.')
+        counts[name]=0
+        for values in ntf.rows(body):
+            counts[name]+=1
+            if name.startswith('STRING_TABLE'):
+                text=values[2].strip()
+                if values[1] in strings and strings[values[1]][0]!=text:raise ValueError('한국어 이름 키가 충돌합니다: '+values[1])
+                strings[values[1]]=(text,name)
+            elif name.startswith('ITEM_MODEL'):
+                for filename in values[2:5]:
+                    if filename.upper().endswith('.X') and 'EP_AVATAR' in filename.upper():
+                        models.append((values[0],values[1],filename,name))
+            else:
+                item_id=values[1];value=(values[2],values[3],values[11],name)
+                if item_id in items and items[item_id]!=value:raise ValueError('아이템 번호가 충돌합니다: '+str(item_id))
+                items[item_id]=value
+        progress(current=name,rows=counts[name])
+    if not strings or not items or not models:raise ValueError('이름 연결에 필요한 NTF가 없습니다.')
+    temp=workspace/('game-names.'+uuid.uuid4().hex+'.partial')
+    try:
+        with closing(sqlite3.connect(temp)) as db, db:
+            db.executescript('''PRAGMA user_version=1;
+                CREATE TABLE metadata(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+                CREATE TABLE names(filename TEXT,label TEXT,item_id INTEGER,string_key TEXT,item_table TEXT,
+                    model_table TEXT,string_table TEXT,priority INTEGER,
+                    PRIMARY KEY(filename,label,item_id,item_table,model_table));
+                CREATE INDEX by_filename ON names(filename);''')
+            for item_id,owner,filename,model_table in models:
+                item=items.get(item_id)
+                if not item or owner.startswith('GUST_NPC_') or item[2].startswith('GUST_NPC_'):continue
+                text=strings.get(item[0])
+                if not text or not text[0] or text[0] in ('INVAILD_STRING','BLANK'):continue
+                group=classify(filename)
+                priority=int(bool(group['set_name']) and group['set_name']==item[1])
+                db.execute('INSERT OR IGNORE INTO names VALUES(?,?,?,?,?,?,?,?)',
+                           (filename.upper(),text[0],item_id,item[0],item[3],model_table,text[1],priority))
+            total=db.execute('SELECT COUNT(DISTINCT filename) FROM names').fetchone()[0]
+            if not total:raise ValueError('실제 이름에 연결된 아바타 모델이 없습니다.')
+            metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total)
+            db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v,ensure_ascii=False)) for k,v in metadata.items()])
+        os.replace(temp,workspace/'game-names.sqlite3')
+    finally:temp.unlink(missing_ok=True)
+    return dict(tables=len(selected),models=total,rows=counts,index=str(workspace/'game-names.sqlite3'))
