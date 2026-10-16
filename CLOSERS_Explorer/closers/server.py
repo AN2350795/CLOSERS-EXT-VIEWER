@@ -301,7 +301,7 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / 'compose.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
                 elif url.path == '/model':
                     self.respond((STATIC / 'model.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
-                elif url.path in ('/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/compose.css','/model.js','/model-core.js','/face-preview.js','/model-picker.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
+                elif url.path in ('/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/compose.css','/model.js','/model-core.js','/face-preview.js','/model-picker.js','/model-memory.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
                 elif url.path == '/api/model-scene':
                     ids = [int(v) for v in query.get('entries','').split(',') if v]

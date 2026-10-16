@@ -1,8 +1,26 @@
+import {pickerMemory} from './model-memory.js';
 // Source choices remain explicit: matching names do not imply matching bytes.
 export function setupPicker({state,api,operation,loadModel,element}){
   const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
-  let bundle=null,request=0,total=0;
+  let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1;
+  const memory=pickerMemory();
+  const settings=memory.data.settings;
+  for(const key of [...keys,'saved','mode','limit']){const select=$('model-'+key),value=settings[key];if(typeof value!=='string')continue;if(['mode','limit','saved'].includes(key)&&!Array.from(select.options).some(o=>o.value===value))continue;if(!Array.from(select.options).some(o=>o.value===value))select.append(new Option(value,value));select.value=value;}
+  if(typeof settings.q==='string')$('model-search').value=settings.q;
+  state.page=Number.isSafeInteger(settings.page)&&settings.page>0?settings.page:1;
+  displayedPage=state.page;
+  $('model-advanced').open=settings.advanced===true;
+  document.querySelector('.model-layout').classList.toggle('picker-wide',settings.wide===true);
+  $('picker-expand').setAttribute('aria-pressed',String(settings.wide===true));$('picker-expand').textContent=settings.wide?'목록 줄이기':'목록 넓게';
+  function save(){if(!memory.save())$('model-memory-status').textContent='브라우저 저장 공간을 사용할 수 없어 이번 탭에서만 기억합니다.';}
+  function rememberSettings(){memory.data.settings=Object.fromEntries([...keys,'saved','mode','limit'].map(k=>[k,$('model-'+k).value]));Object.assign(memory.data.settings,{q:$('model-search').value,page:state.page,advanced:$('model-advanced').open,wide:document.querySelector('.model-layout').classList.contains('picker-wide')});save();}
+  function record(item,mode){return {identity:mode==='sets'?'set:'+item.key:'file:'+item.name,label:item.label||item.display_name||item.name,q:mode==='sets'?item.key.split('|').slice(1).join('|'):item.name,character:item.character||'',mode};}
+  function find(record){for(const key of keys)$('model-'+key).value='';if(record.character){const select=$('model-character');select.append(new Option(record.character,record.character));select.value=record.character;}$('model-mode').value=record.mode;$('model-search').value=record.q;$('model-saved').value='';reset();}
+  function renderMemory(){for(const key of ['favorites','recent']){const list=$('model-'+key);list.replaceChildren();if(!memory.data[key].length)list.append(element('p',key==='favorites'?'즐겨찾기한 항목이 없습니다.':'최근 사용한 항목이 없습니다.'));for(const record of memory.data[key]){const row=element('div'),open=element('button',record.label);row.className='memory-row';open.className='secondary';open.title='현재 목록에서 다시 찾기';open.onclick=()=>find(record);const remove=element('button','삭제');remove.className='secondary';remove.setAttribute('aria-label',record.label+' 기록 삭제');remove.onclick=()=>{memory.data[key]=memory.data[key].filter(r=>r.identity!==record.identity);save();renderMemory();updateStars();};row.append(open,remove);list.append(row);}}}
+  function updateStars(){for(const button of document.querySelectorAll('[data-favorite]')){const active=memory.data.favorites.some(r=>r.identity===button.dataset.favorite);button.textContent=active?'★ 즐겨찾기':'☆ 즐겨찾기';button.setAttribute('aria-pressed',String(active));}}
+  function recent(item,mode){const r=record(item,mode);memory.data.recent=[r,...memory.data.recent.filter(v=>v.identity!==r.identity)].slice(0,20);save();renderMemory();}
+  function favorite(row,item,mode){const r=record(item,mode),button=element('button');button.className='secondary favorite-button';button.dataset.favorite=r.identity;button.onclick=()=>{const exists=memory.data.favorites.some(v=>v.identity===r.identity);memory.data.favorites=exists?memory.data.favorites.filter(v=>v.identity!==r.identity):[r,...memory.data.favorites].slice(0,30);save();renderMemory();updateStars();};row.append(button);}
   function markSelection(){for(const row of $('model-results').children){const selected=row.dataset.entry?state.ids.includes(Number(row.dataset.entry)):(state.data?.sources||[]).some(s=>s.model_group?.set_key===row.dataset.set);row.classList.toggle('is-selected',selected);row.querySelector('.selection-badge')?.remove();if(selected){const badge=element('span','현재 적용 중');badge.className='selection-badge';row.append(badge);}}}
   function filters(){const p=new URLSearchParams({format:'x',saved:$('model-saved').value,q:$('model-search').value,limit:$('model-limit').value,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);return p;}
   function choices(info){const select=element('select');select.setAttribute('aria-label','파일 출처');select.append(new Option(info.candidates.length?'출처 선택':'후보 없음',''));for(const c of info.candidates)select.append(new Option((c.display_name||c.name)+' · '+c.name+' · '+c.archive+' · #'+c.ordinal,c.id));if(info.selected)select.value=info.selected;return select;}
@@ -20,7 +38,11 @@ export function setupPicker({state,api,operation,loadModel,element}){
     await loadModel(ids,motion.value?Number(motion.value):(append?state.skeleton:null));
   }
   async function showBundle(key){
-    bundle=await api('/api/model-bundle?'+new URLSearchParams({key,saved:$('model-saved').value}));
+    const serial=++bundleRequest;
+    const result=await api('/api/model-bundle?'+new URLSearchParams({key,saved:$('model-saved').value}));
+    if(serial!==bundleRequest)return;
+    bundle=result;
+    recent({key,label:bundle.label,character:bundle.character},'sets');
     const panel=$('avatar-bundle');panel.hidden=false;const heading=element('div');heading.className='bundle-heading';const close=element('button','닫기');close.className='secondary';close.onclick=()=>{panel.hidden=true;};heading.append(element('h3',bundle.label),close);panel.replaceChildren(heading,element('p',bundle.evidence));
     const rows=[];
     function slot(info,label,part,checked){const row=element('div');row.className='bundle-slot';const check=element('input');check.type='checkbox';check.checked=checked;check.setAttribute('aria-label',label+' 포함');const title=element('label',label);title.prepend(check);const select=choices(info);row.append(title,select);panel.append(row);rows.push({check,select,part,label});return row;}
@@ -37,7 +59,7 @@ export function setupPicker({state,api,operation,loadModel,element}){
     const p=filters(),mode=$('model-mode').value;
     p.set('mode',mode);$('picker-status').textContent='목록 불러오는 중…';$('model-results').setAttribute('aria-busy','true');
     let data;
-    try{data=await api('/api/model-browser?'+p);}catch(e){if(serial===request){$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
+    try{data=await api('/api/model-browser?'+p);}catch(e){if(serial===request){state.page=displayedPage;updateNavigation();$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
     if(serial!==request)return;
     total=data.total;
     const pages=Math.max(1,Math.ceil(total/Number(p.get('limit'))));
@@ -48,26 +70,30 @@ export function setupPicker({state,api,operation,loadModel,element}){
     $('model-filter-summary').textContent=[...keys.map(k=>$('model-'+k))].filter(s=>s.value).map(s=>s.selectedOptions[0].textContent.replace(/ · [\d,]+$/,'')).concat($('model-search').value?['검색: '+$('model-search').value]:[]).join(' · ')||'전체 캐릭터';
     $('model-results').replaceChildren();
     for(const item of data.items){const row=element('div');row.className='model-row';if(mode==='sets')row.dataset.set=item.key;else row.dataset.entry=item.id;const title=element('span',mode==='sets'?item.label:(item.display_name||item.name));title.title=(item.game_names||[]).join('\n');row.append(title);if(item.display_name)row.append(element('small',item.name));
-      if(mode==='sets'){row.append(element('small',item.count+'개 파일 · '+item.parts.join(', ')));const button=element('button','묶음 구성');button.onclick=()=>operation(()=>showBundle(item.key));row.append(button);}
-      else{row.append(element('small',[item.character,item.family,item.part,item.variant].filter(Boolean).join(' · ')),element('small',item.archive+' · #'+item.ordinal+' · '+(item.saved_exists?'저장됨':'미저장')));const actions=element('div');actions.className='actions';const open=element('button','열기'),add=element('button','부위 추가');add.className='secondary';open.onclick=()=>operation(()=>loadModel([item.id]));add.onclick=()=>operation(async()=>{if(state.ids.includes(item.id))return;if(state.ids.length>=16)throw Error('모델 부위는 16개까지 선택해 주세요.');await loadModel([...state.ids,item.id],state.skeleton);});actions.append(open,add);if(item.set_key){const group=element('button','의상 묶음');group.className='secondary';group.onclick=()=>operation(()=>showBundle(item.set_key));actions.append(group);}row.append(actions);}
-      row.querySelectorAll('button').forEach(b=>b.disabled=state.busy);$('model-results').append(row);
+      if(mode==='sets'){row.append(element('small',item.count+'개 파일 · '+(item.part_labels||item.parts).join(', ')));const button=element('button','묶음 구성');button.onclick=()=>operation(()=>showBundle(item.key));row.append(button);}
+      else{row.append(element('small',[item.character,item.family,item.part,item.variant].filter(Boolean).join(' · ')),element('small',item.archive+' · #'+item.ordinal+' · '+(item.saved_exists?'저장됨':'미저장')));const actions=element('div');actions.className='actions';const open=element('button','현재 모델 교체'),add=element('button','부위 추가');add.className='secondary';open.onclick=()=>operation(()=>loadModel([item.id]));add.onclick=()=>operation(async()=>{if(state.ids.includes(item.id))return;if(state.ids.length>=16)throw Error('모델 부위는 16개까지 선택해 주세요.');await loadModel([...state.ids,item.id],state.skeleton);});actions.append(open,add);if(item.set_key){const group=element('button','의상 묶음');group.className='secondary';group.onclick=()=>operation(()=>showBundle(item.set_key));actions.append(group);}row.append(actions);}
+      favorite(row,item,mode);row.querySelectorAll('button:not(.favorite-button)').forEach(b=>b.disabled=state.busy);$('model-results').append(row);
     }
     if(!data.total)$('model-results').append(element('p','조건에 맞는 모델이 없습니다. 저장 상태와 필터를 확인하세요.'));
-    markSelection();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
+    displayedPage=state.page;markSelection();updateStars();rememberSettings();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
     $('model-page').textContent=state.page+' / '+pages+' · '+total.toLocaleString()+(mode==='sets'?'묶음':'개');
     $('model-jump').value=state.page;$('model-jump').max=pages;
     $('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=pages;
     $('model-pages').replaceChildren();for(let n=Math.max(1,state.page-2);n<=Math.min(pages,state.page+2);n++){const button=element('button',n);button.type='button';button.setAttribute('aria-label',n+'페이지');if(n===state.page)button.setAttribute('aria-current','page');button.onclick=()=>go(n);$('model-pages').append(button);}
   }
-  function go(page){state.page=Math.min(Math.max(1,Number(page)||1),Math.max(1,Math.ceil(total/Number($('model-limit').value))));$('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=Math.max(1,Math.ceil(total/Number($('model-limit').value)));return search();}
-  function reset(){state.page=1;bundle=null;$('avatar-bundle').hidden=true;return search();}
+  function updateNavigation(){const pages=Math.max(1,Math.ceil(total/Number($('model-limit').value)));$('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=pages;}
+  function go(page){state.page=Math.min(Math.max(1,Math.floor(Number(page))||1),Math.max(1,Math.ceil(total/Number($('model-limit').value))));updateNavigation();return search();}
+  function reset(){state.page=1;bundle=null;bundleRequest++;$('avatar-bundle').hidden=true;return search();}
   $('model-search-form').onsubmit=e=>{e.preventDefault();reset();};for(const key of [...keys,'saved','mode'])$('model-'+key).onchange=reset;
   $('model-limit').onchange=reset;$('model-first').onclick=()=>go(1);$('model-last').onclick=()=>go(Infinity);
   $('model-prev').onclick=()=>go(state.page-1);$('model-next').onclick=()=>go(state.page+1);
   $('model-jump-form').onsubmit=e=>{e.preventDefault();go($('model-jump').value);};
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{for(const key of ['kind','family','part','variant'])$('model-'+key).value='';$('model-mode').value=b.dataset.mode;reset();});
   $('model-filter-clear').onclick=()=>{for(const key of keys)$('model-'+key).value='';$('model-search').value='';$('model-saved').value='existing';reset();};
-  $('picker-expand').onclick=()=>{const wide=document.querySelector('.model-layout').classList.toggle('picker-wide');$('picker-expand').setAttribute('aria-pressed',String(wide));$('picker-expand').textContent=wide?'목록 줄이기':'목록 넓게';};
+  $('picker-expand').onclick=()=>{const wide=document.querySelector('.model-layout').classList.toggle('picker-wide');$('picker-expand').setAttribute('aria-pressed',String(wide));$('picker-expand').textContent=wide?'목록 줄이기':'목록 넓게';rememberSettings();};
+  $('model-advanced').ontoggle=rememberSettings;
+  document.addEventListener('model-selection',()=>{for(const source of state.data?.sources||[])recent({...source,...source.model_group},'files');});
   document.addEventListener('model-selection',markSelection);
+  renderMemory();
   return {search};
 }

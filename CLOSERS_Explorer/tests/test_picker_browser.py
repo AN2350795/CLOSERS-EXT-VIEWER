@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 
 
@@ -16,6 +17,9 @@ class PickerBrowserTests(unittest.TestCase):
             'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'] if p and Path(p).exists()), None)
         if not browser:
             self.skipTest('Chromium browser unavailable')
+        node=shutil.which('node')
+        if not node:
+            self.skipTest('Node.js 22+ unavailable')
         web = Path(__file__).resolve().parents[1] / 'web'
         script = (Path(__file__).parent / 'picker_checks.js').read_text(encoding='utf-8-sig')
 
@@ -41,12 +45,34 @@ class PickerBrowserTests(unittest.TestCase):
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
             with tempfile.TemporaryDirectory() as profile:
-                result = subprocess.run([browser, '--headless=new', '--no-sandbox', '--disable-gpu',
-                    '--no-first-run', '--disable-background-networking', '--no-proxy-server',
-                    '--user-data-dir=' + profile, '--dump-dom', '--virtual-time-budget=15000',
-                    f'http://127.0.0.1:{server.server_port}/checks'], capture_output=True, timeout=45)
-                output = result.stdout.decode('utf-8', errors='replace')
-                self.assertIn('data-checks="passed"', output, output[-12000:] + result.stderr.decode(errors='replace')[-1000:])
+                process = subprocess.Popen([browser, '--headless=new', '--no-sandbox', '--disable-gpu',
+                    '--no-first-run', '--disable-background-networking', '--no-proxy-server', '--enable-unsafe-swiftshader',
+                    '--user-data-dir=' + profile, '--remote-debugging-port=0',
+                    f'http://127.0.0.1:{server.server_port}/checks'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                try:
+                    port_file=Path(profile)/'DevToolsActivePort'
+                    for _ in range(100):
+                        if port_file.exists():break
+                        time.sleep(.05)
+                    port=port_file.read_text().splitlines()[0]
+                    result=subprocess.run([node,'--input-type=module','-e', '''
+const pages=await (await fetch('http://127.0.0.1:'+process.argv[1]+'/json')).json();
+const ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
+await new Promise(r=>ws.onopen=r);
+let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){pending.get(m.id)?.(m.result);pending.delete(m.id);}};
+const call=(method,params={})=>new Promise(r=>{const n=++id;pending.set(n,r);ws.send(JSON.stringify({id:n,method,params}));});
+let value;for(let i=0;i<400;i++){
+ const result=await call('Runtime.evaluate',{expression:'JSON.stringify({status:document.body?.dataset.checks,errors:document.querySelector("pre")?.textContent,thumbnails:[...document.querySelectorAll(".model-thumbnail")].map(e=>e.textContent)})',returnByValue:true});
+ value=JSON.parse(result.result.value);if(value.status)break;await new Promise(r=>setTimeout(r,50));
+}
+console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
+if(value.status!=='passed')process.exitCode=1;
+''',port],capture_output=True,timeout=30)
+                    self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
+                finally:
+                    if process.poll() is None:
+                        process.terminate()
+                    process.wait(timeout=10)
         finally:
             server.shutdown()
             server.server_close()
