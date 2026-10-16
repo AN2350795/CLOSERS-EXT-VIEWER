@@ -147,6 +147,8 @@ class ModelGroups:
         keys=('character','kind','family','part','variant')
         # One existence pass for both the page and all facet counts.
         base=self.filtered({k:v for k,v in filters.items() if k not in keys})
+        if filters.get('mode')=='sets':base=[r for r in base if r['set_key']]
+        elif filters.get('mode')=='accessories':base=[r for r in base if r['family']=='ACCESSORY']
         rows=[r for r in base if all(not filters.get(k) or r[k]==filters[k] for k in keys)]
         if filters.get('mode')=='sets':result=self.set_rows(rows,filters)
         else:

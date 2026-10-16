@@ -77,6 +77,18 @@ class ModelGroupTests(unittest.TestCase):
         self.assertEqual(r['done'],1)
         self.assertEqual(self.catalog.entries({'model_kind':'avatar'})['total'],4)
 
+    def test_browser_modes_have_matching_results_and_facets(self):
+        self.add([avatar(),avatar(costume='A',part='ACC_BODY_WING'),
+                  'GUST_NPC_TOWN_WILD_HUNTER_GATEKEEPER_LIBRARIAN.X'])
+        sets=self.groups.browse({'mode':'sets'})
+        self.assertEqual(sets['total'],1)
+        self.assertEqual({r['value'] for r in sets['facets']['family']},{'CLOTH'})
+        accessories=self.groups.browse({'mode':'accessories'})
+        self.assertEqual(accessories['total'],1)
+        self.assertEqual(accessories['items'][0]['family'],'ACCESSORY')
+        self.assertEqual({r['value'] for r in accessories['facets']['part']},{'ACC_BODY_WING'})
+        self.assertEqual(self.groups.browse({'mode':'files'})['total'],3)
+
     def test_character_mismatch_cannot_merge_face_or_motion(self):
         self.add([avatar(),avatar(character='CASTER',part='FACE'),'MOTION_CASTER.X'])
         ids={r['name']:r['id'] for r in self.catalog.entries({})['items']};models=Models(self.catalog)

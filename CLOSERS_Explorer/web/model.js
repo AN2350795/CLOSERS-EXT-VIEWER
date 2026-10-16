@@ -58,6 +58,7 @@ async function loadModel(ids,skeleton=null){
   status('모델을 읽는 중…');const data=await api('/api/model-scene?entries='+ids.join(',')+(skeleton?'&skeleton='+skeleton:''));const model=buildModel(data);disposeModel();state.ids=ids;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);state.model.meshes.forEach(m=>m.visible=!m.userData.helper||$('show-helpers').checked);state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();const failed=await showTextures();resetCamera();
   $('animation-choice').replaceChildren(element('p',data.animation.name));$('animation-choice').append(sourceSelector(data.animation,connectAnimation));$('animation-verification').textContent='연결할 XMD가 없거나 출처 선택이 필요합니다.';let animationError='';if(data.animation.selected){try{await connectAnimation(data.animation.selected);}catch(e){animationError=' · 동작: '+e.message;}}
   const vertices=data.meshes.reduce((s,m)=>s+m.vertices.length/3,0);status(`${ids.length}개 파일 · 메시 ${data.meshes.length}개 · 정점 ${vertices.toLocaleString()}개${failed?' · 텍스처 확인 필요 '+failed+'개':''}${animationError}${data.warnings.length?' · '+data.warnings.join(' '):''}`);
+  document.dispatchEvent(new Event('model-selection'));
   history.replaceState(null,'','/model?entries='+ids.join(',')+(skeleton?'&skeleton='+skeleton:''));
 }
 async function chooseClip(index){
@@ -73,7 +74,7 @@ $('clear-model').onclick=()=>{
   $('model-textures').replaceChildren();$('animation-verification').textContent='XMD의 _DEFAULT 자세와 X의 전체 뼈 행렬을 대조한 뒤 재생합니다.';
   target.set(0,0,0);Object.assign(orbit,{yaw:0,pitch:.15,distance:150});
   camera.near=.1;camera.far=100000;camera.updateProjectionMatrix();
-  history.replaceState(null,'','/model');setBusy(false);status('선택한 모델을 초기화했습니다. 모델을 다시 선택해 주세요.');
+  document.dispatchEvent(new Event('model-selection'));history.replaceState(null,'','/model');setBusy(false);status('선택한 모델을 초기화했습니다. 모델을 다시 선택해 주세요.');
 };
 $('reset-camera').onclick=resetCamera;$('bind-pose').onclick=()=>{if(!state.model||state.busy)return;stop();restorePose(state.model,state.data);state.clip=null;state.time=0;updateTime();setBusy(false);$('animation-clip').value='';status('X 파일의 기본 자세');};
 $('show-helpers').onchange=()=>{state.model?.meshes.forEach(m=>m.visible=!m.userData.helper||$('show-helpers').checked);};$('wireframe').onchange=()=>state.model?.materials.forEach(m=>m.wireframe=$('wireframe').checked);$('show-bones').onchange=()=>{if(boneHelper)boneHelper.visible=$('show-bones').checked;};

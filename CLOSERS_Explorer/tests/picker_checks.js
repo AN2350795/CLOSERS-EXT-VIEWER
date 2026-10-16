@@ -26,5 +26,11 @@ try{
  check($('model-page').textContent.startsWith('1 /'),'stale response ignored');
  fail=true;$('model-next').click();await until(()=>$('picker-status').textContent.includes('test network error'));
  check($('model-results').children.length===60,'failure preserves results');fail=false;state.busy=false;
+ document.querySelector('[data-mode="accessories"]').click();await until(()=>calls.at(-1).get('mode')==='accessories'&&!$('picker-status').textContent);
+ check(document.querySelector('[data-mode="accessories"]').getAttribute('aria-pressed')==='true','mode selected');
+ state.ids=[1];document.dispatchEvent(new Event('model-selection'));
+ check($('model-results').firstChild.classList.contains('is-selected'),'selected file badge');
+ $('picker-expand').click();check(document.querySelector('.model-layout').classList.contains('picker-wide'),'expand picker');
+ check($('avatar-bundle').closest('.model-info'),'bundle detail separated from list');
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(element('pre',e.stack));}
