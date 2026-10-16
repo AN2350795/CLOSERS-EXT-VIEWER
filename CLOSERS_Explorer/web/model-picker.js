@@ -2,8 +2,8 @@
 export function setupPicker({state,api,operation,loadModel,element}){
   const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
-  let bundle=null;
-  function filters(){const p=new URLSearchParams({format:'x',saved:$('model-saved').value,q:$('model-search').value,limit:20,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);return p;}
+  let bundle=null,request=0,total=0;
+  function filters(){const p=new URLSearchParams({format:'x',saved:$('model-saved').value,q:$('model-search').value,limit:$('model-limit').value,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);return p;}
   function choices(info){const select=element('select');select.setAttribute('aria-label','파일 출처');select.append(new Option(info.candidates.length?'출처 선택':'후보 없음',''));for(const c of info.candidates)select.append(new Option((c.display_name||c.name)+' · '+c.name+' · '+c.archive+' · #'+c.ordinal,c.id));if(info.selected)select.value=info.selected;return select;}
   function picked(rows){const ids=[];for(const row of rows){if(!row.check.checked)continue;if(!row.select.value)throw Error(row.label+': 사용할 출처를 선택하세요.');ids.push(Number(row.select.value));}return [...new Set(ids)];}
   async function equip(rows,motion,append){
@@ -32,9 +32,16 @@ export function setupPicker({state,api,operation,loadModel,element}){
     const open=element('button','묶음 열기'),add=element('button','현재 모델에 적용');add.className='secondary';open.onclick=()=>operation(()=>equip(rows,motion,false));add.onclick=()=>operation(()=>equip(rows,motion,true));panel.append(open,add);
   }
   async function search(){
+    const serial=++request;
     const p=filters(),mode=$('model-mode').value;
-    p.set('mode',mode);$('model-results').replaceChildren(element('p','목록 불러오는 중…'));
-    const data=await api('/api/model-browser?'+p),metadata=data;
+    p.set('mode',mode);$('picker-status').textContent='목록 불러오는 중…';$('model-results').setAttribute('aria-busy','true');
+    let data;
+    try{data=await api('/api/model-browser?'+p);}catch(e){if(serial===request){$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
+    if(serial!==request)return;
+    total=data.total;
+    const pages=Math.max(1,Math.ceil(total/Number(p.get('limit'))));
+    if(state.page>pages){state.page=pages;return search();}
+    const metadata=data;
     keys.forEach((key,i)=>{const select=$('model-'+key),value=select.value;select.replaceChildren(new Option(titles[i],''));for(const f of metadata.facets[key])select.append(new Option(f.label+' · '+f.count.toLocaleString(),f.value));if(value&&!Array.from(select.options).some(o=>o.value===value))select.append(new Option(value+' · 0',value));select.value=value;});
     $('model-results').replaceChildren();
     for(const item of data.items){const row=element('div');row.className='model-row';const title=element('span',mode==='sets'?item.label:(item.display_name||item.name));title.title=(item.game_names||[]).join('\n');row.append(title);if(item.display_name)row.append(element('small',item.name));
@@ -43,10 +50,17 @@ export function setupPicker({state,api,operation,loadModel,element}){
       $('model-results').append(row);
     }
     if(!data.total)$('model-results').append(element('p','조건에 맞는 모델이 없습니다. 저장 상태와 필터를 확인하세요.'));
-    $('model-page').textContent=state.page+' / '+Math.max(1,Math.ceil(data.total/20))+' · '+data.total.toLocaleString()+(mode==='sets'?'묶음':'개');$('model-prev').disabled=state.page<=1;$('model-next').disabled=state.page*20>=data.total;
+    $('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
+    $('model-page').textContent=state.page+' / '+pages+' · '+total.toLocaleString()+(mode==='sets'?'묶음':'개');
+    $('model-jump').value=state.page;$('model-jump').max=pages;
+    $('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=pages;
+    $('model-pages').replaceChildren();for(let n=Math.max(1,state.page-2);n<=Math.min(pages,state.page+2);n++){const button=element('button',n);button.type='button';button.setAttribute('aria-label',n+'페이지');if(n===state.page)button.setAttribute('aria-current','page');button.onclick=()=>go(n);$('model-pages').append(button);}
   }
-  function reset(){if(state.busy)return;state.page=1;bundle=null;$('avatar-bundle').hidden=true;operation(search);}
+  function go(page){state.page=Math.min(Math.max(1,Number(page)||1),Math.max(1,Math.ceil(total/Number($('model-limit').value))));$('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=Math.max(1,Math.ceil(total/Number($('model-limit').value)));return search();}
+  function reset(){state.page=1;bundle=null;$('avatar-bundle').hidden=true;return search();}
   $('model-search-form').onsubmit=e=>{e.preventDefault();reset();};for(const key of [...keys,'saved','mode'])$('model-'+key).onchange=reset;
-  $('model-prev').onclick=()=>{if(state.busy)return;state.page--;operation(search);};$('model-next').onclick=()=>{if(state.busy)return;state.page++;operation(search);};
+  $('model-limit').onchange=reset;$('model-first').onclick=()=>go(1);$('model-last').onclick=()=>go(Infinity);
+  $('model-prev').onclick=()=>go(state.page-1);$('model-next').onclick=()=>go(state.page+1);
+  $('model-jump-form').onsubmit=e=>{e.preventDefault();go($('model-jump').value);};
   return {search};
 }
