@@ -1,5 +1,6 @@
 import {setupPicker} from '/model-picker.js';
 import {pickerMemory} from '/model-memory.js';
+import {setupPreviews} from '/model-preview.js';
 const $=id=>document.getElementById(id),state={page:1,busy:false,ids:[]};
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const check=(value,message)=>{if(!value)throw Error(message);};
@@ -53,5 +54,14 @@ try{
  const remembered=pickerMemory().data.settings;check(remembered.limit==='60'&&remembered.q==='file 1','search settings saved');
  $('model-search').value='';setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
  check($('model-search').value==='file 1'&&$('model-limit').value==='60','search settings restored');
+ const scene={frames:[],meshes:[{name:'preview-triangle',frame:-1,vertices:[-1,0,0,1,0,0,0,2,0],indices:[0,2,1],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,0,0,1],image:null}]}]};
+ let sceneRequests=0;
+ const previews=setupPreviews({api:async url=>{if(url.startsWith('/api/model-bundle'))return {slots:[{checked:true,selected:null}],face:{},motion:{candidates:[]}};sceneRequests++;return scene;}});
+ $('model-results').replaceChildren();const previewRow=element('div');previewRow.className='model-row';$('model-results').append(previewRow);previews.attach(previewRow,{id:1,name:'triangle'},'files','existing');
+ previewRow.scrollIntoView();await until(()=>previewRow.querySelector('img'));
+ const image=previewRow.querySelector('img');await image.decode();const canvas=document.createElement('canvas');canvas.width=160;canvas.height=180;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);const pixels=ctx.getImageData(0,0,160,180).data;
+ check(pixels.some((v,i)=>i%4===0&&v>200&&pixels[i+1]<40),'preview contains rendered triangle');
+ const ambiguous=element('div');ambiguous.className='model-row';$('model-results').append(ambiguous);previews.attach(ambiguous,{key:'ambiguous',label:'ambiguous'},'sets','existing');
+ ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('출처 선택 필요'));check(sceneRequests===1,'ambiguous preview never chooses source');previews.reset();
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(element('pre',e.stack));}

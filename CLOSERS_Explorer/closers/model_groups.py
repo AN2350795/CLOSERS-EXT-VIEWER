@@ -129,8 +129,9 @@ class ModelGroups:
         items=[]
         for key,rows in sorted(groups.items()):
             # Display count follows filters; bundle detail resolves the entire exact set.
+            parts=sorted({r['part'] for r in rows})
             items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
-                              count=len(rows),parts=sorted({r['part'] for r in rows})))
+                              count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts]))
         return self.paginate(items,filters)
 
     @staticmethod

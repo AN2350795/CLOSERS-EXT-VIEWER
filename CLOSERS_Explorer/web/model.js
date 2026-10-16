@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose,restorePose} from './model-core.js';
 import {setupPicker} from './model-picker.js';
+import {setupPreviews} from './model-preview.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),texturePixels:0};
@@ -65,7 +66,7 @@ async function chooseClip(index){
   stop();state.clip=null;state.time=0;updateTime();const a=state.animation;
   const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clip.clip.name);
 }
-const {search}=setupPicker({state,api,operation,loadModel,element});
+const {search}=setupPicker({state,api,operation,loadModel,element,previews:setupPreviews({api})});
 $('clear-model').onclick=()=>{
   if(state.busy||!state.model)return;
   disposeModel();state.ids=[];state.skeleton=null;state.data=null;

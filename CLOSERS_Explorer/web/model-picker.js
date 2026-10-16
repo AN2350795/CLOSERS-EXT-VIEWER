@@ -1,6 +1,6 @@
 import {pickerMemory} from './model-memory.js';
 // Source choices remain explicit: matching names do not imply matching bytes.
-export function setupPicker({state,api,operation,loadModel,element}){
+export function setupPicker({state,api,operation,loadModel,element,previews}){
   const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
   let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1;
@@ -68,11 +68,11 @@ export function setupPicker({state,api,operation,loadModel,element}){
     keys.forEach((key,i)=>{const select=$('model-'+key),value=select.value;select.replaceChildren(new Option(titles[i],''));for(const f of metadata.facets[key])select.append(new Option(f.label+' · '+f.count.toLocaleString(),f.value));if(value&&!Array.from(select.options).some(o=>o.value===value))select.append(new Option(value+' · 0',value));select.value=value;});
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
     $('model-filter-summary').textContent=[...keys.map(k=>$('model-'+k))].filter(s=>s.value).map(s=>s.selectedOptions[0].textContent.replace(/ · [\d,]+$/,'')).concat($('model-search').value?['검색: '+$('model-search').value]:[]).join(' · ')||'전체 캐릭터';
-    $('model-results').replaceChildren();
+    previews?.reset();$('model-results').replaceChildren();
     for(const item of data.items){const row=element('div');row.className='model-row';if(mode==='sets')row.dataset.set=item.key;else row.dataset.entry=item.id;const title=element('span',mode==='sets'?item.label:(item.display_name||item.name));title.title=(item.game_names||[]).join('\n');row.append(title);if(item.display_name)row.append(element('small',item.name));
       if(mode==='sets'){row.append(element('small',item.count+'개 파일 · '+(item.part_labels||item.parts).join(', ')));const button=element('button','묶음 구성');button.onclick=()=>operation(()=>showBundle(item.key));row.append(button);}
       else{row.append(element('small',[item.character,item.family,item.part,item.variant].filter(Boolean).join(' · ')),element('small',item.archive+' · #'+item.ordinal+' · '+(item.saved_exists?'저장됨':'미저장')));const actions=element('div');actions.className='actions';const open=element('button','현재 모델 교체'),add=element('button','부위 추가');add.className='secondary';open.onclick=()=>operation(()=>loadModel([item.id]));add.onclick=()=>operation(async()=>{if(state.ids.includes(item.id))return;if(state.ids.length>=16)throw Error('모델 부위는 16개까지 선택해 주세요.');await loadModel([...state.ids,item.id],state.skeleton);});actions.append(open,add);if(item.set_key){const group=element('button','의상 묶음');group.className='secondary';group.onclick=()=>operation(()=>showBundle(item.set_key));actions.append(group);}row.append(actions);}
-      favorite(row,item,mode);row.querySelectorAll('button:not(.favorite-button)').forEach(b=>b.disabled=state.busy);$('model-results').append(row);
+      favorite(row,item,mode);row.querySelectorAll('button:not(.favorite-button)').forEach(b=>b.disabled=state.busy);$('model-results').append(row);previews?.attach(row,item,mode,$('model-saved').value);
     }
     if(!data.total)$('model-results').append(element('p','조건에 맞는 모델이 없습니다. 저장 상태와 필터를 확인하세요.'));
     displayedPage=state.page;markSelection();updateStars();rememberSettings();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
