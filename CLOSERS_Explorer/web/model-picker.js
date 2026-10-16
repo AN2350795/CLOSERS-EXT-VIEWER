@@ -44,14 +44,39 @@ export function setupPicker({state,api,operation,loadModel,element,previews}){
     bundle=result;
     recent({key,label:bundle.label,character:bundle.character},'sets');
     const panel=$('avatar-bundle');panel.hidden=false;const heading=element('div');heading.className='bundle-heading';const close=element('button','닫기');close.className='secondary';close.onclick=()=>{panel.hidden=true;};heading.append(element('h3',bundle.label),close);panel.replaceChildren(heading,element('p',bundle.evidence));
-    const rows=[];
-    function slot(info,label,part,checked){const row=element('div');row.className='bundle-slot';const check=element('input');check.type='checkbox';check.checked=checked;check.setAttribute('aria-label',label+' 포함');const title=element('label',label);title.prepend(check);const select=choices(info);row.append(title,select);panel.append(row);rows.push({check,select,part,label});return row;}
+    const rows=[],slotsPanel=element('div');panel.append(slotsPanel);
+    function slot(info,label,part,checked){const row=element('div');row.className='bundle-slot';const check=element('input');check.type='checkbox';check.checked=checked;check.setAttribute('aria-label',label+' 포함');const title=element('label',label);title.prepend(check);const select=choices(info);row.append(title,select);slotsPanel.append(row);rows.push({check,select,part,label,variant:info.variant||'BASE'});return row;}
     for(const s of bundle.slots){if(s.part==='FACE'&&s.variant==='BASE')continue;slot(s,s.label,s.part,s.checked);}
     slot(bundle.face,'얼굴 (같은 캐릭터)','FACE',bundle.face.candidates.length>0);
     const motion=choices(bundle.motion);motion.setAttribute('aria-label','공용 뼈 출처');panel.append(element('label','공용 MOTION 뼈'),motion);
     const present=new Set(bundle.slots.filter(s=>s.variant==='BASE').map(s=>s.part));const required=present.has('ONE_PIECE')?['HAIR','ONE_PIECE','FOOT','HAND']:['HAIR','UPBODY','LOWBODY','FOOT','HAND'];
     const missing=required.filter(p=>!present.has(p));panel.append(element('p',missing.length?'목록에 없는 기본 부위: '+missing.join(', '):'기본 의상 부위 후보가 있습니다. 출처와 표시 결과를 확인하세요.'));
     if(bundle.motion.candidates.length>1)panel.append(element('p','공용 뼈 출처가 여러 개입니다. 동작 연결에 사용할 출처를 선택하세요.'));
+    const fill=element('button','빈 부위 기본 아바타 적용하기'),fillStatus=element('p');fill.className='secondary';fill.dataset.action='fill-defaults';fillStatus.setAttribute('role','status');
+    fill.onclick=()=>{
+      const defaults=bundle.defaults||[],selected=new Set(rows.filter(r=>r.check.checked&&r.variant==='BASE').map(r=>r.part));
+      const needed=['HAIR','FACE','FOOT','HAND'].filter(p=>!selected.has(p));
+      if(!selected.has('ONE_PIECE')){
+        const body=['UPBODY','LOWBODY'].filter(p=>!selected.has(p));
+        const has=p=>defaults.some(s=>s.part===p&&s.variant==='BASE');
+        if(body.length===2&&has('ONE_PIECE')&&!(has('UPBODY')&&has('LOWBODY')))needed.push('ONE_PIECE');else needed.push(...body);
+      }
+      let added=0;const unavailable=[],ambiguous=[];
+      for(const part of needed){
+        const candidates=defaults.filter(s=>s.part===part);
+        if(!candidates.some(s=>s.variant==='BASE')){unavailable.push(part);continue;}
+        for(const info of candidates){
+          // Reuse a previously inserted default row when the user unchecked it.
+          const existing=rows.find(r=>r.defaultSlot&&r.part===part&&r.variant===info.variant);
+          if(existing)existing.check.checked=true;
+          else{slot(info,info.label,part,true);rows.at(-1).defaultSlot=true;}
+          if(!info.selected)ambiguous.push(info.label);
+        }
+        added++;
+      }
+      fillStatus.textContent=(added?'기본 아바타 '+added+'개 부위를 구성에 추가했습니다. 묶음 열기 또는 현재 모델에 적용을 눌러 반영하세요.':'추가할 기본 부위가 없습니다.')+(unavailable.length?' 기본 파일을 찾지 못한 부위: '+unavailable.join(', ')+'.':'')+(ambiguous.length?' 출처를 선택하세요: '+ambiguous.join(', ')+'.':'');
+    };
+    panel.append(fill,fillStatus);
     const open=element('button','묶음 열기'),add=element('button','현재 모델에 적용');open.title='현재 모델을 이 의상으로 교체';add.title='같은 캐릭터의 선택한 부위만 교체';add.className='secondary';open.onclick=()=>operation(()=>equip(rows,motion,false));add.onclick=()=>operation(()=>equip(rows,motion,true));panel.append(open,add);panel.append(element('p','묶음 열기: 현재 모델 전체 교체 · 현재 모델에 적용: 선택한 부위만 교체'));panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
   async function search(){

@@ -175,7 +175,24 @@ class ModelGroups:
         faces=[r for r in rows if r['part']=='FACE' and r['variant']=='BASE']
         if not faces:faces=[r for r in all_rows if r['kind']=='avatar' and r['character']==character and r['part']=='FACE' and r['set_name']=='BASIC' and r['variant']=='BASE' and r['flag']!=2]
         motions=[r for r in all_rows if r['name'].upper()=='MOTION_'+character+'.X' and r['flag']!=2]
+        defaults=[]
+        basic=[r for r in all_rows if r['kind']=='avatar' and r['family']=='BASIC' and r['flag']!=2]
+        for part in sorted(CORE):
+            bases=[r for r in basic if r['part']==part and r['variant']=='BASE']
+            canonical=[r for r in bases if r['set_name']=='BASIC']
+            if canonical:bases=canonical
+            if not bases:continue
+            sets={r['set_name'] for r in bases}
+            variants=[('BASE',bases)]
+            # Supplements must belong to the same basic outfit as the base.
+            if len(sets)==1:
+                alpha=[r for r in basic if r['part']==part and r['variant']=='ALPHA' and r['set_name'] in sets]
+                if alpha:variants.append(('ALPHA',alpha))
+            for variant,candidates in variants:
+                defaults.append(dict(part=part,variant=variant,label='기본 '+LABELS['part'].get(part,part)+' · '+LABELS['variant'][variant],
+                                     candidates=choices(candidates),selected=candidates[0]['id'] if len(candidates)==1 else None))
         return dict(key=key,character=character,label=self.bundle_label(rows),slots=result,
+                    defaults=defaults,
                     face=dict(candidates=choices(faces),selected=faces[0]['id'] if len(faces)==1 else None),
                     motion=dict(candidates=choices(motions),selected=motions[0]['id'] if len(motions)==1 else None),
                     evidence='같은 캐릭터·의상 코드·타입의 파일명 묶음; 얼굴은 동일 캐릭터 기본 얼굴 후보')

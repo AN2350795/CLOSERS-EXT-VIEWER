@@ -89,6 +89,38 @@ class ModelGroupTests(unittest.TestCase):
         self.assertEqual({r['value'] for r in accessories['facets']['part']},{'ACC_BODY_WING'})
         self.assertEqual(self.groups.browse({'mode':'files'})['total'],3)
 
+    def test_default_parts_respect_character_saved_status_and_variants(self):
+        self.add([avatar(part='UPBODY'),avatar(costume='BASIC',part='HAIR'),
+                  avatar(costume='BASIC',part='HAIR_ALPHA'),avatar(costume='BASIC',part='HAND_DYE'),
+                  avatar(costume='BASIC',part='FOOT'),avatar(costume='BASIC_1',part='HAIR'),
+                  avatar(costume='BASIC_1',part='LOWBODY'),avatar(costume='BASIC',part='WEAPON'),
+                  avatar(character='CASTER',costume='BASIC',part='HAND')])
+        foot=next(r for r in self.groups.entries({})['items'] if r['part']=='FOOT')
+        Path(foot['output']).unlink()
+        defaults=self.groups.bundle('STRIKER|CLOTH_212_A')['defaults']
+        self.assertEqual({(s['part'],s['variant']) for s in defaults},
+                         {('HAIR','BASE'),('HAIR','ALPHA'),('LOWBODY','BASE')})
+        hair=next(s for s in defaults if s['variant']=='BASE' and s['part']=='HAIR')
+        self.assertEqual(len(hair['candidates']),1)
+        self.assertIn('_BASIC_',hair['candidates'][0]['name'])
+        self.assertIsNotNone(hair['selected'])
+        all_defaults=self.groups.bundle('STRIKER|CLOTH_212_A',saved='')['defaults']
+        self.assertIn('FOOT',{s['part'] for s in all_defaults})
+
+    def test_default_parts_preserve_ambiguous_sources_and_basic_types(self):
+        hair=avatar(costume='BASIC',part='HAIR')
+        self.add([avatar(),hair,avatar(costume='BASIC_1',part='HAND'),
+                  avatar(costume='BASIC_2',part='HAND'),avatar(costume='BASIC_1',part='HAND_ALPHA'),
+                  avatar(costume='BASIC',part='ONE_PIECE')])
+        self.add([hair],'duplicate.cmf')
+        defaults=self.groups.bundle('STRIKER|CLOTH_212_A')['defaults']
+        for part in ('HAIR','HAND'):
+            slot=next(s for s in defaults if s['part']==part)
+            self.assertEqual(len(slot['candidates']),2)
+            self.assertIsNone(slot['selected'])
+        self.assertFalse(any(s['part']=='HAND' and s['variant']=='ALPHA' for s in defaults))
+        self.assertIn('ONE_PIECE',{s['part'] for s in defaults})
+
     def test_character_mismatch_cannot_merge_face_or_motion(self):
         self.add([avatar(),avatar(character='CASTER',part='FACE'),'MOTION_CASTER.X'])
         ids={r['name']:r['id'] for r in self.catalog.entries({})['items']};models=Models(self.catalog)

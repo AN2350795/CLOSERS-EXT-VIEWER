@@ -5,16 +5,19 @@ const $=id=>document.getElementById(id),state={page:1,busy:false,ids:[]};
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const check=(value,message)=>{if(!value)throw Error(message);};
 const until=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('Timed out: '+fn);};
-let calls=[],fail=false,delay=null;
+let calls=[],fail=false,delay=null,loaded=null;
+const basicParts=['HAIR','FACE','UPBODY','LOWBODY','FOOT','HAND'].map((part,i)=>({part,variant:'BASE',label:'Basic '+part,selected:part==='LOWBODY'?null:10+i,candidates:[{id:10+i,name:'basic-'+part,archive:'fixture',ordinal:i},...(part==='LOWBODY'?[{id:30,name:'other-lowbody',archive:'other',ordinal:0}]:[])]}));
+basicParts.push({part:'UPBODY',variant:'ALPHA',label:'Basic UPBODY ALPHA',selected:20,candidates:[{id:20,name:'basic-upper-alpha',archive:'fixture',ordinal:20}]});
+const outfitSlots=[{part:'HAIR',variant:'BASE',label:'Hair',checked:true,selected:1,candidates:[{id:1,name:'hair',archive:'fixture',ordinal:0}]}];
 async function api(url){
   const p=new URL(url,location.href).searchParams;calls.push(p);
   if(delay){const wait=delay;delay=null;await wait;}
   if(fail)throw Error('test network error');
-  if(url.startsWith('/api/model-bundle'))return {label:'Test outfit',character:'STRIKER',evidence:'fixture',slots:[{part:'HAIR',variant:'BASE',label:'Hair',checked:true,selected:1,candidates:[{id:1,name:'hair',archive:'fixture',ordinal:0}]}],face:{candidates:[]},motion:{candidates:[]}};
+  if(url.startsWith('/api/model-bundle'))return {label:'Test outfit',character:'STRIKER',evidence:'fixture',slots:outfitSlots,face:{candidates:[]},motion:{candidates:[]},defaults:basicParts};
   const count=125,limit=Number(p.get('limit')),page=Number(p.get('page'));
   return {total:count,page,limit,facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,[]])),items:Array.from({length:Math.min(limit,Math.max(0,count-(page-1)*limit))},(_,i)=>({id:(page-1)*limit+i+1,name:'file '+((page-1)*limit+i+1),archive:'fixture',saved_exists:true,label:'Outfit '+i,key:'STRIKER|CLOTH_'+i,parts:['HAIR','UPBODY'],count:2}))};
 }
-const picker=setupPicker({state,api,element,operation:async fn=>{if(!state.busy)await fn();},loadModel:async()=>{}});
+const picker=setupPicker({state,api,element,operation:async fn=>{if(!state.busy)await fn();},loadModel:async ids=>{loaded=ids;}});
 try{
  await picker.search();
  check($('model-results').children.length===40,'40 results by default');
@@ -33,6 +36,29 @@ try{
  $('model-results').querySelector('button').click();await until(()=>!$('avatar-bundle').hidden);
  check($('avatar-bundle').querySelectorAll('.bundle-slot').length===2,'outfit expands into parts and face');
  check($('model-recent').textContent.includes('Test outfit'),'recent outfit recorded');
+ const fill=$('avatar-bundle').querySelector('[data-action="fill-defaults"]');fill.click();
+ check(loaded===null,'filling config waits for explicit open/apply');
+ let slots=[...$('avatar-bundle').querySelectorAll('.bundle-slot')];
+ check(slots.filter(r=>r.querySelector('input').checked).length===7,'missing parts filled including base ALPHA');
+ check(slots[0].querySelector('select').value==='1'&&!slots.some(r=>r.textContent.includes('basic-HAIR')),'existing hair preserved');
+ const lower=slots.find(r=>r.textContent.includes('Basic LOWBODY'));
+ check(lower.querySelector('select').value==='','ambiguous basic part requires source');
+ lower.querySelector('select').value='30';fill.click();
+ check($('avatar-bundle').querySelectorAll('.bundle-slot').length===slots.length&&lower.querySelector('select').value==='30','repeated fill retains choices without duplicates');
+ [...$('avatar-bundle').querySelectorAll('button')].find(b=>b.textContent==='묶음 열기').click();await until(()=>loaded);
+ check(loaded.includes(1)&&loaded.includes(30)&&loaded.includes(20)&&!loaded.includes(10)&&loaded.length===7,'opening loads supplemented selection');
+ outfitSlots.push({part:'ONE_PIECE',variant:'BASE',label:'One piece',checked:true,selected:2,candidates:[{id:2,name:'dress',archive:'fixture',ordinal:1}]});
+ $('model-results').querySelector('button').click();await until(()=>$('avatar-bundle').textContent.includes('One piece'));
+ $('avatar-bundle').querySelector('[data-action="fill-defaults"]').click();
+ check(![...$('avatar-bundle').querySelectorAll('.bundle-slot')].some(r=>r.textContent.includes('Basic UPBODY')||r.textContent.includes('Basic LOWBODY')),'one piece suppresses basic upper and lower');
+ outfitSlots.pop();basicParts.splice(0,basicParts.length,{part:'ONE_PIECE',variant:'BASE',label:'Basic one piece',selected:40,candidates:[{id:40,name:'basic-dress',archive:'fixture',ordinal:40}]});
+ $('model-results').querySelector('button').click();await until(()=>!$('avatar-bundle').textContent.includes('One piece'));
+ $('avatar-bundle').querySelector('[data-action="fill-defaults"]').click();
+ check($('avatar-bundle').textContent.includes('Basic one piece')&&$('avatar-bundle').textContent.includes('기본 파일을 찾지 못한 부위'),'one piece fills empty body and missing default files are reported');
+ outfitSlots.push({part:'UPBODY',variant:'BASE',label:'Existing upper',checked:true,selected:3,candidates:[{id:3,name:'shirt',archive:'fixture',ordinal:3}]});
+ $('model-results').querySelector('button').click();await until(()=>$('avatar-bundle').textContent.includes('Existing upper'));
+ $('avatar-bundle').querySelector('[data-action="fill-defaults"]').click();
+ check(!$('avatar-bundle').textContent.includes('Basic one piece'),'default one piece never overlaps an existing upper');
  $('avatar-bundle').querySelector('button').click();check($('avatar-bundle').hidden,'close outfit detail');
  document.querySelector('[data-mode="accessories"]').click();await until(()=>calls.at(-1).get('mode')==='accessories'&&!$('picker-status').textContent);
  check(document.querySelector('[data-mode="accessories"]').getAttribute('aria-pressed')==='true','mode selected');
