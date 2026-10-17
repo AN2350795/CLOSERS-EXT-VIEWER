@@ -78,6 +78,71 @@ class ModelVisibilityTests(unittest.TestCase):
         rows.append(dict(id=3,name='LOWER_DYE.X'));parts.append(dict(frames=[],meshes=[]))
         self.assertEqual([h['mesh'] for h in apply_visibility(parts,rows,rules,[['EQ_LEG',1]])],['leg'])
 
+    def test_hair_eyebrows_replace_face_without_index_or_owner_rule(self):
+        rows=[dict(id=1,name='300100102_GUST_USER_CASTER_BASIC_EP_AVATAR_DEFENCE_HAIR.X'),
+              dict(id=2,name='300100103_GUST_USER_CASTER_BASIC_EP_AVATAR_DEFENCE_FACE.X')]
+        def part(prefix):
+            return dict(frames=[dict(name=prefix+'EQ_EYEBROW_CASTER'),dict(name='FACE')],
+                        meshes=[dict(name='brow',frame=0,vertices=[0,0,0]),dict(name='surface',frame=1)])
+        original=[part(''),part('WSM_')]
+        for rules,patterns in (({},[]),({rows[0]['name']:dict(priority=1,groups=[5])},[['WSM_EQ_EYEBROW',5]])):
+            for reverse in (False,True):
+                parts=copy.deepcopy(original);selected=rows.copy()
+                if reverse:parts.reverse();selected.reverse()
+                hidden=apply_visibility(parts,selected,rules,patterns)
+                self.assertEqual([(h['entry_id'],h['mesh']) for h in hidden],[(2,'brow')])
+                for p,r in zip(parts,selected):
+                    self.assertEqual(p['meshes'][0]['equipment_hidden'],r['id']==2)
+                    self.assertFalse(p['meshes'][1]['equipment_hidden'])
+
+        # No eyebrow geometry, an accessory or a different character cannot
+        # replace the selected face's eyebrows. A face alone keeps its brows.
+        for hair_name in (rows[0]['name'].replace('CASTER','STRIKER'),
+                          rows[0]['name'].replace('DEFENCE_HAIR','ACC_HEAD_HAIR')):
+            self.assertFalse(apply_visibility(copy.deepcopy(original),[dict(id=1,name=hair_name),rows[1]],{},[]))
+        parts=copy.deepcopy(original);parts[0]['meshes'][0]['vertices']=[]
+        self.assertFalse(apply_visibility(parts,rows,{},[]))
+        self.assertFalse(apply_visibility([copy.deepcopy(original[1])],[rows[1]],{},[]))
+
+    def test_embedded_hair_eyebrows_use_face_exclusive_skin_bones(self):
+        # J's Volume Straight Perm has one hair mesh, no EYEBROW frame and
+        # conflicting item rules. Its embedded brows use the face's brow bones.
+        rows=[dict(id=1,name='300300302_GUST_USER_FIGHTER_ALPHA_A_EP_AVATAR_DEFENCE_HAIR.X'),
+              dict(id=2,name='300300103_GUST_USER_FIGHTER_BASIC_EP_AVATAR_DEFENCE_FACE.X')]
+        def mesh(name,bones):
+            return dict(name=name,frame=-1,vertices=[0,0,0,1,0,0,0,1,0],indices=[0,1,2],
+                        skin=[dict(bone=b,indices=[0,1,2],weights=[1,1,1]) for b in bones])
+        hair=mesh('FIGHTER_ALPHA_A_EP_AVATAR_DEFENCE_HAIR_MC',['HEAD','BROW_L','BROW_R'])
+        face=dict(frames=[],meshes=[mesh('EQ_EYEBROW_FIGHTER_BASIC_EYE_NEW_MC',['BROW_L','BROW_R']),
+                                   mesh('FIGHTER_BASIC_EYE_NEW_2_MC',['HEAD','EYE']),
+                                   mesh('FIGHTER_FACE_SDF_MC',['HEAD'])])
+        original=[dict(frames=[],meshes=[hair]),face]
+        for reverse in (False,True):
+            parts=copy.deepcopy(original);selected=rows.copy()
+            if reverse:parts.reverse();selected.reverse()
+            hidden=apply_visibility(parts,selected,{},[])
+            self.assertEqual([(h['entry_id'],h['mesh']) for h in hidden],[(2,'EQ_EYEBROW_FIGHTER_BASIC_EYE_NEW_MC')])
+            self.assertEqual(sum(m['equipment_hidden'] for p in parts for m in p['meshes']),1)
+        # Shared head/eye bones alone, unused vertices and zero weights are
+        # insufficient evidence that hair provides replacement eyebrows.
+        for mode in ('shared','zero','unused','shared_with_skin','hidden_hair','other_character'):
+            parts=copy.deepcopy(original);selected=copy.deepcopy(rows);rules={};patterns=[]
+            h=parts[0]['meshes'][0]
+            if mode=='shared':h['skin']=h['skin'][:1]
+            elif mode=='zero':
+                for s in h['skin'][1:]:s['weights']=[0,0,0]
+            elif mode=='unused':
+                h['vertices'].extend([0]*9)
+                for s in h['skin'][1:]:s['indices']=[3,4,5]
+            elif mode=='shared_with_skin':
+                parts[1]['meshes'][2]['skin'].extend(copy.deepcopy(h['skin'][1:]))
+            elif mode=='hidden_hair':
+                rules={rows[0]['name']:dict(priority=0,groups=[]),rows[1]['name']:dict(priority=1,groups=[11])}
+                patterns=[['FIGHTER_ALPHA',11]]
+            else:selected[0]['name']=selected[0]['name'].replace('FIGHTER','CASTER')
+            apply_visibility(parts,selected,rules,patterns)
+            with self.subTest(mode=mode):self.assertFalse(parts[1]['meshes'][0]['equipment_hidden'])
+
     def test_scene_consumes_optional_index_without_changing_source(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work')

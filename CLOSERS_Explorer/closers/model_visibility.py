@@ -8,6 +8,8 @@ import math
 import re
 import struct
 
+from .model_groups import classify
+
 
 def frame_patterns(body):
     """Read only the initial literal table constructor in observed Lua 5.1 chunks."""
@@ -76,6 +78,16 @@ def model_rule(values):
 
 def apply_visibility(parts,rows,rules,patterns,deferred=None):
     """Annotate all meshes, preserving bytes/topology and hidden geometry."""
+    def eyebrow(part,mesh):
+        frame=part['frames'][mesh['frame']]['name'] if mesh['frame']>=0 else mesh['name']
+        return frame.upper().startswith(('EQ_EYEBROW','WSM_EQ_EYEBROW'))
+
+    def skin_bones(mesh):
+        # Ignore zero weights and vertices not referenced by rendered triangles.
+        used=set(mesh.get('indices',[]))
+        return {s['bone'] for s in mesh.get('skin',[])
+                if any(i in used and w>0 for i,w in zip(s['indices'],s['weights']))}
+
     maximum={};selected={row['name'].upper() for row in rows}
     for row in rows:
         name=row['name'].upper();rule=rules.get(name)
@@ -101,4 +113,33 @@ def apply_visibility(parts,rows,rules,patterns,deferred=None):
             if priority>rule['priority']:
                 mesh['equipment_hidden']=True
                 hidden.append(dict(entry_id=row['id'],mesh=mesh['name'],group=ident,priority=rule['priority'],required_priority=priority))
+    # Some indexes predate visibility metadata or omit ambiguous model rules.
+    # Eyebrows can also be embedded in the hair's main mesh. Derive their
+    # dedicated bones from the selected face rather than hardcoding bone IDs.
+    # Bones shared with eyes, skin, etc. cannot prove replacement eyebrows.
+    face_bones={};other_bones={}
+    for part,row in zip(parts,rows):
+        owner=classify(row['name'])
+        if owner['kind']!='avatar' or owner['part']!='FACE':continue
+        for mesh in part['meshes']:
+            target=face_bones if eyebrow(part,mesh) else other_bones
+            target.setdefault(owner['character'],set()).update(skin_bones(mesh))
+    exclusive={c:bones-other_bones.get(c,set()) for c,bones in face_bones.items()}
+    hair_brows={}
+    for part,row in zip(parts,rows):
+        owner=classify(row['name'])
+        if owner['kind']=='avatar' and owner['part']=='HAIR':
+            if any(not m['equipment_hidden'] and m.get('vertices') and
+                   (eyebrow(part,m) or skin_bones(m)&exclusive.get(owner['character'],set()))
+                   for m in part['meshes']):
+                hair_brows.setdefault(owner['character'],row['id'])
+    for part,row in zip(parts,rows):
+        owner=classify(row['name'])
+        replacement=hair_brows.get(owner['character'])
+        if owner['kind']!='avatar' or owner['part']!='FACE' or replacement is None:continue
+        for mesh in part['meshes']:
+            if eyebrow(part,mesh) and not mesh['equipment_hidden']:
+                mesh['equipment_hidden']=True
+                hidden.append(dict(entry_id=row['id'],mesh=mesh['name'],group=5,
+                                   reason='hair_eyebrow',replacement_entry_id=replacement))
     return hidden
