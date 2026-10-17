@@ -86,19 +86,43 @@ class Models:
             if skeleton_id is not None and skeleton_id!=entry_ids[0]:
                 body,owner,skeleton_source = self.read(skeleton_id,'x')
                 skeleton = parse_x(body)
-                scene = dict(frames=skeleton['frames'],meshes=[],warnings=skeleton['warnings'])
+                scene = dict(frames=list(skeleton['frames']),meshes=[],warnings=skeleton['warnings'])
             else:
-                scene = dict(frames=scene['frames'],meshes=[],warnings=scene['warnings'].copy())
+                scene = dict(frames=list(scene['frames']),meshes=[],warnings=scene['warnings'].copy())
             if deferred:scene['warnings'].append('염색 메시가 빠진 부위는 장비 숨김 규칙을 보류했습니다.')
             names = {f['name']:i for i,f in enumerate(scene['frames'])}
+            frame_names = set(names)
             for part,row in zip(parts,rows):
+                attachments = {}
+                def attachment_frame(index):
+                    if index < 0:
+                        return -1
+                    frame = part['frames'][index]
+                    if frame['name'] in names:
+                        return names[frame['name']]
+                    if index not in attachments:
+                        parent = attachment_frame(frame['parent'])
+                        if len(scene['frames']) >= 1024:
+                            raise ValueError('결합한 X 프레임은 1,024개까지 지원합니다.')
+                        name = frame['name']
+                        while name in frame_names:
+                            name += '__ATTACHMENT_' + str(row['id'])
+                        frame_names.add(name)
+                        attachments[index] = len(scene['frames'])
+                        scene['frames'].append(dict(frame, name=name, parent=parent))
+                    return attachments[index]
                 for warning in part['warnings']:
                     if warning not in scene['warnings']:scene['warnings'].append(warning)
                 for mesh in part['meshes']:
                     if any(s['bone'] not in names for s in mesh['skin']):
                         raise ValueError('선택한 공용 뼈 파일과 모델 부위의 뼈 이름이 일치하지 않습니다.')
                     old = mesh['frame']
-                    mesh['frame'] = names.get(part['frames'][old]['name'],-1) if old>=0 else -1
+                    # Rigid attachments need their local hierarchy even when
+                    # those frames are absent from the shared skeleton.
+                    if mesh['skin']:
+                        mesh['frame'] = names.get(part['frames'][old]['name'],-1) if old>=0 else -1
+                    else:
+                        mesh['frame'] = attachment_frame(old)
                     mesh['source_id'] = row['id']
                     for mat in mesh['materials']:
                         if mat['texture']:

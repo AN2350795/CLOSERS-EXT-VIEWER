@@ -60,6 +60,40 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_rigid_attachment_hierarchy_survives_shared_skeleton_merge(self):
+        def frame(label, x, children=b''):
+            matrix = IDENTITY.copy(); matrix[12] = x
+            return obj('Frame', obj('FrameTransformMatrix', numbers(matrix, True))+children, label)
+        mesh = obj('Mesh', numbers([3])+numbers([0,0,0,1,0,0,0,1,0],True)
+                   +numbers([1,3,0,1,2]), 'RIGID')
+        prefix = b'xof 0303bin 0032'
+        skeleton = prefix+frame('ROOT', 3)
+        parts = [prefix+frame('ROOT', 3, frame('ATTACH', x, frame('LEAF', 2, mesh)))
+                 for x in (10, 20)]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); catalog = Catalog(root/'work')
+            source = fixture(root/'models.cmf', [('common.X', skeleton, 0),
+                ('one.X', parts[0], 0), ('two.X', parts[1], 0)])
+            catalog.scan([source])
+            ids = {r['name']: r['id'] for r in catalog.entries({})['items']}
+            scene = Models(catalog).scene([ids['one.X'], ids['two.X']], ids['common.X'])
+            self.assertEqual(scene['frames'][0]['name'], 'ROOT')
+            self.assertEqual(len({f['name'] for f in scene['frames']}), 5)
+            translations = []
+            for merged in scene['meshes']:
+                index = merged['frame']; total = 0
+                while index >= 0:
+                    f = scene['frames'][index]; total += f['matrix'][12]; index = f['parent']
+                translations.append(total)
+            self.assertEqual(translations, [15, 25])
+            # Adding attachment frames must respect the total scene budget.
+            large = prefix+b''.join(frame('BONE_'+str(i), 0) for i in range(1024))
+            fixture(source, [('common.X', large, 0), ('one.X', parts[0], 0)])
+            catalog.scan([source])
+            ids = {r['name']: r['id'] for r in catalog.entries({})['items']}
+            with self.assertRaisesRegex(ValueError, '1,024'):
+                Models(catalog).scene([ids['one.X']], ids['common.X'])
+
     def test_only_unused_empty_identity_duplicate_leaf_can_be_named_uniquely(self):
         dummy=obj('Frame',obj('FrameTransformMatrix',numbers(IDENTITY,True)),'DUMMY')
         body=binary_model()+obj('Frame',dummy,'DUMMY')
