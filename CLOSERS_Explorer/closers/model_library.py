@@ -71,6 +71,10 @@ class Models:
             characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar'}
             if len(characters)>1:
                 raise ValueError('서로 다른 캐릭터의 아바타·얼굴은 함께 연결할 수 없습니다.')
+            from .model_visibility import apply_visibility
+            self.catalog.game_names.refresh()
+            deferred=[]
+            hidden=apply_visibility(parts,rows,self.catalog.game_names.model_rules,self.catalog.game_names.frame_patterns,deferred)
             if skeleton_id is not None:
                 skeleton_row=self.catalog.get(int(skeleton_id))
                 skeleton_character=classify(skeleton_row['name'])['character']
@@ -85,6 +89,7 @@ class Models:
                 scene = dict(frames=skeleton['frames'],meshes=[],warnings=skeleton['warnings'])
             else:
                 scene = dict(frames=scene['frames'],meshes=[],warnings=scene['warnings'].copy())
+            if deferred:scene['warnings'].append('염색 메시가 빠진 부위는 장비 숨김 규칙을 보류했습니다.')
             names = {f['name']:i for i,f in enumerate(scene['frames'])}
             for part,row in zip(parts,rows):
                 for warning in part['warnings']:
@@ -108,7 +113,8 @@ class Models:
             character=next(iter(characters),None)
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
             for source,row in zip(sources,rows):source['model_group']=dict(classify(row['name']))
-            scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion)
+            scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
+                         equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns),hidden=hidden,deferred=deferred))
             return scene
 
     def animations(self,skeleton_id,animation_id):

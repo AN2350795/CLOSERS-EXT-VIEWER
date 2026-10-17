@@ -14,6 +14,7 @@ from closers.game_names import GameNames,build_index
 from closers.model_groups import ModelGroups
 from test_explorer import fixture
 from test_model import binary_model
+from test_model_visibility import lua_patterns
 
 
 def table(types,records):
@@ -65,15 +66,19 @@ class NtfTests(unittest.TestCase):
         name='123_GUST_USER_CASTER_CLOTH_225_A_EP_AVATAR_DEFENCE_UPBODY.X'
         strings=table((5,8,8),[(1,'NAME_A','이슬비 시험 의상 [A타입]'),(2,'NAME_B','이슬비 시험 의상 [B타입]')])
         strings=strings[:20]+encrypt(strings[20:])
-        types=(5,8,8,8,8)+(12,)*31
-        models=table(types,[(100,'GUST_INVALID',name,'','',*([0]*31)),(101,'GUST_INVALID',name,'','',*([0]*31))])
+        types=(5,8,8,8,8)+(12,)*28+(4,8,8)
+        model_values=[100,'GUST_INVALID',name,'','',*([0]*31)]
+        model_values[33:]=[1,'2','']
+        model_other=model_values.copy();model_other[0]=101
+        models=table(types,[model_values,model_other])
+        frame_data=lua_patterns([['EQ_LEG2',2],['EQ_LEG',1]])
         types=(8,5,8,8)+(12,)*7+(8,)+(12,)*194
         items=table(types,[('CVN',100,'NAME_A','CLOTH_225_A',*([0]*7),'GUST_USER_CASTER',*([0]*194)),
                            ('CVN',101,'NAME_B','CLOTH_225_B',*([0]*7),'GUST_USER_CASTER',*([0]*194))])
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work');exe=root/'test.exe';exe.write_bytes(b'test')
             source=fixture(root/'source.cmf',[(n,b,1,packed(b)) for n,b in [
-                ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',models),('ITEM_TEMPLET.NTF',items)]]+[(name,binary_model(),1)])
+                ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',models),('ITEM_TEMPLET.NTF',items),('FRAME_UNIQUE_ID.LUA',frame_data)]]+[(name,binary_model(),1)])
             catalog.scan([source]);before=hashlib.sha256(source.read_bytes()).digest()
             with patch.object(ntf,'script_keys',return_value=(key,iv)):
                 result=build_index(catalog.workspace,exe)
@@ -83,6 +88,8 @@ class NtfTests(unittest.TestCase):
             row=rows['items'][0]
             self.assertEqual(row['name'],name)
             self.assertEqual(row['game_name_count'],2)
+            self.assertEqual(catalog.game_names.model_rules[name.upper()],dict(priority=1,groups=[2]))
+            self.assertEqual(catalog.game_names.frame_patterns,[['EQ_LEG2',2],['EQ_LEG',1]])
             self.assertIn('[A타입]',row['display_name'])
             self.assertEqual(ModelGroups(catalog).browse({'q':'B타입'})['total'],1)
             with catalog.connect() as db:
@@ -94,6 +101,7 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(index.read_bytes(),old)
             source.write_bytes(source.read_bytes()+b'changed')
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],0)
+            self.assertFalse(catalog.game_names.model_rules)
             source.unlink()
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],1)
             with self.assertRaises(ValueError):ntf.restore(packed(b'abc'),2,key,iv)

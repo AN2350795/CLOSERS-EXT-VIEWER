@@ -23,6 +23,8 @@ class GameNames:
         self.file_version=None
         self.sources=[]
         self.labels={}
+        self.model_rules={}
+        self.frame_patterns=[]
 
     def refresh(self):
         with self.lock:
@@ -38,9 +40,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={}
+            labels={};model_rules={};frame_patterns=[]
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -55,8 +57,14 @@ class GameNames:
                         labels=defaultdict(list)
                         for filename,label,priority in db.execute('SELECT filename,label,MAX(priority) p FROM names GROUP BY filename,label ORDER BY filename,p DESC,label'):
                             labels[filename].append(label)
-                except (OSError,sqlite3.Error,ValueError):labels={};self.sources=[]
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_visibility'").fetchone():
+                            meta=db.execute("SELECT value FROM metadata WHERE key='model_frame_patterns'").fetchone()
+                            frame_patterns=json.loads(meta[0]) if meta else []
+                            for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
+                                model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
+            self.model_rules=model_rules;self.frame_patterns=frame_patterns
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -67,7 +75,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.version=(self.file_version,'stale');break
 
     def text(self,name):
         return '\n'.join(self.labels.get(name.replace('\\','/').rsplit('/',1)[-1].upper(),()))
@@ -92,16 +100,17 @@ def build_index(workspace,executable,progress=None):
 def _build(workspace,executable,progress):
     from .cmf import Archive,Entry
     from .model_groups import classify
+    from .model_visibility import frame_patterns,model_rule
     key,iv=ntf.script_keys(executable)
     with closing(sqlite3.connect((workspace/'catalog.sqlite3').as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row
         candidates=db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
             FROM entries e JOIN archives a ON a.id=e.archive_id
             WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
-               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' ORDER BY e.id''').fetchall()
+               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name='FRAME_UNIQUE_ID.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
-        if not re.fullmatch(r'(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF',row['name']):continue
+        if row['name']!='FRAME_UNIQUE_ID.LUA' and not re.fullmatch(r'(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
             raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
@@ -121,10 +130,12 @@ def _build(workspace,executable,progress):
         source_hashes[row['name']]=digest
         sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
         selected.setdefault(row['name'],(dict(row),stored))
-    strings={};items={};models=[];counts={}
+    strings={};items={};models=[];counts={};visibility=defaultdict(set);patterns=[]
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),kv[0])):
         body=ntf.restore(stored,row['size'],key,iv)
+        if name=='FRAME_UNIQUE_ID.LUA':
+            patterns=frame_patterns(body);counts[name]=len(patterns);continue
         types,count,start=ntf.header(body)
         if name.startswith('STRING_TABLE'):
             if types!=(5,8,8):raise ValueError('미지원 한국어 문자열 NTF 열 구성입니다.')
@@ -143,6 +154,7 @@ def _build(workspace,executable,progress):
                 for filename in values[2:5]:
                     if filename.upper().endswith('.X') and 'EP_AVATAR' in filename.upper():
                         models.append((values[0],values[1],filename,name))
+                        visibility[filename.upper()].add(json.dumps(model_rule(values),sort_keys=True))
             else:
                 item_id=values[1];value=(values[2],values[3],values[11],name)
                 if item_id in items and items[item_id]!=value:raise ValueError('아이템 번호가 충돌합니다: '+str(item_id))
@@ -158,6 +170,13 @@ def _build(workspace,executable,progress):
                     model_table TEXT,string_table TEXT,priority INTEGER,
                     PRIMARY KEY(filename,label,item_id,item_table,model_table));
                 CREATE INDEX by_filename ON names(filename);''')
+            db.execute('CREATE TABLE model_visibility(filename TEXT PRIMARY KEY,priority INTEGER NOT NULL,groups_json TEXT NOT NULL)')
+            for filename,rules in visibility.items():
+                # Shared filenames can represent items with incompatible settings.
+                # Without an equipped item ID, preserving geometry is safer.
+                if len(rules)!=1:continue
+                rule=json.loads(next(iter(rules)))
+                db.execute('INSERT INTO model_visibility VALUES(?,?,?)',(filename,rule['priority'],json.dumps(rule['groups'])))
             for item_id,owner,filename,model_table in models:
                 item=items.get(item_id)
                 if not item or owner.startswith('GUST_NPC_') or item[2].startswith('GUST_NPC_'):continue
@@ -169,7 +188,7 @@ def _build(workspace,executable,progress):
                            (filename.upper(),text[0],item_id,item[0],item[3],model_table,text[1],priority))
             total=db.execute('SELECT COUNT(DISTINCT filename) FROM names').fetchone()[0]
             if not total:raise ValueError('실제 이름에 연결된 아바타 모델이 없습니다.')
-            metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total)
+            metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total,model_frame_patterns=patterns)
             db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v,ensure_ascii=False)) for k,v in metadata.items()])
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
