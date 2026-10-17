@@ -60,7 +60,7 @@ export function setupPreviews({api}){
       const key=JSON.stringify([mode,item.key||item.id,saved,item.item_icon?.sha256]);
       try{
         let src=cache.get(key);if(!src){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
-        if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon);if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);if(icon){const badge=document.createElement('span');badge.className='thumbnail-caption';badge.textContent=mode==='sets'?(item.item_icon.part_label||'대표')+' 아이콘':'아이템 아이콘';target.append(badge);}}
+        if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon);if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
       }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
     }}finally{running=false;}
   }

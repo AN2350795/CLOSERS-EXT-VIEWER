@@ -22,6 +22,10 @@ const picker=setupPicker({state,api,element,operation:async fn=>{if(!state.busy)
 try{
  await picker.search();
  check($('model-results').children.length===40,'40 results by default');
+ const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
+ check(first.querySelector('.model-open').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
+ details.querySelector('summary').click();check(details.open&&details.querySelector('small').checkVisibility(),'details toggle reveals metadata');
+ details.querySelector('summary').click();check(!details.open,'details can collapse again');
  state.busy=true;$('model-next').click();await until(()=>$('model-page').textContent.startsWith('2 /'));
  check(calls.at(-1).get('page')==='2','pagination works while model busy');
  $('model-last').click();await until(()=>$('model-page').textContent.startsWith('4 /'));
@@ -67,7 +71,7 @@ try{
  check($('model-results').firstChild.classList.contains('is-selected'),'selected file badge');
  $('picker-expand').click();check(document.querySelector('.model-layout').classList.contains('picker-wide'),'expand picker');
  check($('avatar-bundle').closest('.model-info'),'bundle detail separated from list');
- const star=$('model-results').querySelector('.favorite-button');star.click();
+ const star=$('model-results').querySelector('.favorite-button');star.closest('details').open=true;star.click();
  check(star.getAttribute('aria-pressed')==='true'&&$('model-favorites').querySelector('button'),'favorite persisted and listed');
  check(pickerMemory().data.favorites.length===1,'favorite stored');
  state.data={sources:[{name:'recent-file.X',entry_id:9,model_group:{character:'STRIKER'}}]};document.dispatchEvent(new Event('model-selection'));
@@ -94,7 +98,7 @@ try{
  ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('출처 선택 필요'));check(sceneRequests===1,'ambiguous preview never chooses source');
  const iconRow=element('div');iconRow.className='model-row';$('model-results').append(iconRow);previews.attach(iconRow,{key:'icon-outfit',label:'Icon outfit',item_icon:{sha256:'a'.repeat(64),part_label:'상의'}},'sets','existing');
  iconRow.scrollIntoView();await until(()=>iconRow.querySelector('img'));await iconRow.querySelector('img').decode();
- check(sceneRequests===1&&iconRow.querySelector('.is-item-icon')&&iconRow.textContent.includes('상의 아이콘')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon bypasses 3D rendering and identifies representative part');
+ check(sceneRequests===1&&iconRow.querySelector('.is-item-icon')&&!iconRow.textContent.trim()&&iconRow.querySelector('.model-thumbnail').title.includes('상의')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon has no visible caption and keeps accessible description');
  const unavailable=element('div');unavailable.className='model-row';$('model-results').append(unavailable);previews.attach(unavailable,{id:2,name:'unavailable icon',item_icon:{sha256:'b'.repeat(64)}},'files','existing');
  unavailable.scrollIntoView();await until(()=>unavailable.querySelector('img'));
  check(sceneRequests===2&&!unavailable.querySelector('.is-item-icon')&&unavailable.querySelector('img').alt.includes('3D'),'unavailable item icon falls back to 3D preview');previews.reset();
