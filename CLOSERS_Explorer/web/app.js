@@ -6,6 +6,22 @@ const icons = {'':'▦',images:'▧',audio:'♫',models:'◇',scripts:'⌘',othe
 const statuses = {indexed:'분석 완료',extracted:'추출 완료',error:'오류',encrypted:'암호화',raw:'원본 보존'};
 let category='', page=1, total=0, mode='list', items=[], selected=new Set(), stats={}, running=false, initialized=false, activeId=null, generation=0, previewGeneration=0, lastJob='', toastTimer;
 let groupValue=null, groupRows=[], textLimit=4096, resetPending=false;
+let workPathsStorageKey='';
+function loadWorkPaths(state){
+  workPathsStorageKey='closers-work-paths:'+state.workspace;
+  let saved={};
+  try{const value=JSON.parse(localStorage.getItem(workPathsStorageKey)||'null');if(value&&typeof value==='object')saved=value;}catch{}
+  for(const [id,fallback] of [['source',state.default_input],['output',state.default_output]]){
+    // Preserve edits made while the initial state request was in flight.
+    if(!$(id).value)$(id).value=typeof saved[id]==='string'?saved[id]:fallback;
+  }
+  saveWorkPaths();
+}
+function saveWorkPaths(){
+  if(!workPathsStorageKey)return;
+  try{localStorage.setItem(workPathsStorageKey,JSON.stringify({source:$('source').value,output:$('output').value}));}catch{}
+}
+for(const id of ['source','output'])$(id).addEventListener('input',saveWorkPaths);
 const fmt = n => Number(n || 0).toLocaleString('ko-KR');
 function bytes(n){ if(!n)return '0 B'; const units=['B','KiB','MiB','GiB','TiB']; const i=Math.min(4,Math.floor(Math.log(n)/Math.log(1024))); return (n/1024**i).toFixed(i?1:0)+' '+units[i]; }
 function node(tag, className, text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
@@ -36,7 +52,7 @@ async function poll(){
     if(resetPending)return;
     const state=await api('/api/state');
     if(resetPending)return;
-    if(!initialized){$('source').value=state.default_input;$('output').value=state.default_output;$('preservation-output').value=state.workspace+'/stored-preservation';$('workspace').textContent=state.workspace;$('manifest').href='/api/manifest?token='+encodeURIComponent(token);initialized=true;loadPostprocessOptions(state.workspace);await loadStats();await refresh();}
+    if(!initialized){loadWorkPaths(state);$('preservation-output').value=state.workspace+'/stored-preservation';$('workspace').textContent=state.workspace;$('manifest').href='/api/manifest?token='+encodeURIComponent(token);initialized=true;loadPostprocessOptions(state.workspace);await loadStats();await refresh();}
     const job=state.job,key=String(job.started||'')+':'+job.running,finished=lastJob!==key&&!job.running;lastJob=key;setBusy(job.running);
     $('job-label').textContent=job.running?(job.phase==='postprocess'?'데이터 후처리 중':job.operation==='reset'?'전체 초기화 중':job.operation==='compare'?'원본 변경 비교 중':job.operation==='preserve'?'저장 바이트 보존 중 · 원문 미복원':job.operation==='index'?'인덱스 내보내기 중':job.operation==='scan'?'CMF 목록 분석 중':job.operation==='process'?'분석·추출 중 · 전체 수량 탐색 중':'원본 형식 파일 추출 중'):job.status==='issues'?'처리 종료 · 오류 확인 필요':job.status==='error'?'작업 오류':job.status==='cancelled'?'작업 중단':job.status==='completed'?'작업 완료':'준비됨';
     if(job.operation==='reset')$('cancel').disabled=true;
@@ -52,7 +68,7 @@ async function poll(){
   }catch(e){toast('서버 상태를 확인할 수 없습니다: '+e.message);}finally{setTimeout(poll,1000);}
 }
 $('scan').onclick=async()=>{try{await api('/api/scan',{paths:[$('source').value],retry_errors:$('retry-errors').checked});setBusy(true);}catch(e){toast(e.message);}};
-for(const key of ['source','output'])$('browse-'+key).onclick=async()=>{try{const result=await api('/api/folder',{});if(result.path)$(key).value=result.path;}catch(e){toast(e.message);}};
+for(const key of ['source','output'])$('browse-'+key).onclick=async()=>{try{const result=await api('/api/folder',{});if(result.path){$(key).value=result.path;saveWorkPaths();}}catch(e){toast(e.message);}};
 $('cancel').onclick=async()=>{try{await api('/api/cancel',{});$('job-current').textContent='중단 요청 중…';}catch(e){toast(e.message);}};
 $('extract-filtered').onclick=()=>extract();$('extract-selected').onclick=()=>{if(selected.size)extract([...selected]);};$('extract-one').onclick=()=>{if(activeId!==null)extract([activeId],true);};
 $('close-preview').onclick=()=>$('preview').close();$('preview').addEventListener('close',()=>{if($('preview').open)return;previewGeneration++;document.querySelectorAll('#preview audio').forEach(a=>{a.pause();a.removeAttribute('src');a.load();});activeId=null;activeResource=null;$('preview-content').replaceChildren();setBusy(running);});

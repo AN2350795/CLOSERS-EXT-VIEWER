@@ -15,6 +15,11 @@ try{
   await call('Runtime.enable');await call('Page.reload');
   await wait(`typeof initialized!=='undefined'&&initialized&&document.querySelectorAll('tbody tr').length===60`);
   assert(await evaluate(`return $('postprocess-enabled').checked;`),'enabled by default');
+  // Exercise both the folder picker and direct typing across an actual reload.
+  await evaluate(`const original=api;api=async(url,data)=>url==='/api/folder'?{path:${JSON.stringify(path.join(output,'input.cmf'))}}:original(url,data);try{await $('browse-source').onclick();}finally{api=original;}$('output').value=${JSON.stringify(path.join(output,'assets'))};$('output').dispatchEvent(new Event('input'));`);
+  await call('Page.reload');
+  await wait(`typeof initialized!=='undefined'&&initialized&&document.querySelectorAll('tbody tr').length===60`);
+  assert(await evaluate(`return $('source').value===${JSON.stringify(path.join(output,'input.cmf'))}&&$('output').value===${JSON.stringify(path.join(output,'assets'))};`),'selected source and typed output restored');
   await evaluate(`$('search').value='readme.lua';page=1;await refresh();$('extract-filtered').click();`);
   await wait(`!running&&$('job-current').textContent.includes('후처리 완료')`);
   assert(await evaluate(`return items[0].saved_exists&&$('job-label').textContent.includes('확인 필요');`),'extracted asset survives postprocess error');
