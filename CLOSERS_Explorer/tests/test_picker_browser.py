@@ -11,6 +11,8 @@ import unittest
 
 
 class PickerBrowserTests(unittest.TestCase):
+    checks_script = 'picker_checks.js'
+
     def test_picker(self):
         browser = next((p for p in [shutil.which('chromium'), shutil.which('google-chrome'),
             'C:/Program Files/Google/Chrome/Application/chrome.exe',
@@ -21,7 +23,7 @@ class PickerBrowserTests(unittest.TestCase):
         if not node:
             self.skipTest('Node.js 22+ unavailable')
         web = Path(__file__).resolve().parents[1] / 'web'
-        script = (Path(__file__).parent / 'picker_checks.js').read_text(encoding='utf-8-sig')
+        script = (Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
 
         class Handler(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
