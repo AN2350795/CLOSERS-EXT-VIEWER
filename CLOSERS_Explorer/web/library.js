@@ -21,6 +21,7 @@ function describeFilters(f={}){
 }
 
 function describeScope(scope){
+  if(scope.phase==='postprocess')return '분석 목록 전체 · 데이터 후처리 · 추출 파일 유지';
   if(scope.phase==='compare')return '원본 변경 비교 · '+(scope.paths||[]).join(', ')+' · 저장 파일 유지';
   if(scope.phase==='scan')return '목록 분석만 · '+(scope.paths||[]).join(', ')+' · 파일 저장 없음';
   if(scope.phase==='index')return 'HEADER 인덱스 목록 · '+scope.path+' → '+scope.destination+' · 본문 없음';
@@ -28,7 +29,8 @@ function describeScope(scope){
     describeFilters(scope.filters)+' → '+(scope.output||scope.destination)+
     (scope.phase==='preserve'?' · 저장 바이트 보존 (원문 미복원)':scope.raw?' · 암호화 저장 바이트 포함':' · 암호화 항목 정책 제외')+
     (scope.phase==='process'?' · CMF 동시 처리 '+(scope.workers||1)+'개':'')+
-    (scope.retry_errors?' · 이전 실패도 다시 시도':'');
+    (scope.retry_errors?' · 이전 실패도 다시 시도':'')+
+    (scope.postprocess?.enabled?' · 완료 후 목록 전체 데이터 후처리':'');
 }
 
 function updateScopePreview(){

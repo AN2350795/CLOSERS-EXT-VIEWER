@@ -66,7 +66,7 @@ try{
   await openManagement(true);await confirm();
   if(fs.existsSync(path.join(output,'stored','preservation.sqlite3')))throw Error('optional preservation DB remains');
   if(files(path.join(output,'stored')).some(f=>f.name.endsWith('.TET')||f.name.endsWith('.stored.bin')))throw Error('optional preservation payload remains');
-  await evaluate(`$('source').value=${JSON.stringify(path.join(output,'input.cmf'))};$('output').value=${JSON.stringify(path.join(output,'assets'))};$('process').click()`);
+  await evaluate(`$('source').value=${JSON.stringify(path.join(output,'input.cmf'))};$('output').value=${JSON.stringify(path.join(output,'assets'))};$('postprocess-enabled').checked=false;$('process').click()`);
   await wait(`!running&&total>0&&stats.statuses.extracted===206`);
   if(!original.equals(fs.readFileSync(path.join(output,'input.cmf'))))throw Error('original changed after rerun');
   if(errors.length)throw Error(errors.join(';'));

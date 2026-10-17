@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--destination', required=True)
     parser.add_argument('--browser', action='store_true')
     parser.add_argument('--browser-no-sandbox', action='store_true', help='격리된 합성 데이터 브라우저 시험에서만 Chrome sandbox 비활성화')
-    parser.add_argument('--ui-script', choices=('ui_smoke.mjs','local_library_smoke.mjs','stage2_smoke.mjs','composition_smoke.mjs','model_smoke.mjs','reset_smoke.mjs'), default='ui_smoke.mjs')
+    parser.add_argument('--ui-script', choices=('ui_smoke.mjs','local_library_smoke.mjs','stage2_smoke.mjs','composition_smoke.mjs','model_smoke.mjs','reset_smoke.mjs','postprocess_smoke.mjs'), default='ui_smoke.mjs')
     args = parser.parse_args()
     root = Path(args.destination).resolve()
     root.mkdir(parents=True, exist_ok=False)

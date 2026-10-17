@@ -65,6 +65,9 @@ class Jobs:
 
     def start(self, phase, args):
         args = json.loads(json.dumps(args))
+        if 'postprocess' in args or phase == 'postprocess':
+            from .postprocess import validate_options
+            validate_options(args.get('postprocess', {}))
         with self.lock:
             if self.state['running']:
                 raise ValueError('진행 중인 작업을 완료하거나 중단해 주세요.')
@@ -78,6 +81,8 @@ class Jobs:
             try:
                 if phase == 'scan':
                     result = self.catalog.scan(args['paths'], self.cancel, self.progress, bool(args.get('retry_errors')))
+                elif phase == 'postprocess':
+                    result = {}
                 elif phase == 'process':
                     result = self.catalog.process(args['paths'], args['output'], args.get('filters', {}),
                                                   bool(args.get('raw')), self.cancel, self.progress,
@@ -102,6 +107,18 @@ class Jobs:
                 message = f"처리 종료 · 아카이브 실패 {archive_failed}개 · 항목 실패 {entry_failed}개 · 스킵 {result.get('skipped',0)}개 · 인덱스 {result.get('indexes',0)}개"
                 if result.get('entry_errors'):
                     message += f" · 분석 시 본문 판별 오류 {result['entry_errors']}개"
+                if phase == 'postprocess' or (phase in ('process', 'extract') and args.get('postprocess', {}).get('enabled', False)):
+                    from .postprocess import run as postprocess
+                    # Publish extraction counts before derived-data work begins.
+                    self.progress(result=dict(result))
+                    derived = postprocess(self.catalog, args.get('postprocess', {}), self.cancel,
+                                          self.progress, args.get('paths', ()))
+                    result['postprocess'] = derived
+                    if derived['failed']:
+                        status = 'issues'
+                    if phase == 'postprocess':
+                        message = '데이터 후처리 종료'
+                    message += f" · 후처리 완료 {len(derived['steps'])-derived['failed']}개 · 확인 필요 {derived['failed']}개"
                 if result.get('encrypted'):
                     message += f" · 암호화 건너뜀 {result['encrypted']}개"
                 if result.get('cached_failures'):
@@ -535,6 +552,9 @@ def create_server(catalog, port=0):
                         raise ValueError('출력 폴더를 입력해 주세요.')
                     catalog.where(args.get('filters', {}))
                     jobs.start('extract', args)
+                    self.respond({'ok': True})
+                elif self.path == '/api/postprocess':
+                    jobs.start('postprocess', args)
                     self.respond({'ok': True})
                 elif self.path == '/api/composition-resolve':
                     self.respond({'ids':resolve_sources(catalog,args.get('sources'))})

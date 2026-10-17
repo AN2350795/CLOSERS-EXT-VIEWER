@@ -89,18 +89,22 @@ class GameNames:
         return row
 
 
-def build_index(workspace,executable,progress=None):
+def build_index(workspace,executable,progress=None,cancel=None):
     """Read catalog/source CMFs, verify every row and publish a separate index."""
     from .catalog import operation_lock
     workspace=Path(workspace).resolve();executable=Path(executable).resolve()
     with operation_lock(workspace):
-        return _build(workspace,executable,progress or (lambda **kw:None))
+        return _build(workspace,executable,progress or (lambda **kw:None),cancel)
 
 
-def _build(workspace,executable,progress):
+def _build(workspace,executable,progress,cancel=None):
     from .cmf import Archive,Entry
     from .model_groups import classify
     from .model_visibility import frame_patterns,model_rule
+    from .cmf import Cancelled
+    def check_cancel():
+        if cancel is not None and cancel.is_set():raise Cancelled()
+    check_cancel()
     key,iv=ntf.script_keys(executable)
     with closing(sqlite3.connect((workspace/'catalog.sqlite3').as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row
@@ -110,6 +114,7 @@ def _build(workspace,executable,progress):
                OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name='FRAME_UNIQUE_ID.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
+        check_cancel()
         if row['name']!='FRAME_UNIQUE_ID.LUA' and not re.fullmatch(r'(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
@@ -133,6 +138,7 @@ def _build(workspace,executable,progress):
     strings={};items={};models=[];counts={};visibility=defaultdict(set);patterns=[]
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),kv[0])):
+        check_cancel()
         body=ntf.restore(stored,row['size'],key,iv)
         if name=='FRAME_UNIQUE_ID.LUA':
             patterns=frame_patterns(body);counts[name]=len(patterns);continue
@@ -145,6 +151,7 @@ def _build(workspace,executable,progress):
         elif len(types)!=206 or types[:4]!=(8,5,8,8) or types[11]!=8:raise ValueError('미지원 아이템 NTF 열 구성입니다.')
         counts[name]=0
         for values in ntf.rows(body):
+            check_cancel()
             counts[name]+=1
             if name.startswith('STRING_TABLE'):
                 text=values[2].strip()
@@ -178,6 +185,7 @@ def _build(workspace,executable,progress):
                 rule=json.loads(next(iter(rules)))
                 db.execute('INSERT INTO model_visibility VALUES(?,?,?)',(filename,rule['priority'],json.dumps(rule['groups'])))
             for item_id,owner,filename,model_table in models:
+                check_cancel()
                 item=items.get(item_id)
                 if not item or owner.startswith('GUST_NPC_') or item[2].startswith('GUST_NPC_'):continue
                 text=strings.get(item[0])
@@ -190,6 +198,7 @@ def _build(workspace,executable,progress):
             if not total:raise ValueError('실제 이름에 연결된 아바타 모델이 없습니다.')
             metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total,model_frame_patterns=patterns)
             db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v,ensure_ascii=False)) for k,v in metadata.items()])
+        check_cancel()
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
     return dict(tables=len(selected),models=total,rows=counts,index=str(workspace/'game-names.sqlite3'))

@@ -16,7 +16,7 @@ try{
   await call('Runtime.enable');await call('Page.reload');
   await wait(`document.querySelectorAll('tbody tr').length===60`);
   await search('unsupported.lua');
-  await evaluate(`$('extract-filtered').click()`);
+  await evaluate(`$('postprocess-enabled').checked=false;$('extract-filtered').click()`);
   await wait(`$('job-label').textContent.includes('오류 확인')&&$('job-numbers').textContent.includes('복원 실패 재사용 1')`);
   await evaluate(`$('retry-errors').checked=true;$('extract-filtered').click()`);
   await wait(`!running&&$('job-numbers').textContent.includes('복원 실패 재사용 0')`);

@@ -18,8 +18,9 @@ try{
   await wait(`document.querySelectorAll('tbody tr').length===60`);
   await search('.unknown');await wait(`$('result-count').textContent==='3개 항목'`);
   await check(`$('scope-preview').textContent.includes('.unknown')`,'scope preview');
-  await evaluate(`$('extract-filtered').click()`);
+  await evaluate(`$('postprocess-enabled').checked=false;$('extract-filtered').click()`);
   await wait(`$('job-label').textContent==='작업 완료'&&$('job-numbers').textContent.includes('3 / 3개')`);
+  await wait(`items.every(i=>i.saved_exists)`);
   await check(`$('job-scope').textContent.includes('.unknown')&&$('job-numbers').textContent.includes('실패 아님')`,'fixed job scope and excluded count');
   await check(`items.every(i=>i.saved_exists)&&new Set(items.map(i=>i.output)).size===3`,'all source items saved independently');
   await evaluate(`$('search').value='';$('duplicate').value='name';page=1;await refresh()`);

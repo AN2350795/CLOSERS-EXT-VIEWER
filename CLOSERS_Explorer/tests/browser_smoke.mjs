@@ -34,7 +34,7 @@ await wait(`document.querySelectorAll('tbody tr').length===6`);
 await evaluate(`document.querySelector('tbody tr').click()`);
 await wait(`document.querySelector('#preview-content audio')?.readyState>=1`);
 assert(await evaluate(`Number.isFinite(document.querySelector('audio').duration)`),'audio duration');
-await evaluate(`document.getElementById('close-preview').click();document.querySelector('tbody input[type=checkbox]').click();document.getElementById('extract-selected').click()`);
+await evaluate(`document.getElementById('close-preview').click();document.querySelector('tbody input[type=checkbox]').click();document.getElementById('postprocess-enabled').checked=false;document.getElementById('extract-selected').click()`);
 await wait(`document.getElementById('job-label').textContent==='작업 완료'`);
 assert(await evaluate(`document.getElementById('job-numbers').textContent.includes('1 / 1개')`),'selected extraction');
 await evaluate(`document.getElementById('format').value='';document.querySelectorAll('#categories button')[1].click();document.getElementById('grid-mode').click()`);

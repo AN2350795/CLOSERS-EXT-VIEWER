@@ -24,6 +24,8 @@ CLOSERS의 로컬 CMF 파일을 분석하고 리소스를 탐색·추출하는 P
 python -m pip install Pillow
 ```
 
+웹의 추출 후 데이터 후처리로 한국어 의상명과 장비 메시 표시 규칙도 생성할 수 있습니다. 이 기능에는 `python -m pip install pycryptodome`이 추가로 필요합니다. 게임 실행 파일 `CW.EXE`는 원본 폴더 주변에서 자동으로 찾으며 직접 경로를 지정할 수도 있습니다. 이미 추출했다면 **후처리만 실행**을 누르세요. [후처리 사용 안내](CLOSERS_Explorer/README.md#추출-후-데이터-후처리)를 참고하세요.
+
 기본 CMF 분석·추출에는 추가 Python 패키지가 필요하지 않습니다. Three.js는 저장소에 포함되어 있습니다.
 
 ## 처음 실행하기

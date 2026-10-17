@@ -90,6 +90,15 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(row['game_name_count'],2)
             self.assertEqual(catalog.game_names.model_rules[name.upper()],dict(priority=1,groups=[2]))
             self.assertEqual(catalog.game_names.frame_patterns,[['EQ_LEG2',2],['EQ_LEG',1]])
+            # The web job uses the same source-based builder without a CLI step.
+            from closers.server import Jobs
+            jobs=Jobs(catalog)
+            with patch.object(ntf,'script_keys',return_value=(key,iv)):
+                jobs.start('postprocess',{'postprocess':{'executable':str(exe)}})
+                jobs.thread.join(10)
+            self.assertFalse(jobs.thread.is_alive())
+            self.assertEqual(jobs.snapshot()['status'],'completed')
+            self.assertEqual(jobs.snapshot()['result']['postprocess']['steps'][0]['result']['models'],1)
             self.assertIn('[A타입]',row['display_name'])
             self.assertEqual(ModelGroups(catalog).browse({'q':'B타입'})['total'],1)
             with catalog.connect() as db:
@@ -97,6 +106,12 @@ class NtfTests(unittest.TestCase):
                 self.assertEqual(db.execute('SELECT count(*) FROM entries e JOIN archives a ON a.id=e.archive_id WHERE '+where,values).fetchone()[0],1)
             self.assertEqual(hashlib.sha256(source.read_bytes()).digest(),before)
             index=catalog.workspace/'game-names.sqlite3';old=index.read_bytes()
+            import threading
+            from closers.cmf import Cancelled
+            cancel=threading.Event()
+            with patch.object(ntf,'script_keys',return_value=(key,iv)),self.assertRaises(Cancelled):
+                build_index(catalog.workspace,exe,lambda **kw:cancel.set(),cancel=cancel)
+            self.assertEqual(index.read_bytes(),old)
             with patch.object(ntf,'script_keys',return_value=(bytes(32),iv)),self.assertRaises(ValueError):build_index(catalog.workspace,exe)
             self.assertEqual(index.read_bytes(),old)
             source.write_bytes(source.read_bytes()+b'changed')
