@@ -1,6 +1,7 @@
 import {setupPicker} from '/model-picker.js';
 import {pickerMemory} from '/model-memory.js';
 import {setupPreviews} from '/model-preview.js';
+import {buildModel} from '/model-core.js';
 const $=id=>document.getElementById(id),state={page:1,busy:false,ids:[]};
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const check=(value,message)=>{if(!value)throw Error(message);};
@@ -81,6 +82,8 @@ try{
  $('model-search').value='';setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
  check($('model-search').value==='file 1'&&$('model-limit').value==='60','search settings restored');
  const scene={frames:[],meshes:[{name:'preview-triangle',frame:-1,vertices:[-1,0,0,1,0,0,0,2,0],indices:[0,2,1],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,0,0,1],image:null}]}]};
+ const hiddenScene=structuredClone(scene);hiddenScene.meshes[0].equipment_hidden=true;
+ const hiddenModel=buildModel(hiddenScene);check(!hiddenModel.meshes[0].visible&&hiddenModel.meshes[0].userData.equipmentHidden,'equipment culling reaches renderer');hiddenModel.dispose();
  let sceneRequests=0;
  const previews=setupPreviews({api:async url=>{if(url.startsWith('/api/model-bundle'))return {slots:[{checked:true,selected:null}],face:{},motion:{candidates:[]}};sceneRequests++;return scene;}});
  $('model-results').replaceChildren();const previewRow=element('div');previewRow.className='model-row';$('model-results').append(previewRow);previews.attach(previewRow,{id:1,name:'triangle'},'files','existing');

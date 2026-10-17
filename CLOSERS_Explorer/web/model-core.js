@@ -29,7 +29,7 @@ export function buildModel(data){
         g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(si,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(sw,4));
         mesh=new THREE.SkinnedMesh(g,mats);const skeleton=new THREE.Skeleton(bones,inverses);mesh.bind(skeleton,new THREE.Matrix4());skeletons.push(skeleton);root.add(mesh);
       }else{mesh=new THREE.Mesh(g,mats);(m.frame<0?root:bones[m.frame]).add(mesh);}
-      mesh.name=m.name;mesh.userData.helper=m.helper;mesh.visible=!m.helper;mesh.frustumCulled=false;meshes.push(mesh);
+      mesh.name=m.name;mesh.userData.helper=m.helper;mesh.userData.equipmentHidden=!!m.equipment_hidden;mesh.visible=!m.helper&&!m.equipment_hidden;mesh.frustumCulled=false;meshes.push(mesh);
     }
   }catch(e){for(const m of meshes)m.geometry.dispose();materials.forEach(m=>m.dispose());skeletons.forEach(s=>s.dispose());throw e;}
   root.scale.z=-1;root.updateMatrixWorld(true);skeletons.forEach(s=>s.update());
