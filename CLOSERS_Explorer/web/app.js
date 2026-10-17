@@ -73,6 +73,10 @@ $('cancel').onclick=async()=>{try{await api('/api/cancel',{});$('job-current').t
 $('extract-filtered').onclick=()=>extract();$('extract-selected').onclick=()=>{if(selected.size)extract([...selected]);};$('extract-one').onclick=()=>{if(activeId!==null)extract([activeId],true);};
 $('close-preview').onclick=()=>$('preview').close();$('preview').addEventListener('close',()=>{if($('preview').open)return;previewGeneration++;document.querySelectorAll('#preview audio').forEach(a=>{a.pause();a.removeAttribute('src');a.load();});activeId=null;activeResource=null;$('preview-content').replaceChildren();setBusy(running);});
 let searchTimer;$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;refresh();},250);};for(const key of ['detail','format','status','saved','duplicate'])$(key).onchange=()=>{page=1;refresh();};
+for(const key of ['saved','duplicate'])$(key).addEventListener('change',()=>{
+  const count=['saved','duplicate'].filter(id=>$(id).value).length;
+  $('advanced-filter-count').textContent=count?`${count}개 적용 중`:'';
+});
 for(const key of modelFilterKeys)$('library-model-'+key).onchange=()=>{page=1;groupValue=null;refresh();};
 $('prev').onclick=()=>{page--;refresh();};$('next').onclick=()=>{page++;refresh();};$('select-page').onchange=()=>{selected=$('select-page').checked?new Set(items.map(i=>i.id)):new Set();render();setBusy(running);};
 for(const kind of ['list','grid'])$(kind+'-mode').onclick=()=>{mode=kind;$('list-mode').classList.toggle('active',kind==='list');$('grid-mode').classList.toggle('active',kind==='grid');if($('group-axis').value&&groupValue===null)refresh();else render();};
