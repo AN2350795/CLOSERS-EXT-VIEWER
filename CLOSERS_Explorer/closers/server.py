@@ -261,6 +261,8 @@ def create_server(catalog, port=0):
     media = Media(catalog)
     from .composition import CompositionImages,resolve_sources
     composition = CompositionImages(catalog)
+    from .loading import LoadingData
+    loading = LoadingData(catalog)
     from .model_library import Models
     models = Models(catalog)
     token = secrets.token_urlsafe(32)
@@ -352,6 +354,13 @@ def create_server(catalog, port=0):
                     if query.get('preserved', '0') not in ('0', '1'):
                         raise ValueError('보존 데이터 삭제 옵션이 올바르지 않습니다.')
                     self.respond(reset.preview(query.get('preserved') == '1'))
+                elif url.path == '/api/loading-presets':
+                    self.respond(dict(items=loading.presets()))
+                elif url.path.startswith('/api/loading-plan/'):
+                    self.respond(loading.plan(int(url.path.rsplit('/',1)[1])))
+                elif url.path.startswith('/api/loading-atlas/'):
+                    row = catalog.get(int(url.path.rsplit('/',1)[1]))
+                    self.respond(dict(regions=loading.atlas(row['name'])))
                 elif url.path.startswith('/api/composition-source/'):
                     path,metadata = composition.prepare(int(url.path.rsplit('/',1)[1]))
                     self.respond(metadata)

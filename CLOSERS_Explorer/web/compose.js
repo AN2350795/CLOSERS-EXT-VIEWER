@@ -4,6 +4,7 @@ const Core=CompositionCore,images=new Map();
 let sourceSequence=0,layerSequence=0,selectedLayer=null,busy=false,pickerPage=1,pickerGeneration=0,searchTimer,toastTimer,canvasExplicit=false,drag=null;
 let composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1024,height:1024,transparent:true,color:'#172033'},sources:[],layers:[]};
 const roles={illustration:'일러스트',frame:'프레임',fragment:'조각'};
+let gamePlan=null,gamePresets=[],atlasRegions={};
 function node(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
 function toast(message){$('editor-toast').textContent=message;$('editor-toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('editor-toast').hidden=true,10000);}
 async function api(path,data){const response=await fetch(path,{headers:{'X-Explorer-Token':token,...(data?{'Content-Type':'application/json'}:{})},...(data?{method:'POST',body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'요청 실패');return result;}
@@ -12,7 +13,8 @@ function currentLayer(){return composition.layers.find(l=>l.id===selectedLayer);
 function snapshot(){return JSON.parse(JSON.stringify(composition));}
 function validateCurrent(){composition=Core.validate(composition);}
 function updateControls(){
-  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-width','canvas-height','canvas-transparent','canvas-color'])$(id).disabled=busy;
+  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-width','canvas-height','canvas-transparent','canvas-color','load-game-frames','game-frame'])$(id).disabled=busy;
+  $('apply-game-frame').disabled=busy||!$('game-frame').value;$('apply-game-mark').disabled=busy||!$('game-frame').value;
   $('save-template').disabled=busy||!composition.layers.some(l=>l.role!=='illustration');
   $('layer-fields').disabled=busy||!currentLayer();
   for(const id of ['layer-up','layer-down','duplicate-layer','remove-layer'])$(id).disabled=busy||!currentLayer();
@@ -28,6 +30,7 @@ function renderLayers(){
   }
 }
 function renderFields(){
+  atlasRegions={};$('atlas-region').replaceChildren(node('option','','전체 이미지'));$('atlas-region').firstChild.value='';
   const l=currentLayer();$('layer-fields').disabled=busy||!l;if(!l)return;
   for(const key of ['name','role','x','y','width','height'])$('layer-'+key).value=l[key];
   for(const key of ['x','y','width','height'])$('crop-'+key).value=l.crop[key];
@@ -35,6 +38,36 @@ function renderFields(){
   for(const id of ['layer-x','layer-y','layer-width','layer-height','layer-ratio','crop-x','crop-y','crop-width','crop-height','fit-layer','fill-layer','native-layer','reset-crop'])$(id).disabled=l.locked;
   const s=composition.sources.find(s=>s.key===l.source);$('layer-source').textContent=`원본 ${s.width} × ${s.height}px · ${s.name} · ${s.archive} · 항목 ${s.ordinal}`;
 }
+async function loadGameFrames(){
+  const result=await api('/api/loading-presets');gamePresets=result.items;
+  $('game-frame').replaceChildren();
+  for(const p of gamePresets){const option=node('option','',`${p.id} · ${p.image}${p.effects.trim()?' · 움직임':''}`);option.value=p.id;$('game-frame').append(option);}
+  $('game-frame-status').textContent=`게임 등록 프레임 ${gamePresets.length}개 · 선택 후 적용하세요.`;
+}
+async function applyGameFrame(mark=false){
+  const plan=await api('/api/loading-plan/'+Number($('game-frame').value));
+  if(mark&&!plan.mark)throw Error('연결된 마크가 없습니다.');
+  const definitions=mark?[{...plan.mark,name:'마크 · '+plan.mark.key,role:'fragment',x:0,y:0,width:plan.mark.crop.width,height:plan.mark.crop.height}]:plan.layers;
+  const next=snapshot(),staged=[],mapping=new Map();
+  if(!mark)next.layers=next.layers.filter(l=>!l.gameFrame);
+  if(next.layers.length+definitions.length>Core.MAX_LAYERS)throw Error('레이어는 최대 20개입니다.');
+  try{
+    for(const d of definitions)if(!mapping.has(d.entry_id)){const loaded=await loadSource(d.entry_id,null,staged);staged.push(loaded);mapping.set(d.entry_id,loaded.key);if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});}
+    const target=next.layers.find(l=>l.role==='illustration'),sx=(target?.width||next.canvas.width)/plan.width,sy=(target?.height||next.canvas.height)/plan.height;
+    for(const d of definitions)next.layers.push({id:'l'+(++layerSequence),source:mapping.get(d.entry_id),name:d.name,role:d.role,crop:d.crop,x:(target?.x||0)+d.x*sx,y:(target?.y||0)+d.y*sy,width:d.width*sx,height:d.height*sy,opacity:1,visible:true,locked:false,keepRatio:true,...(!mark?{gameFrame:true}:{})});
+    const used=new Set(next.layers.map(l=>l.source));next.sources=next.sources.filter(s=>used.has(s.key));
+    const checked=Core.validate(next);for(const s of staged)if(!s.reused)images.set(s.key,s.value);
+    composition=checked;selectedLayer=composition.layers.at(-1)?.id||null;gamePlan=plan;commit();
+    $('game-frame-status').textContent=plan.warnings.join(' ')||'게임 정의의 영역과 배치를 적용했습니다.';
+    $('editor-status').textContent=mark?'등록된 UV로 마크 하나를 추가했습니다. 위치를 조정하세요.':'일러스트 테두리에 게임 프레임을 적용했습니다.';
+  }catch(e){for(const s of staged)if(!s.reused)s.value.bitmap.close();throw e;}
+}
+$('load-game-frames').onclick=()=>operation(loadGameFrames);
+$('apply-game-frame').onclick=()=>operation(()=>applyGameFrame());
+$('apply-game-mark').onclick=()=>operation(()=>applyGameFrame(true));
+$('game-frame').onchange=updateControls;
+$('load-atlas').onclick=()=>operation(async()=>{const l=currentLayer(),s=images.get(l.source).metadata;const result=await api('/api/loading-atlas/'+s.entry_id);atlasRegions=result.regions;$('atlas-region').replaceChildren(node('option','','전체 이미지'));$('atlas-region').firstChild.value='';for(const key of Object.keys(atlasRegions)){const option=node('option','',key);option.value=key;$('atlas-region').append(option);}});
+$('atlas-region').onchange=()=>{const crop=atlasRegions[$('atlas-region').value];if(crop)changeLayer(l=>{l.crop={...crop};l.width=crop.width;l.height=crop.height;l.role='fragment';});};
 function renderCanvas(){
   const canvas=$('composition-canvas'),c=composition.canvas,available=Math.max(100,$('canvas-stage').clientWidth-4),scale=Math.min(1,available/c.width,650/c.height);
   canvas.width=Math.max(1,Math.round(c.width*scale));canvas.height=Math.max(1,Math.round(c.height*scale));

@@ -12,6 +12,10 @@
     <p id="editor-status" role="status">이미지를 추가하면 편집을 시작할 수 있습니다.</p>
     <div class="editor-layout">
       <section class="image-picker panel" aria-label="이미지 선택"><h2>라이브러리 이미지</h2>
+        <button id="load-game-frames" class="secondary">게임 등록 프레임 불러오기</button>
+        <label>등록 프레임<select id="game-frame"><option value="">게임 데이터를 먼저 불러오세요</option></select></label>
+        <button id="apply-game-frame" disabled>프레임 적용</button><button id="apply-game-mark" disabled class="secondary">연결 마크 추가</button>
+        <p id="game-frame-status" class="muted">게임의 TOP·BOT 배치와 마크 UV를 사용합니다.</p>
         <label for="image-query">파일명 · CMF 검색</label><input id="image-query" type="search" placeholder="DLG_FRAME, PORTRAIT…">
         <div class="picker-presets"><button id="find-illustrations" class="secondary">로딩 일러스트 후보</button><button id="find-frames" class="secondary">프레임 후보</button><button id="find-all" class="secondary">전체</button></div>
         <p class="muted">이름으로 찾은 후보입니다. 조합 용도는 직접 지정할 수 있습니다.</p>
@@ -26,6 +30,7 @@
         <div class="layer-actions"><button id="layer-up" class="secondary">앞으로</button><button id="layer-down" class="secondary">뒤로</button><button id="duplicate-layer" class="secondary">조각 복제</button><button id="remove-layer" class="secondary">삭제</button></div>
         <fieldset id="layer-fields" disabled><legend>선택 레이어</legend>
           <label>레이어 이름<input id="layer-name" maxlength="200"></label><label>용도<select id="layer-role"><option value="illustration">일러스트</option><option value="frame">프레임</option><option value="fragment">프레임 조각</option></select></label>
+          <button id="load-atlas" class="secondary" type="button">게임 UV 영역 불러오기</button><label>이미지 영역<select id="atlas-region"><option value="">전체 이미지</option></select></label>
           <div class="field-pair"><label>X<input id="layer-x" type="number" step="0.1"></label><label>Y<input id="layer-y" type="number" step="0.1"></label></div>
           <div class="field-pair"><label>너비<input id="layer-width" type="number" min="0.01" step="0.1"></label><label>높이<input id="layer-height" type="number" min="0.01" step="0.1"></label></div>
           <label><input id="layer-ratio" type="checkbox" checked> 크기 변경 시 비율 유지</label>

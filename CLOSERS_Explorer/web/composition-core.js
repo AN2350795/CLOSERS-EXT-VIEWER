@@ -33,6 +33,7 @@ globalThis.CompositionCore=(()=>{
         width:number(l.width,'배치 너비',.01,65536),height:number(l.height,'배치 높이',.01,65536),
         crop:{x,y,width:number(crop.width,'자르기 너비',.01,s.width-x),height:number(crop.height,'자르기 높이',.01,s.height-y)},
         opacity:number(l.opacity,'불투명도',0,1),visible:bool(l.visible,true),locked:bool(l.locked,false),keepRatio:bool(l.keepRatio,true)};
+      if(l.gameFrame!==undefined)result.gameFrame=bool(l.gameFrame,false);
       if(value.kind==='frame-template'&&result.role==='illustration')fail('프레임 템플릿에는 프레임·조각만 넣어 주세요.');
       return result;
     });
