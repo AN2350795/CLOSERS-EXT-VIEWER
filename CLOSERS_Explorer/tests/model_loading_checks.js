@@ -3,7 +3,8 @@ const until=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(r
 const originalFetch=window.fetch;
 let release,requested=false,fail=false;
 window.fetch=async (url,options)=>{
-  if(String(url).startsWith('/api/model-browser'))return new Response(JSON.stringify({total:0,items:[],facets:{character:[],kind:[],family:[],part:[],variant:[]}}));
+  if(String(url).startsWith('/api/model-browser'))return new Response(JSON.stringify({total:1,items:[{key:'CASTER|CLOTH_225_A',label:'시험 의상',character:'CASTER',count:1,parts:['HAIR']}],facets:{character:[],kind:[],family:[],part:[],variant:[]}}));
+  if(String(url).startsWith('/api/model-bundle'))return new Response(JSON.stringify({label:'시험 의상',character:'CASTER',evidence:'fixture',slots:[{part:'HAIR',variant:'BASE',label:'머리 · 기본 메시',checked:true,selected:null,candidates:[{id:1,name:'hair A',archive:'fixture',ordinal:0},{id:2,name:'hair B',archive:'fixture',ordinal:1}]}],face:{candidates:[]},motion:{candidates:[]},defaults:[]}));
   if(String(url).startsWith('/api/model-scene')){
     requested=true;await new Promise(r=>release=r);
     if(fail)return new Response(JSON.stringify({error:'시험 모델 열기 실패'}),{status:409});
@@ -25,5 +26,14 @@ try{
   fail=true;requested=false;pending=modelViewer.loadModel([2]);await until(()=>requested);release();await pending;
   check(!status.classList.contains('is-loading')&&viewport.getAttribute('aria-busy')==='false'&&status.textContent.includes('시험 모델 열기 실패'),'failure clears loading and explains error');
   check(modelViewer.state.ids[0]===1,'failed opening preserves previous model');
+  document.querySelector('#model-results button').click();await until(()=>!document.getElementById('avatar-bundle').hidden&&!modelViewer.state.busy);
+  const bundle=document.getElementById('avatar-bundle'),open=[...bundle.querySelectorAll('button')].find(b=>b.textContent==='묶음 열기');
+  requested=false;open.click();await until(()=>!modelViewer.state.busy);
+  check(status.textContent==='머리 · 기본 메시: 사용할 출처를 선택하세요.'&&status.classList.contains('is-notice'),'missing source uses shared notification');
+  check(getComputedStyle(status).position==='fixed'&&status.getBoundingClientRect().top===20&&!status.classList.contains('is-loading')&&!requested,'source notice appears at loading position without spinner or model request');
+  bundle.querySelector('.bundle-slot select').value='1';fail=false;open.click();await until(()=>requested);
+  check(status.classList.contains('is-loading')&&!status.classList.contains('is-notice'),'retry replaces notice with loading');
+  release();await until(()=>!modelViewer.state.busy);
+  check(!status.classList.contains('is-loading')&&!status.classList.contains('is-notice'),'successful retry clears notification');
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}
