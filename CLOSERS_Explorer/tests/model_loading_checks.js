@@ -29,8 +29,14 @@ try{
   document.querySelector('#model-results button').click();await until(()=>!document.getElementById('avatar-bundle').hidden&&!modelViewer.state.busy);
   const bundle=document.getElementById('avatar-bundle'),open=[...bundle.querySelectorAll('button')].find(b=>b.textContent==='묶음 열기');
   requested=false;open.click();await until(()=>!modelViewer.state.busy);
-  check(status.textContent==='머리 · 기본 메시: 사용할 출처를 선택하세요.'&&status.classList.contains('is-notice'),'missing source uses shared notification');
+  check(status.textContent.startsWith('머리 · 기본 메시: 사용할 출처를 선택하세요.')&&status.classList.contains('is-notice'),'missing source uses shared notification');
   check(getComputedStyle(status).position==='fixed'&&status.getBoundingClientRect().top===20&&!status.classList.contains('is-loading')&&!requested,'source notice appears at loading position without spinner or model request');
+  status.querySelector('.notice-close').click();
+  check(!status.classList.contains('is-notice')&&!status.querySelector('.notice-close')&&getComputedStyle(status).position!=='fixed','dismiss button closes the top notice');
+  open.click();await until(()=>!modelViewer.state.busy);check(status.classList.contains('is-notice'),'notice can be shown again');
+  await new Promise(r=>setTimeout(r,6100));
+  check(!status.classList.contains('is-notice')&&!status.querySelector('.notice-close'),'notice closes automatically after six seconds');
+  open.click();await until(()=>!modelViewer.state.busy);
   bundle.querySelector('.bundle-slot select').value='1';fail=false;open.click();await until(()=>requested);
   check(status.classList.contains('is-loading')&&!status.classList.contains('is-notice'),'retry replaces notice with loading');
   release();await until(()=>!modelViewer.state.busy);

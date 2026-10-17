@@ -8,11 +8,16 @@ const state={ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,
 let renderer,scene,camera,boneHelper;
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
-function status(text,notice=false){$('model-status').textContent=text;$('model-status').classList.toggle('is-notice',notice);}
+let noticeTimer;
+function closeNotice(){clearTimeout(noticeTimer);$('model-status').classList.remove('is-notice');$('model-status').querySelector('.notice-close')?.remove();}
+function status(text,notice=false){
+  closeNotice();$('model-status').textContent=text;
+  if(notice){const close=element('button','×');close.type='button';close.className='notice-close';close.setAttribute('aria-label','알림 닫기');close.onclick=closeNotice;$('model-status').append(close);$('model-status').classList.add('is-notice');noticeTimer=setTimeout(closeNotice,6000);}
+}
 function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));}
 async function api(url){const r=await fetch(url,{headers:{'X-Explorer-Token':token}});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
 function setBusy(value){state.busy=value;document.querySelectorAll('#model-results button:not(.favorite-button),#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value);$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;$('play-animation').disabled=value||!state.clip;$('animation-seek').disabled=value||!state.clip;}
-async function operation(fn){if(state.busy)return;$('model-status').classList.remove('is-notice');setBusy(true);try{await fn();}catch(e){status(e.message,true);}finally{setBusy(false);}}
+async function operation(fn){if(state.busy)return;closeNotice();setBusy(true);try{await fn();}catch(e){status(e.message,true);}finally{setBusy(false);}}
 function stop(){state.playing=false;$('play-animation').textContent='재생';}
 function updateTime(){const duration=state.clip?.clip.duration||0;$('animation-seek').max=duration||1;$('animation-seek').value=state.time;$('animation-time').textContent=`${state.time.toFixed(2)} / ${duration.toFixed(2)}초`;}
 function initRenderer(){
