@@ -24,6 +24,8 @@ try{
  check($('model-results').children.length===40,'40 results by default');
  const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
  check(first.querySelector('.model-open').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
+ check(first.getBoundingClientRect().height<=76&&first.querySelector('.actions button').checkVisibility(),'compact row keeps item actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
+ const initialStar=first.querySelector('.favorite-button');check(!initialStar.closest('details')&&initialStar.textContent==='☆'&&initialStar.getAttribute('aria-label').includes('즐겨찾기 추가'),'favorite is a visible icon with accessible action label');
  details.querySelector('summary').click();check(details.open&&details.querySelector('small').checkVisibility(),'details toggle reveals metadata');
  details.querySelector('summary').click();check(!details.open,'details can collapse again');
  state.busy=true;$('model-next').click();await until(()=>$('model-page').textContent.startsWith('2 /'));
@@ -71,8 +73,9 @@ try{
  check($('model-results').firstChild.classList.contains('is-selected'),'selected file badge');
  $('picker-expand').click();check(document.querySelector('.model-layout').classList.contains('picker-wide'),'expand picker');
  check($('avatar-bundle').closest('.model-info'),'bundle detail separated from list');
- const star=$('model-results').querySelector('.favorite-button');star.closest('details').open=true;star.click();
+ const star=$('model-results').querySelector('.favorite-button');check(star.checkVisibility()&&!star.closest('details'),'favorite stays outside metadata');star.click();
  check(star.getAttribute('aria-pressed')==='true'&&$('model-favorites').querySelector('button'),'favorite persisted and listed');
+ check(star.textContent==='★'&&star.getAttribute('aria-label').includes('즐겨찾기 해제'),'active favorite uses filled star and removal label');
  check(pickerMemory().data.favorites.length===1,'favorite stored');
  state.data={sources:[{name:'recent-file.X',entry_id:9,model_group:{character:'STRIKER'}}]};document.dispatchEvent(new Event('model-selection'));
  check($('model-recent').textContent.includes('recent-file.X'),'recent model recorded');
