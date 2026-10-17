@@ -57,11 +57,15 @@ async function connectAnimation(id){
   catch(e){$('animation-clip').replaceChildren(element('option','동작 연결 검증 실패'));$('animation-verification').textContent=e.message;throw e;}
 }
 async function loadModel(ids,skeleton=null){
-  status('모델을 읽는 중…');const data=await api('/api/model-scene?entries='+ids.join(',')+(skeleton?'&skeleton='+skeleton:''));const model=buildModel(data);disposeModel();state.ids=ids;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();const failed=await showTextures();resetCamera();
+  $('model-status').classList.add('is-loading');$('viewport').setAttribute('aria-busy','true');
+  try{
+  status(`모델 여는 중… · ${ids.length}개 파일의 데이터를 불러오고 있습니다.`);const data=await api('/api/model-scene?entries='+ids.join(',')+(skeleton?'&skeleton='+skeleton:''));const model=buildModel(data);disposeModel();state.ids=ids;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();status('모델 여는 중… · 텍스처를 적용하고 있습니다.');const failed=await showTextures();resetCamera();
+  status('모델 여는 중… · 게임 동작 연결을 확인하고 있습니다.');
   $('animation-choice').replaceChildren(element('p',data.animation.name));$('animation-choice').append(sourceSelector(data.animation,connectAnimation));$('animation-verification').textContent='연결할 XMD가 없거나 출처 선택이 필요합니다.';let animationError='';if(data.animation.selected){try{await connectAnimation(data.animation.selected);}catch(e){animationError=' · 동작: '+e.message;}}
   const vertices=data.meshes.reduce((s,m)=>s+m.vertices.length/3,0);status(`${ids.length}개 파일 · 메시 ${data.meshes.length}개 · 정점 ${vertices.toLocaleString()}개${data.equipment_visibility?.hidden.length?' · 장비 겹침 방지 '+data.equipment_visibility.hidden.length+'개 메시 숨김':''}${failed?' · 텍스처 확인 필요 '+failed+'개':''}${animationError}${data.warnings.length?' · '+data.warnings.join(' '):''}`);
   document.dispatchEvent(new Event('model-selection'));
   history.replaceState(null,'','/model?entries='+ids.join(',')+(skeleton?'&skeleton='+skeleton:''));
+  }finally{$('model-status').classList.remove('is-loading');$('viewport').setAttribute('aria-busy','false');}
 }
 async function chooseClip(index){
   stop();state.clip=null;state.time=0;updateTime();const a=state.animation;
