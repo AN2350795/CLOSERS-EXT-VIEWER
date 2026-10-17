@@ -161,9 +161,11 @@ class Media:
 
     @staticmethod
     def output_file(row):
-        if row.get('output') and row['status'] == 'extracted':
-            path = Path(row['output'])
-            if path.is_file() and path.stat().st_size == row['size']:
+        # A later failed extraction does not invalidate an earlier saved file.
+        # Keep raw encrypted bytes out of the original-format preview path.
+        if row.get('flag') != 2 and row['status'] != 'raw':
+            path = saved_file(row)
+            if path is not None and path.stat().st_size == row['size']:
                 return path
         return None
 

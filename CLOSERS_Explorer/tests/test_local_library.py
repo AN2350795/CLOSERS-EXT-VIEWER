@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from test_explorer import fixture
 from closers.catalog import Catalog
 from closers.library import PreservationLinks
-from closers.server import create_server, Jobs, reveal_saved_file
+from closers.server import create_server, Jobs, Media, reveal_saved_file
 
 
 class LocalLibraryTests(unittest.TestCase):
@@ -107,6 +107,39 @@ class LocalLibraryTests(unittest.TestCase):
             self.assertEqual(launch.call_args.args[0],['explorer.exe','/select,',str(path.resolve())])
             with self.assertRaises(ValueError):reveal_saved_file({'output':None})
             self.assertEqual(launch.call_count,1)
+
+    def test_http_saved_previews_survive_failed_offline_extraction(self):
+        payloads = {'image.png': b'\x89PNG\r\n\x1a\n'+bytes(32),
+                    'voice.wav': b'RIFF'+bytes(4)+b'WAVE'+bytes(32)}
+        source = fixture(self.root/'a.cmf', [(name, body, 0) for name, body in payloads.items()])
+        self.catalog.process([source], self.output)
+        source.unlink()
+        self.assertEqual(self.catalog.extract(self.output)['failed'], 2)
+        server = create_server(self.catalog)
+        thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+        base = f'http://127.0.0.1:{server.server_port}'
+        try:
+            with urlopen(base) as response:
+                token = re.search(r'name="explorer-token" content="([^"]+)"', response.read().decode())[1]
+            for row in self.catalog.entries({})['items']:
+                self.assertEqual(row['status'], 'error')
+                self.assertTrue(row['saved_exists'])
+                def request(path):
+                    return urlopen(Request(base+path, headers={'X-Explorer-Token': token}))
+                with request('/api/info/'+str(row['id'])) as response:
+                    self.assertIsNone(json.load(response)['preview_error'])
+                with request('/api/media/'+str(row['id'])) as response:
+                    self.assertEqual(response.read(), payloads[row['name']])
+                self.assertIsNone(Media.output_file(dict(row, flag=2)))
+                self.assertIsNone(Media.output_file(dict(row, status='raw')))
+                path = Path(row['output'])
+                partial = path.with_name(path.name+'.partial')
+                partial.write_bytes(payloads[row['name']])
+                self.assertIsNone(Media.output_file(dict(row, output=str(partial))))
+                path.write_bytes(b'truncated')
+                self.assertIsNone(Media.output_file(row))
+        finally:
+            server.shutdown(); thread.join(5); server.server_close()
 
     def test_http_original_download_offline_auth_and_preserved_bytes(self):
         dds=b'DDS '+bytes(124)
