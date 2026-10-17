@@ -79,7 +79,8 @@ class Models:
             from .model_visibility import apply_visibility
             self.catalog.game_names.refresh()
             deferred=[]
-            hidden=apply_visibility(parts,rows,self.catalog.game_names.model_rules,self.catalog.game_names.frame_patterns,deferred)
+            hidden=apply_visibility(parts,rows,self.catalog.game_names.model_rules,self.catalog.game_names.frame_patterns,deferred,
+                                    self.catalog.game_names.part_overrides)
             if skeleton_id is not None:
                 skeleton_row=self.catalog.get(int(skeleton_id))
                 skeleton_character=classify(skeleton_row['name'])['character']
@@ -141,7 +142,7 @@ class Models:
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
             for source,row in zip(sources,rows):source['model_group']=dict(classify(row['name']))
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
-                         equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns),hidden=hidden,deferred=deferred))
+                         equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))
             return scene
 
     def animations(self,skeleton_id,animation_id):

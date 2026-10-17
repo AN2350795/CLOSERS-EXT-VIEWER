@@ -8,7 +8,7 @@ import math
 import re
 import struct
 
-from .model_groups import classify
+from .model_groups import classify,LABELS
 
 
 def frame_patterns(body):
@@ -76,7 +76,52 @@ def model_rule(values):
     return dict(priority=priority,groups=groups)
 
 
-def apply_visibility(parts,rows,rules,patterns,deferred=None):
+def part_overrides(values):
+    """Seven equipment-part exclusions, separate from mesh-group priority."""
+    result=set()
+    for raw in values[26:33]:
+        if raw in ('',0):continue
+        if not isinstance(raw,str):raise ValueError('모델 숨김 부위 형식이 잘못되었습니다.')
+        raw=raw.strip()
+        if not raw:continue
+        if not raw.startswith('EP_AVATAR_'):raise ValueError('모델 숨김 부위 식별자가 잘못되었습니다.')
+        part=raw.removeprefix('EP_AVATAR_').removeprefix('DEFENCE_')
+        if part not in LABELS['part'] or part=='unknown':raise ValueError('미지원 모델 숨김 부위입니다: '+raw)
+        result.add(part)
+    return sorted(result)
+
+
+def overridden_parts(rows,overrides):
+    # BASE, ALPHA and DYE belonging to one item are a single owner. Excluding
+    # one's own slot must not hide one's own supplements or the whole outfit.
+    owners={};members={}
+    for row in rows:
+        owner=classify(row['name'])
+        if owner['kind']!='avatar' or not owner['character']:continue
+        identity=(owner['character'],owner['set_name'],owner['part'],owner['item_code'])
+        owners[identity]=owner
+        members.setdefault(identity,[]).append(row)
+    edges={identity:set() for identity in owners}
+    for identity,owner in owners.items():
+        blocked={part for row in members[identity] for part in overrides.get(row['name'].upper(),[])}
+        edges[identity]={other for other,target in owners.items() if other!=identity and
+                         target['character']==owner['character'] and target['part'] in blocked}
+    remaining=set(owners);hidden={}
+    while remaining:
+        targets={target for source in remaining for target in edges[source]&remaining}
+        roots=remaining-targets
+        if not roots:break  # A cycle has no proven winner; preserve its geometry.
+        removed=set()
+        for source in sorted(roots):
+            for target in sorted(edges[source]&remaining):
+                replacement=min(r['id'] for r in members[source])
+                for row in members[target]:hidden.setdefault(row['id'],replacement)
+                removed.add(target)
+        remaining-=roots|removed
+    return hidden
+
+
+def apply_visibility(parts,rows,rules,patterns,deferred=None,overrides=None):
     """Annotate all meshes, preserving bytes/topology and hidden geometry."""
     def eyebrow(part,mesh):
         frame=part['frames'][mesh['frame']]['name'] if mesh['frame']>=0 else mesh['name']
@@ -88,8 +133,10 @@ def apply_visibility(parts,rows,rules,patterns,deferred=None):
         return {s['bone'] for s in mesh.get('skin',[])
                 if any(i in used and w>0 for i,w in zip(s['indices'],s['weights']))}
 
-    maximum={};selected={row['name'].upper() for row in rows}
+    suppressed=overridden_parts(rows,overrides or {})
+    maximum={};selected={row['name'].upper() for row in rows if row['id'] not in suppressed}
     for row in rows:
+        if row['id'] in suppressed:continue
         name=row['name'].upper();rule=rules.get(name)
         if rule:
             # The picker permits partial BASE-only views of dyeable outfits.
@@ -106,6 +153,11 @@ def apply_visibility(parts,rows,rules,patterns,deferred=None):
         # Unknown owner priority cannot safely participate in priority culling.
         for mesh in part['meshes']:
             mesh['equipment_hidden']=False
+            if row['id'] in suppressed:
+                mesh['equipment_hidden']=True
+                hidden.append(dict(entry_id=row['id'],mesh=mesh['name'],reason='part_override',
+                                   replacement_entry_id=suppressed[row['id']]))
+                continue
             if rule is None:continue
             frame=part['frames'][mesh['frame']]['name'] if mesh['frame']>=0 else mesh['name']
             ident=next((ident for prefix,ident in patterns if frame.startswith(prefix)),0)
@@ -120,7 +172,7 @@ def apply_visibility(parts,rows,rules,patterns,deferred=None):
     face_bones={};other_bones={}
     for part,row in zip(parts,rows):
         owner=classify(row['name'])
-        if owner['kind']!='avatar' or owner['part']!='FACE':continue
+        if row['id'] in suppressed or owner['kind']!='avatar' or owner['part']!='FACE':continue
         for mesh in part['meshes']:
             target=face_bones if eyebrow(part,mesh) else other_bones
             target.setdefault(owner['character'],set()).update(skin_bones(mesh))

@@ -7,7 +7,7 @@ import struct
 import tempfile
 import unittest
 
-from closers.model_visibility import frame_patterns,model_rule,apply_visibility
+from closers.model_visibility import frame_patterns,model_rule,part_overrides,apply_visibility
 from closers.catalog import Catalog
 from closers.model_library import Models
 from test_explorer import fixture
@@ -33,6 +33,48 @@ def lua_patterns(patterns):
 
 
 class ModelVisibilityTests(unittest.TestCase):
+    def test_part_reference_columns_are_separate_from_group_priority(self):
+        values=[0]*36;values[26:33]=['EP_AVATAR_DEFENCE_UPBODY','EP_AVATAR_DEFENCE_LOWBODY','EP_AVATAR_DEFENCE_FOOT','EP_AVATAR_DEFENCE_HAND','',' ','']
+        self.assertEqual(part_overrides(values),['FOOT','HAND','LOWBODY','UPBODY'])
+        values[26]='EP_AVATAR_UNKNOWN'
+        with self.assertRaises(ValueError):part_overrides(values)
+
+    def test_suit_hides_entire_parts_and_supplements_in_either_order(self):
+        suit='300818518_GUST_USER_ARMS_PROMOTION_03_EP_AVATAR_ONE_PIECE.X'
+        names=[suit]+[f'{i}_GUST_USER_ARMS_BASIC_EP_AVATAR_DEFENCE_{part}.X' for i,part in enumerate(
+            ['UPBODY','UPBODY_ALPHA','UPBODY_DYE','LOWBODY','FOOT','HAND','HAIR','FACE'])]
+        names.append('999_GUST_USER_CASTER_BASIC_EP_AVATAR_DEFENCE_UPBODY.X')
+        rows=[dict(id=i,name=n) for i,n in enumerate(names)]
+        original=[dict(frames=[],meshes=[dict(name='surface',frame=-1),dict(name='extra',frame=-1)]) for _ in rows]
+        overrides={suit:['UPBODY','LOWBODY','FOOT','HAND']}
+        for reverse in (False,True):
+            parts=copy.deepcopy(original);selected=rows.copy()
+            if reverse:parts.reverse();selected.reverse()
+            hidden=apply_visibility(parts,selected,{},[],overrides=overrides)
+            self.assertEqual({h['entry_id'] for h in hidden},set(range(1,7)))
+            self.assertTrue(all(h['reason']=='part_override' and h['replacement_entry_id']==0 for h in hidden))
+            for part,row in zip(parts,selected):self.assertEqual(all(m['equipment_hidden'] for m in part['meshes']),row['id'] in range(1,7))
+        parts=copy.deepcopy(original[1:])
+        self.assertFalse(apply_visibility(parts,rows[1:],{},[],overrides=overrides))
+
+    def test_overrides_keep_own_supplements_and_ignore_suppressed_owners(self):
+        def name(part,code=1):return f'{code}_GUST_USER_ARMS_PROMOTION_03_EP_AVATAR_DEFENCE_{part}.X'
+        names=[name('HAIR'),name('HAIR_ALPHA'),name('UPBODY',2),name('LOWBODY',3)]
+        rows=[dict(id=i,name=n) for i,n in enumerate(names)]
+        def parts():return [dict(frames=[],meshes=[dict(name='surface',frame=-1)]) for _ in rows]
+        # A self-slot exclusion keeps ALPHA; an overridden upper cannot hide lower.
+        overrides={names[0]:['HAIR','UPBODY'],names[2]:['LOWBODY']}
+        hidden=apply_visibility(parts(),rows,{},[],overrides=overrides)
+        self.assertEqual({h['entry_id'] for h in hidden},{2})
+        # Conflicting mutual rules have no data-proven winner.
+        overrides={names[0]:['UPBODY'],names[2]:['HAIR']}
+        self.assertFalse(apply_visibility(parts(),rows,{},[],overrides=overrides))
+        # Group priority from the hidden upper must not cull the remaining lower.
+        p=parts();p[3]['frames']=[dict(name='EQ_LEG')];p[3]['meshes'][0]['frame']=0
+        rules={names[2]:dict(priority=1,groups=[1]),names[3]:dict(priority=0,groups=[])}
+        hidden=apply_visibility(p,rows,rules,[['EQ_LEG',1]],overrides={names[0]:['UPBODY']})
+        self.assertEqual({h['entry_id'] for h in hidden},{2})
+
     def test_static_lua_constructor_preserves_prefix_order(self):
         patterns=[['EQ_LEG2',2],['WSM_EQ_LEG2',2],['EQ_LEG',1]]
         body=lua_patterns(patterns)

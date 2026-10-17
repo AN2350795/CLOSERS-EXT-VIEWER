@@ -27,6 +27,7 @@ class GameNames:
         self.model_rules={}
         self.frame_patterns=[]
         self.icons={}
+        self.part_overrides={}
 
     def refresh(self):
         with self.lock:
@@ -42,9 +43,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={};model_rules={};frame_patterns=[];icons={}
+            labels={};model_rules={};frame_patterns=[];icons={};part_rules={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -62,15 +63,19 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_icons'").fetchone():
                             for filename,name,digest in db.execute('SELECT filename,name,sha256 FROM model_icons'):
                                 icons[filename]=dict(name=name,sha256=digest)
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_part_overrides'").fetchone():
+                            for filename,parts in db.execute('SELECT filename,parts_json FROM model_part_overrides'):
+                                part_rules[filename]=json.loads(parts)
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_visibility'").fetchone():
                             meta=db.execute("SELECT value FROM metadata WHERE key='model_frame_patterns'").fetchone()
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
+            self.part_overrides=part_rules
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -81,7 +86,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -118,7 +123,7 @@ def build_index(workspace,executable,progress=None,cancel=None):
 def _build(workspace,executable,progress,cancel=None):
     from .cmf import Archive,Entry
     from .model_groups import classify
-    from .model_visibility import frame_patterns,model_rule
+    from .model_visibility import frame_patterns,model_rule,part_overrides
     from .cmf import Cancelled
     def check_cancel():
         if cancel is not None and cancel.is_set():raise Cancelled()
@@ -153,7 +158,7 @@ def _build(workspace,executable,progress,cancel=None):
         source_hashes[row['name']]=digest
         sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
         selected.setdefault(row['name'],(dict(row),stored))
-    strings={};items={};models=[];counts={};visibility=defaultdict(set);patterns=[]
+    strings={};items={};models=[];counts={};visibility=defaultdict(set);part_visibility=defaultdict(set);patterns=[]
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),kv[0])):
         check_cancel()
@@ -180,6 +185,7 @@ def _build(workspace,executable,progress,cancel=None):
                     if filename.upper().endswith('.X') and 'EP_AVATAR' in filename.upper():
                         models.append((values[0],values[1],filename,name))
                         visibility[filename.upper()].add(json.dumps(model_rule(values),sort_keys=True))
+                        part_visibility[filename.upper()].add(json.dumps(part_overrides(values)))
             else:
                 item_id=values[1];value=(values[2],values[3],values[11],name,values[5])
                 if item_id in items and items[item_id]!=value:raise ValueError('아이템 번호가 충돌합니다: '+str(item_id))
@@ -198,6 +204,10 @@ def _build(workspace,executable,progress,cancel=None):
             db.execute('CREATE TABLE model_visibility(filename TEXT PRIMARY KEY,priority INTEGER NOT NULL,groups_json TEXT NOT NULL)')
             db.execute('CREATE TABLE model_icons(filename TEXT PRIMARY KEY,name TEXT NOT NULL,sha256 TEXT NOT NULL)')
             db.execute('CREATE TABLE icon_images(sha256 TEXT PRIMARY KEY,data BLOB NOT NULL)')
+            db.execute('CREATE TABLE model_part_overrides(filename TEXT PRIMARY KEY,parts_json TEXT NOT NULL)')
+            for filename,choices in part_visibility.items():
+                if len(choices)==1 and next(iter(choices))!='[]':
+                    db.execute('INSERT INTO model_part_overrides VALUES(?,?)',(filename,next(iter(choices))))
             icon_names=defaultdict(set)
             for filename,rules in visibility.items():
                 # Shared filenames can represent items with incompatible settings.
@@ -229,7 +239,7 @@ def _build(workspace,executable,progress,cancel=None):
         check_cancel()
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
-    return dict(tables=len(selected),models=total,icons=icons,rows=counts,index=str(workspace/'game-names.sqlite3'))
+    return dict(tables=len(selected),models=total,icons=icons,part_overrides=sum(len(v)==1 and next(iter(v))!='[]' for v in part_visibility.values()),rows=counts,index=str(workspace/'game-names.sqlite3'))
 
 
 def _build_icons(workspace,index,icon_names,sources,progress,check_cancel):

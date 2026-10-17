@@ -143,8 +143,9 @@ class NtfTests(unittest.TestCase):
         name='123_GUST_USER_CASTER_CLOTH_225_A_EP_AVATAR_DEFENCE_UPBODY.X'
         strings=table((5,8,8),[(1,'NAME_A','이슬비 시험 의상 [A타입]'),(2,'NAME_B','이슬비 시험 의상 [B타입]')])
         strings=strings[:20]+encrypt(strings[20:])
-        types=(5,8,8,8,8)+(12,)*28+(4,8,8)
+        types=(5,8,8,8,8)+(12,)*21+(8,)*7+(4,8,8)
         model_values=[100,'GUST_INVALID',name,'','',*([0]*31)]
+        model_values[26:33]=['EP_AVATAR_DEFENCE_FOOT','','','','','','']
         model_values[33:]=[1,'2','']
         model_other=model_values.copy();model_other[0]=101
         models=table(types,[model_values,model_other])
@@ -166,6 +167,7 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(row['name'],name)
             self.assertEqual(row['game_name_count'],2)
             self.assertEqual(catalog.game_names.model_rules[name.upper()],dict(priority=1,groups=[2]))
+            self.assertEqual(catalog.game_names.part_overrides[name.upper()],['FOOT'])
             self.assertEqual(catalog.game_names.frame_patterns,[['EQ_LEG2',2],['EQ_LEG',1]])
             # The web job uses the same source-based builder without a CLI step.
             from closers.server import Jobs
@@ -194,6 +196,7 @@ class NtfTests(unittest.TestCase):
             source.write_bytes(source.read_bytes()+b'changed')
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],0)
             self.assertFalse(catalog.game_names.model_rules)
+            self.assertFalse(catalog.game_names.part_overrides)
             source.unlink()
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],1)
             with self.assertRaises(ValueError):ntf.restore(packed(b'abc'),2,key,iv)
