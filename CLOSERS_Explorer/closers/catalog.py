@@ -623,7 +623,9 @@ class Catalog:
                             candidate = safe_target(output, recorded.relative_to(output))
                         else:
                             candidate = target
-                        if candidate.is_file() and row['output'] == str(candidate) and row['sha256']:
+                        # Explicit retries must read the source again: hashing the
+                        # saved output alone cannot detect metadata-preserving edits.
+                        if not retry_errors and candidate.is_file() and row['output'] == str(candidate) and row['sha256']:
                             stage = 'verify'
                             meta = candidate.stat()
                             metadata_matches = (row['output_size'], row['output_mtime']) == (meta.st_size, meta.st_mtime_ns)

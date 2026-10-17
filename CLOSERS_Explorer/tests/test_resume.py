@@ -47,6 +47,41 @@ catalog.Catalog(sys.argv[1]).extract(sys.argv[2])
         self.assertEqual([p for p in self.output.rglob('*') if p.is_file()], files)
         self.assertEqual(self.catalog.extract(self.output)['skipped'], 1)
 
+    def test_forced_retry_reads_changed_source_with_identical_metadata(self):
+        source = fixture(self.root / 'a.cmf', [('a.txt', b'old', 0)])
+        self.catalog.process([source], self.output)
+        original = self.catalog.entries({})['items'][0]
+        meta = source.stat()
+        fixture(source, [('a.txt', b'new', 0)])
+        os.utime(source, ns=(meta.st_atime_ns, meta.st_mtime_ns))
+        self.catalog.scan([source], retry_errors=True)
+        for verify in ('sha256', 'fast'):
+            with self.subTest(verify=verify):
+                result = self.catalog.extract(self.output, verify=verify, retry_errors=True)
+                row = self.catalog.get(original['id'])
+                self.assertEqual(result['failed'], 0)
+                self.assertEqual(result['skipped'], 0)
+                self.assertEqual(Path(row['output']).read_bytes(), b'new')
+                self.assertEqual(row['sha256'], file_hash(row['output']))
+                self.assertEqual(Path(original['output']).read_bytes(), b'old')
+        files = [p for p in self.output.rglob('*') if p.is_file()]
+        self.assertEqual(len(files), 2)
+        self.assertEqual(self.catalog.extract(self.output)['skipped'], 1)
+
+    def test_parallel_forced_retry_reads_source_and_reuses_identical_output(self):
+        source = fixture(self.root / 'a.cmf', [('a.txt', b'old', 0)])
+        self.catalog.process([source], self.output)
+        meta = source.stat()
+        fixture(source, [('a.txt', b'new', 0)])
+        os.utime(source, ns=(meta.st_atime_ns, meta.st_mtime_ns))
+        result = self.catalog.process([source], self.output, workers=2, retry_errors=True)
+        row = self.catalog.entries({})['items'][0]
+        self.assertEqual(result['failed'], 0)
+        self.assertEqual(Path(row['output']).read_bytes(), b'new')
+        result = self.catalog.process([source], self.output, workers=2, retry_errors=True)
+        self.assertEqual(result['recovered'], 1)
+        self.assertEqual(self.catalog.get(row['id'])['output'], row['output'])
+
     def test_user_change_conflict_is_reused_on_subsequent_resume(self):
         source = fixture(self.root / 'a.cmf', [('a.txt', b'payload', 1)])
         self.catalog.scan([source])
