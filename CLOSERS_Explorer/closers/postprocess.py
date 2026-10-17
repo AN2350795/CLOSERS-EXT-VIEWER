@@ -53,7 +53,7 @@ class Step:
     run: Callable
 
 
-STEPS = (Step('game-data', '게임 이름·장비 메시 표시 규칙', build_game_data),)
+STEPS = (Step('game-data', '게임 이름·아이템 아이콘·장비 메시 표시 규칙', build_game_data),)
 
 
 def validate_options(options):

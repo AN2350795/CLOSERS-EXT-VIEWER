@@ -329,6 +329,8 @@ def create_server(catalog, port=0):
                     self.respond(models.groups.facets(query))
                 elif url.path == '/api/model-browser':
                     self.respond(models.groups.browse(query))
+                elif url.path.startswith('/api/model-icon/'):
+                    self.respond(catalog.game_names.icon_image(url.path.rsplit('/',1)[1]),'image/png')
                 elif url.path == '/api/model-list':
                     self.respond(models.groups.entries(query))
                 elif url.path == '/api/model-sets':

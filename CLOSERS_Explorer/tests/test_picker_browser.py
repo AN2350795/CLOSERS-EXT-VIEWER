@@ -30,7 +30,15 @@ class PickerBrowserTests(unittest.TestCase):
                 pass
 
             def do_GET(self):
-                if self.path == '/checks':
+                if self.path.startswith('/api/model-icon/'+'a'*64):
+                    from test_composition import png
+                    data=png(4,4,lambda x,y:(0,200,0,255))
+                    self.send_response(200)
+                    self.send_header('Content-Type','image/png')
+                    self.send_header('Content-Length',str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+                elif self.path == '/checks':
                     html = (web / 'model.html').read_text(encoding='utf-8')
                     html = html.replace('<script type="module" src="/model.js"></script>',
                         '<script type="module">' + script + '</script>')

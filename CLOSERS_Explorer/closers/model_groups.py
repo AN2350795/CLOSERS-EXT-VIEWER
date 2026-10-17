@@ -132,6 +132,13 @@ class ModelGroups:
             parts=sorted({r['part'] for r in rows})
             items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
                               count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts]))
+            # A set thumbnail represents one observed item, never a full outfit illustration.
+            for part in ('ONE_PIECE','UPBODY','HAIR','WEAPON','LOWBODY','FOOT','HAND'):
+                icons={r['item_icon']['sha256']:r['item_icon'] for r in rows
+                       if r['part']==part and r['variant']=='BASE' and r.get('item_icon')}
+                if len(icons)==1:
+                    items[-1]['item_icon']=dict(next(iter(icons.values())),part_label=LABELS['part'].get(part,part))
+                    break
         return self.paginate(items,filters)
 
     @staticmethod

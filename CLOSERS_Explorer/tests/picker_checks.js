@@ -91,6 +91,12 @@ try{
  const image=previewRow.querySelector('img');await image.decode();const canvas=document.createElement('canvas');canvas.width=160;canvas.height=180;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);const pixels=ctx.getImageData(0,0,160,180).data;
  check(pixels.some((v,i)=>i%4===0&&v>200&&pixels[i+1]<40),'preview contains rendered triangle');
  const ambiguous=element('div');ambiguous.className='model-row';$('model-results').append(ambiguous);previews.attach(ambiguous,{key:'ambiguous',label:'ambiguous'},'sets','existing');
- ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('출처 선택 필요'));check(sceneRequests===1,'ambiguous preview never chooses source');previews.reset();
+ ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('출처 선택 필요'));check(sceneRequests===1,'ambiguous preview never chooses source');
+ const iconRow=element('div');iconRow.className='model-row';$('model-results').append(iconRow);previews.attach(iconRow,{key:'icon-outfit',label:'Icon outfit',item_icon:{sha256:'a'.repeat(64),part_label:'상의'}},'sets','existing');
+ iconRow.scrollIntoView();await until(()=>iconRow.querySelector('img'));await iconRow.querySelector('img').decode();
+ check(sceneRequests===1&&iconRow.querySelector('.is-item-icon')&&iconRow.textContent.includes('상의 아이콘')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon bypasses 3D rendering and identifies representative part');
+ const unavailable=element('div');unavailable.className='model-row';$('model-results').append(unavailable);previews.attach(unavailable,{id:2,name:'unavailable icon',item_icon:{sha256:'b'.repeat(64)}},'files','existing');
+ unavailable.scrollIntoView();await until(()=>unavailable.querySelector('img'));
+ check(sceneRequests===2&&!unavailable.querySelector('.is-item-icon')&&unavailable.querySelector('img').alt.includes('3D'),'unavailable item icon falls back to 3D preview');previews.reset();
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(element('pre',e.stack));}

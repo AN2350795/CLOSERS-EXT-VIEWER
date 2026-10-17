@@ -15,6 +15,7 @@ from closers.model_groups import ModelGroups
 from test_explorer import fixture
 from test_model import binary_model
 from test_model_visibility import lua_patterns
+from test_composition import png
 
 
 def table(types,records):
@@ -31,6 +32,82 @@ def table(types,records):
 
 
 class NtfTests(unittest.TestCase):
+    def test_icons_from_fresh_model_only_extraction_and_offline_http(self):
+        try:from Crypto.Cipher import AES
+        except ImportError:self.skipTest('optional pycryptodome needed for index generation test')
+        import re,threading
+        from urllib.request import Request,urlopen
+        from urllib.error import HTTPError
+        from closers.server import create_server,Jobs
+        key=bytes(range(32));iv=bytes(range(16))
+        def encrypt(value):
+            pad=16-len(value)%16
+            return base64.b64encode(AES.new(key,AES.MODE_CBC,iv).encrypt(value+bytes([pad])*pad))
+        name='123_GUST_USER_CASTER_CLOTH_225_A_EP_AVATAR_DEFENCE_UPBODY.X'
+        strings=table((5,8,8),[(1,'NAME_A','시험 상의 A'),(2,'NAME_B','시험 상의 B')])
+        strings=strings[:20]+encrypt(strings[20:])
+        model_types=(5,8,8,8,8)+(12,)*28+(4,8,8)
+        model=[100,'GUST_USER_CASTER',name,'','',*([0]*31)];model[33:]=[1,'','']
+        other=model.copy();other[0]=101
+        item_types=(8,5,8,8,8,8,8)+(12,)*4+(8,)+(12,)*194
+        items=table(item_types,[('CVN',100,'NAME_A','CLOTH_225_A','','EXACT.PNG','',*([0]*4),'GUST_USER_CASTER',*([0]*194)),
+                               ('CVN',101,'NAME_B','CLOTH_225_B','','OTHER.PNG','',*([0]*4),'GUST_USER_CASTER',*([0]*194))])
+        image=png(4,4);other_image=png(4,4,lambda x,y:(0,0,255,255))
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work');exe=root/'CW.EXE';exe.write_bytes(b'test')
+            tables=fixture(root/'tables.cmf',[(n,b,1,encrypt(zlib.compress(b))) for n,b in [
+                ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',table(model_types,[model,other])),('ITEM_TEMPLET.NTF',items)]])
+            images=fixture(root/'images.cmf',[('EXACT.PNG',image,1),('OTHER.PNG',other_image,1)])
+            models=fixture(root/'models.cmf',[(name,binary_model(),1)])
+            catalog.scan([tables,images,models])
+            jobs=Jobs(catalog)
+            with patch.object(ntf,'script_keys',return_value=(key,iv)):
+                jobs.start('extract',dict(output=str(root/'assets'),filters={'category':'models'},
+                                         postprocess={'enabled':True,'executable':str(exe)}))
+                jobs.thread.join(10)
+            self.assertFalse(jobs.thread.is_alive())
+            self.assertEqual(jobs.snapshot()['status'],'completed',jobs.snapshot())
+            self.assertEqual(jobs.snapshot()['result']['postprocess']['steps'][0]['result']['icons'],1)
+            rows=catalog.entries({})['items']
+            self.assertTrue(next(r for r in rows if r['name']==name)['saved_exists'])
+            self.assertFalse(any(r['saved_exists'] for r in rows if r['format']=='png'))
+            groups=ModelGroups(catalog)
+            icon=groups.entries({})['items'][0]['item_icon']
+            self.assertEqual(icon,dict(name='EXACT.PNG',sha256=hashlib.sha256(image).hexdigest()))
+            self.assertEqual(groups.sets({})['items'][0]['item_icon']['part_label'],'상의')
+            # Index includes bytes, so a new server works without the source CMFs.
+            for path in (tables,images,models):path.unlink()
+            catalog=Catalog(root/'work');server=create_server(catalog);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+            try:
+                base=f'http://127.0.0.1:{server.server_port}'
+                token=re.search(r'name="explorer-token" content="([^"]+)"',urlopen(base+'/model').read().decode())[1]
+                endpoint=base+'/api/model-icon/'+icon['sha256']
+                with self.assertRaises(HTTPError) as error:urlopen(endpoint)
+                self.assertEqual(error.exception.code,403)
+                with urlopen(Request(endpoint,headers={'X-Explorer-Token':token})) as response:
+                    self.assertEqual(response.headers.get_content_type(),'image/png');self.assertEqual(response.read(),image)
+                with self.assertRaises(HTTPError):urlopen(Request(base+'/api/model-icon/'+'0'*64,headers={'X-Explorer-Token':token}))
+            finally:server.shutdown();server.server_close();thread.join()
+
+    def test_icon_ambiguity_duplicate_contents_missing_and_changed_source(self):
+        from closers.game_names import _build_icons
+        from test_composition import png
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work');image=png(2,2)
+            a=fixture(root/'a.cmf',[('SAME.PNG',image,1),('CONFLICT.PNG',image,1),('BAD.PNG',b'bad png',1)])
+            b=fixture(root/'b.cmf',[('SAME.PNG',image,1),('CONFLICT.PNG',png(2,2,lambda x,y:(0,0,0,255)),1)])
+            catalog.scan([a,b])
+            index=sqlite3.connect(':memory:')
+            self.addCleanup(index.close)
+            index.executescript('CREATE TABLE model_icons(filename TEXT,name TEXT,sha256 TEXT); CREATE TABLE icon_images(sha256 TEXT PRIMARY KEY,data BLOB);')
+            names={'same.X':{'SAME.PNG'},'conflict.X':{'CONFLICT.PNG'},'missing.X':{'MISSING.PNG'},'bad.X':{'BAD.PNG'},'types.X':{'SAME.PNG','CONFLICT.PNG'}}
+            self.assertEqual(_build_icons(catalog.workspace,index,names,[],lambda **kw:None,lambda:None),1)
+            self.assertEqual(index.execute('SELECT filename FROM model_icons').fetchall(),[('same.X',)])
+            self.assertEqual(index.execute('SELECT COUNT(*) FROM icon_images').fetchone()[0],1)
+            a.write_bytes(a.read_bytes()+b'changed')
+            with self.assertRaisesRegex(ValueError,'재분석'):
+                _build_icons(catalog.workspace,index,names,[],lambda **kw:None,lambda:None)
+
     def test_row_boundaries_unicode_and_unknown_types(self):
         body=table((5,8,8),[(123,'ST_ITEM_TEST','시험 의상'),(124,'KEY','😀')])
         self.assertEqual(list(ntf.rows(body))[1],[124,'KEY','😀'])

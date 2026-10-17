@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import struct
 import threading
 import uuid
 
@@ -25,6 +26,7 @@ class GameNames:
         self.labels={}
         self.model_rules={}
         self.frame_patterns=[]
+        self.icons={}
 
     def refresh(self):
         with self.lock:
@@ -40,9 +42,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.model_rules={};self.frame_patterns=[];self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={};model_rules={};frame_patterns=[]
+            labels={};model_rules={};frame_patterns=[];icons={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -57,14 +59,18 @@ class GameNames:
                         labels=defaultdict(list)
                         for filename,label,priority in db.execute('SELECT filename,label,MAX(priority) p FROM names GROUP BY filename,label ORDER BY filename,p DESC,label'):
                             labels[filename].append(label)
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_icons'").fetchone():
+                            for filename,name,digest in db.execute('SELECT filename,name,sha256 FROM model_icons'):
+                                icons[filename]=dict(name=name,sha256=digest)
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_visibility'").fetchone():
                             meta=db.execute("SELECT value FROM metadata WHERE key='model_frame_patterns'").fetchone()
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
+            self.icons=icons
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -75,13 +81,25 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.version=(self.file_version,'stale');break
+
+    def icon_image(self,digest):
+        with self.lock:
+            self.refresh()
+            if not re.fullmatch(r'[0-9a-f]{64}',digest) or not self.icons:
+                raise ValueError('사용 가능한 아이템 아이콘이 없습니다. 후처리를 다시 실행해 주세요.')
+            with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
+                row=db.execute('SELECT data FROM icon_images WHERE sha256=?',(digest,)).fetchone()
+            if not row:raise ValueError('아이템 아이콘을 찾을 수 없습니다.')
+            return row[0]
 
     def text(self,name):
         return '\n'.join(self.labels.get(name.replace('\\','/').rsplit('/',1)[-1].upper(),()))
 
     def decorate(self,row):
-        labels=self.labels.get(row['name'].replace('\\','/').rsplit('/',1)[-1].upper(),())
+        filename=row['name'].replace('\\','/').rsplit('/',1)[-1].upper()
+        labels=self.labels.get(filename,())
+        if filename in self.icons:row['item_icon']=dict(self.icons[filename])
         if labels:
             row['game_names']=list(labels[:100])
             row['game_name_count']=len(labels)
@@ -163,7 +181,7 @@ def _build(workspace,executable,progress,cancel=None):
                         models.append((values[0],values[1],filename,name))
                         visibility[filename.upper()].add(json.dumps(model_rule(values),sort_keys=True))
             else:
-                item_id=values[1];value=(values[2],values[3],values[11],name)
+                item_id=values[1];value=(values[2],values[3],values[11],name,values[5])
                 if item_id in items and items[item_id]!=value:raise ValueError('아이템 번호가 충돌합니다: '+str(item_id))
                 items[item_id]=value
         progress(current=name,rows=counts[name])
@@ -178,6 +196,9 @@ def _build(workspace,executable,progress,cancel=None):
                     PRIMARY KEY(filename,label,item_id,item_table,model_table));
                 CREATE INDEX by_filename ON names(filename);''')
             db.execute('CREATE TABLE model_visibility(filename TEXT PRIMARY KEY,priority INTEGER NOT NULL,groups_json TEXT NOT NULL)')
+            db.execute('CREATE TABLE model_icons(filename TEXT PRIMARY KEY,name TEXT NOT NULL,sha256 TEXT NOT NULL)')
+            db.execute('CREATE TABLE icon_images(sha256 TEXT PRIMARY KEY,data BLOB NOT NULL)')
+            icon_names=defaultdict(set)
             for filename,rules in visibility.items():
                 # Shared filenames can represent items with incompatible settings.
                 # Without an equipped item ID, preserving geometry is safer.
@@ -192,13 +213,70 @@ def _build(workspace,executable,progress,cancel=None):
                 if not text or not text[0] or text[0] in ('INVAILD_STRING','BLANK'):continue
                 group=classify(filename)
                 priority=int(bool(group['set_name']) and group['set_name']==item[1])
+                # A shared mesh can serve several costume types. Only exact item
+                # context can supply its icon; never infer an HQ filename.
+                if (isinstance(item[4],str) and item[4].upper().endswith('.PNG') and
+                        (not group['character'] or item[2] in ('GUST_INVALID','GUST_USER_'+group['character'])) and
+                        (not group['set_name'] or priority)):
+                    icon_names[filename.upper()].add(item[4].upper())
                 db.execute('INSERT OR IGNORE INTO names VALUES(?,?,?,?,?,?,?,?)',
                            (filename.upper(),text[0],item_id,item[0],item[3],model_table,text[1],priority))
             total=db.execute('SELECT COUNT(DISTINCT filename) FROM names').fetchone()[0]
             if not total:raise ValueError('실제 이름에 연결된 아바타 모델이 없습니다.')
-            metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total,model_frame_patterns=patterns)
+            icons=_build_icons(workspace,db,icon_names,sources,progress,check_cancel)
+            metadata=dict(executable_sha256=hashlib.sha256(executable.read_bytes()).hexdigest(),sources=sources,rows=counts,models=total,model_frame_patterns=patterns,icons=icons)
             db.executemany('INSERT INTO metadata VALUES(?,?)',[(k,json.dumps(v,ensure_ascii=False)) for k,v in metadata.items()])
         check_cancel()
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
-    return dict(tables=len(selected),models=total,rows=counts,index=str(workspace/'game-names.sqlite3'))
+    return dict(tables=len(selected),models=total,icons=icons,rows=counts,index=str(workspace/'game-names.sqlite3'))
+
+
+def _build_icons(workspace,index,icon_names,sources,progress,check_cancel):
+    """Embed verified PNGs atomically, independent of the extraction filter."""
+    from .cmf import Archive,Entry
+    wanted={next(iter(names)) for names in icon_names.values() if len(names)==1}
+    candidates=defaultdict(list)
+    with closing(sqlite3.connect((workspace/'catalog.sqlite3').as_uri()+'?mode=ro',uri=True)) as catalog:
+        catalog.row_factory=sqlite3.Row
+        for row in catalog.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
+                FROM entries e JOIN archives a ON a.id=e.archive_id
+                WHERE e.format='png' AND e.flag!=2'''):
+            if row['name'].upper() in wanted:candidates[row['archive']].append(dict(row))
+    hashes=defaultdict(set);invalid=set();completed=0
+    for archive_path,rows in sorted(candidates.items()):
+        check_cancel()
+        path=Path(archive_path);before=path.stat()
+        if (before.st_size,before.st_mtime_ns)!=(rows[0]['archive_size'],rows[0]['archive_mtime']):
+            raise ValueError('아이콘 원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(path))
+        with Archive(path) as archive:
+            entries={e.index:e for e in archive.entries()}
+            for row in rows:
+                check_cancel();name=row['name'].upper()
+                entry=Entry(row['ordinal'],row['name'],row['size'],row['stored'],row['offset'],row['flag'])
+                if entries.get(entry.index)!=entry:raise ValueError('아이콘 원본 항목이 목록과 일치하지 않습니다.')
+                if row['size']>4*1024*1024:
+                    invalid.add(name);continue
+                try:
+                    data=b''.join(archive.chunks(entry))
+                    if len(data)<24 or data[:8]!=b'\x89PNG\r\n\x1a\n':raise ValueError('PNG 형식이 아닙니다.')
+                    width,height=struct.unpack('>II',data[16:24])
+                    if not (0<width<=4096 and 0<height<=4096):raise ValueError('아이콘 크기를 초과했습니다.')
+                except ValueError:
+                    invalid.add(name);continue
+                digest=hashlib.sha256(data).hexdigest();hashes[name].add(digest)
+                index.execute('INSERT OR IGNORE INTO icon_images VALUES(?,?)',(digest,data))
+                completed+=1
+                if completed%200==0:progress(current='아이템 아이콘',rows=completed)
+        after=path.stat()
+        if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):raise ValueError('아이콘을 읽는 동안 원본이 변경되었습니다.')
+        sources.append(dict(name='아이템 아이콘',archive=str(path),size=before.st_size,mtime=before.st_mtime_ns))
+    for filename,names in icon_names.items():
+        if len(names)!=1:continue
+        name=next(iter(names));digests=hashes[name]
+        if name in invalid or len(digests)!=1:continue
+        index.execute('INSERT INTO model_icons VALUES(?,?,?)',(filename,name,next(iter(digests))))
+    index.execute('DELETE FROM icon_images WHERE sha256 NOT IN (SELECT sha256 FROM model_icons)')
+    count=index.execute('SELECT COUNT(*) FROM model_icons').fetchone()[0]
+    progress(current='아이템 아이콘 연결 완료',rows=count)
+    return count

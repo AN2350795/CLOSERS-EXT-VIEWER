@@ -2,7 +2,7 @@
 
 웹의 추출 작업은 원본 파일 저장이 끝난 뒤 `closers/postprocess.py`의 `STEPS`를 순서대로 실행한다. 독립 실행 API는 `POST /api/postprocess`이며, 추출 API는 `postprocess: {enabled: true, executable: ".../CW.EXE"}` 설정으로 같은 실행기를 호출한다. 기존 API 호출에 설정이 없으면 자동 후처리하지 않는다.
 
-현재 `game-data` 단계는 기존 `game_names.build_index`를 호출해 한국어 이름, 장비 메시 우선순위와 프레임 그룹을 하나의 `game-names.sqlite3`에 저장한다. 별도 진단 파일이나 개발 환경의 DB를 복사하지 않는다.
+현재 `game-data` 단계는 기존 `game_names.build_index`를 호출해 한국어 이름, 아이템 아이콘 연결과 PNG 본문, 장비 메시 우선순위와 프레임 그룹을 하나의 `game-names.sqlite3`에 저장한다. 아이콘은 추출 필터와 관계없이 분석된 CMF에서 읽으며, 같은 이름의 내용이 다른 출처는 자동 선택하지 않는다. 별도 진단 파일이나 개발 환경의 DB를 복사하지 않는다. 이전 인덱스에 아이콘 테이블이 없어도 이름·모델 기능은 유지되며 후처리를 다시 실행하면 아이콘이 추가된다.
 
 새 단계는 `run(catalog, options, paths, cancel, progress)` 함수를 작성한 뒤 `Step('고유-ID', '화면에 표시할 이름', run)`을 `STEPS`에 추가한다. 웹은 등록된 단계 결과를 공통 형식으로 표시하므로 단계마다 새 작업 API를 만들 필요가 없다. 추가 입력이 필요하면 옵션 검증과 웹 입력도 함께 확장한다.
 

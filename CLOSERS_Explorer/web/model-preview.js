@@ -8,6 +8,11 @@ export function setupPreviews({api}){
   const queue=[],cache=new Map();
   const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);queue.push(entry.target);pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
   async function render(item,mode,saved){
+    if(item.item_icon?.sha256){
+      const token=document.querySelector('meta[name="explorer-token"]').content;
+      const src='/api/model-icon/'+encodeURIComponent(item.item_icon.sha256)+'?'+new URLSearchParams({token});
+      try{const image=new Image();image.src=src;await image.decode();return src;}catch{/* Keep the 3D preview when the icon is unavailable. */}
+    }
     let ids,skeleton;
     if(mode==='sets'){
       const bundle=await api('/api/model-bundle?'+new URLSearchParams({key:item.key,saved}));
@@ -52,10 +57,10 @@ export function setupPreviews({api}){
     try{while(queue.length&&!stopped){
       const target=queue.shift();if(!target.isConnected)continue;
       const {item,mode,saved}=target.preview;
-      const key=JSON.stringify([mode,item.key||item.id,saved]);
+      const key=JSON.stringify([mode,item.key||item.id,saved,item.item_icon?.sha256]);
       try{
         let src=cache.get(key);if(!src){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
-        if(target.isConnected){const img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+' 미리보기';target.replaceChildren(img);}
+        if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon);if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);if(icon){const badge=document.createElement('span');badge.className='thumbnail-caption';badge.textContent=mode==='sets'?(item.item_icon.part_label||'대표')+' 아이콘':'아이템 아이콘';target.append(badge);}}
       }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
     }}finally{running=false;}
   }
