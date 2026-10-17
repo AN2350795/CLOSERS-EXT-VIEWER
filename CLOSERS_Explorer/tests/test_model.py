@@ -4,6 +4,7 @@ import tempfile
 import threading
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 import urllib.request
 import zlib
 
@@ -60,6 +61,23 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_scene_stops_reading_parts_when_vertex_budget_is_exceeded(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); catalog = Catalog(root/'work')
+            source = fixture(root/'models.cmf', [(name, binary_model(), 0)
+                             for name in ('one.X', 'two.X', 'three.X')])
+            catalog.scan([source])
+            ids = [r['id'] for r in catalog.entries({})['items']]
+            part = parse_x(binary_model())
+            part['meshes'][0]['vertices'] = [0]*450_000  # 150,000 vertices per valid-size part.
+            models = Models(catalog)
+            with patch('closers.model_library.parse_x', return_value=part) as parse, \
+                    patch.object(models, 'read', wraps=models.read) as read:
+                with self.assertRaisesRegex(ValueError, '250,000'):
+                    models.scene(ids)
+                self.assertEqual(parse.call_count, 2)
+                self.assertEqual(read.call_count, 2)
+
     def test_rigid_attachment_hierarchy_survives_shared_skeleton_merge(self):
         def frame(label, x, children=b''):
             matrix = IDENTITY.copy(); matrix[12] = x

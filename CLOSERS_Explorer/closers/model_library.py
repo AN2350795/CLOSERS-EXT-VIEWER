@@ -65,9 +65,14 @@ class Models:
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
         with self.gate:
             parts,sources,rows = [],[],[]
+            vertices = 0
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
-                parts.append(parse_x(body)); sources.append(source); rows.append(row)
+                part = parse_x(body)
+                vertices += sum(len(mesh['vertices'])//3 for mesh in part['meshes'])
+                if vertices > 250_000:
+                    raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
+                parts.append(part); sources.append(source); rows.append(row)
             characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar'}
             if len(characters)>1:
                 raise ValueError('서로 다른 캐릭터의 아바타·얼굴은 함께 연결할 수 없습니다.')
@@ -131,8 +136,6 @@ class Models:
                     # Helper/collision geometry remains available as a toggle.
                     mesh['helper'] = any(s in mesh['name'].upper() for s in ('COLLISION','ATTACK_SPHERE','ATTACK_LINE','SHADOW_'))
                     scene['meshes'].append(mesh)
-            if sum(len(m['vertices'])//3 for m in scene['meshes'])>250_000:
-                raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
             animation = self.candidates(owner['name'][:-2]+'.XMD',owner)
             character=next(iter(characters),None)
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
