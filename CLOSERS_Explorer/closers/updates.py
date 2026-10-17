@@ -28,10 +28,14 @@ def compare(catalog, paths, cancel=None, progress=lambda **kw: None):
         roots.append((os.path.normcase(str(root)), root.is_dir()))
     def inside(path):
         path = os.path.normcase(path)
-        return any(path == root or (directory and path.startswith(root + os.sep)) for root,directory in roots)
+        return any(path == root or (directory and path.startswith(root.rstrip(os.sep) + os.sep)) for root,directory in roots)
     with catalog.connect() as db:
-        known = {os.path.normcase(r['path']): (r['size'],r['mtime']) for r in
-                 db.execute('SELECT path,size,mtime FROM archives') if inside(r['path'])}
+        records = [dict(r) for r in db.execute(
+            'SELECT path,size,mtime,indexed_size,indexed_mtime,status,error FROM archives') if inside(r['path'])]
+    known = {os.path.normcase(r['path']):
+             ((r['size'],r['mtime']) if r['status']=='index' else (r['indexed_size'],r['indexed_mtime']),
+              r['status']) for r in records}
+    analysis_failures = [dict(path=r['path'],error=r['error']) for r in records if r['status']=='error']
     counts = dict(added=0,changed=0,missing=0,unchanged=0)
     examples = {key: [] for key in counts}
     done = 0
@@ -39,7 +43,8 @@ def compare(catalog, paths, cancel=None, progress=lambda **kw: None):
         check_cancel(cancel)
         meta = path.stat()  # Any discovery/stat failure aborts the comparison.
         prior = known.pop(os.path.normcase(str(path)), None)
-        kind = 'added' if prior is None else 'unchanged' if prior == (meta.st_size,meta.st_mtime_ns) else 'changed'
+        kind = ('added' if prior is None else 'unchanged'
+                if prior[0] == (meta.st_size,meta.st_mtime_ns) and prior[1] != 'error' else 'changed')
         counts[kind] += 1
         if len(examples[kind]) < 100:
             examples[kind].append(str(path))
@@ -53,7 +58,8 @@ def compare(catalog, paths, cancel=None, progress=lambda **kw: None):
             examples['missing'].append(path)
     result = dict(paths=[str(Path(p).resolve()) for p in paths],counts=counts,examples=examples,
                   method='size-mtime',complete=True,done=done,
-                  note='크기·수정 시각 기준 비교입니다. 저장된 파일과 기존 목록은 삭제하지 않습니다. 각 유형의 예시는 최대 100개입니다.')
+                  analysis_failed=len(analysis_failures),analysis_failures=analysis_failures[:100],
+                  note='마지막 성공한 분석의 크기·수정 시각 기준 비교입니다. 분석 실패 원본은 동일로 판정하지 않습니다. 저장된 파일과 기존 목록은 삭제하지 않습니다. 각 유형의 예시는 최대 100개입니다.')
     atomic_json(catalog.workspace / 'update-comparison.json',result)
     progress(phase='compare',done=done,current='원본 변경 비교 완료',comparison=counts)
     return result

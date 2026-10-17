@@ -101,7 +101,7 @@ class Jobs:
                     result = self.catalog.extract(args['output'], args.get('filters', {}),
                                                   bool(args.get('raw')), self.cancel, self.progress, args.get('verify', 'sha256'),
                                                   retry_errors=bool(args.get('retry_errors')))
-                status = 'issues' if result.get('failed') or result.get('entry_errors') else 'completed'
+                status = 'issues' if result.get('failed') or result.get('entry_errors') or result.get('analysis_failed') else 'completed'
                 archive_failed = result.get('archive_failed',result.get('failed',0) if phase=='scan' else 0)
                 entry_failed = result.get('entry_failed',result.get('failed',0) if phase in ('extract','preserve') else 0)
                 message = f"처리 종료 · 아카이브 실패 {archive_failed}개 · 항목 실패 {entry_failed}개 · 스킵 {result.get('skipped',0)}개 · 인덱스 {result.get('indexes',0)}개"
@@ -131,7 +131,7 @@ class Jobs:
                     message = f"인덱스 내보내기 완료 · 아카이브 {result['archive_records']}개 · 항목 목록 {result['entry_descriptors']}개 · 본문 없음"
                 elif phase=='compare':
                     counts = result['counts']
-                    message = f"원본 변경 비교 · 추가 {counts['added']} · 변경 {counts['changed']} · 사라짐 {counts['missing']} · 동일 {counts['unchanged']} · 저장 파일 유지"
+                    message = f"원본 변경 비교 · 추가 {counts['added']} · 변경 {counts['changed']} · 사라짐 {counts['missing']} · 동일 {counts['unchanged']} · 분석 실패 {result.get('analysis_failed',0)} · 저장 파일 유지"
                 self.progress(result=result)
             except Cancelled:
                 status, message = 'cancelled', '중단됨 · 완료된 파일은 보존됩니다. 같은 작업을 실행하면 검증 후 건너뜁니다.'

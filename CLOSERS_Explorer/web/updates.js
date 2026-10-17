@@ -4,8 +4,9 @@ function showUpdateComparison(result){
   if(!result?.counts)return;
   $('update-result').hidden=false;
   const c=result.counts;
-  $('update-counts').textContent=`추가 ${fmt(c.added)} · 변경 ${fmt(c.changed)} · 원본에서 사라짐 ${fmt(c.missing)} · 동일 ${fmt(c.unchanged)}`;
+  $('update-counts').textContent=`추가 ${fmt(c.added)} · 변경 ${fmt(c.changed)} · 원본에서 사라짐 ${fmt(c.missing)} · 동일 ${fmt(c.unchanged)} · 분석 실패 ${fmt(result.analysis_failed||0)}`;
   $('update-examples').textContent=Object.entries({added:'추가',changed:'변경',missing:'사라짐'}).map(([key,label])=>label+'\n'+(result.examples[key].join('\n')||'없음')).join('\n\n');
+  if(result.analysis_failed)$('update-examples').textContent+='\n\n분석 실패 · 원본을 다시 분석하세요\n'+(result.analysis_failures||[]).map(row=>row.path+' — '+row.error).join('\n');
 }
 async function showResourceHistory(item,seq){
   if(!item.history_count)return;

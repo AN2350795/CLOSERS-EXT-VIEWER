@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -110,6 +111,49 @@ class Stage2Tests(unittest.TestCase):
         with self.assertRaises(Cancelled):compare(self.catalog,[source_dir],cancel)
         self.assertEqual((self.catalog.workspace / 'update-comparison.json').read_bytes(),report)
         self.assertEqual(self.catalog.stats()['archives']['count'],3)
+
+    def test_compare_uses_successful_index_and_reports_failed_rescans(self):
+        source = fixture(self.root/'a.cmf', [('a.bin', b'old', 0)])
+        self.catalog.process([source], self.output)
+        saved = self.catalog.get(1)
+        original = source.stat()
+        source.write_bytes(b'broken update')
+        self.assertEqual(self.catalog.scan([source])['failed'], 1)
+        result = compare(self.catalog, [source])
+        self.assertEqual(result['counts'], dict(added=0,changed=1,missing=0,unchanged=0))
+        self.assertEqual(result['analysis_failed'], 1)
+        self.assertEqual(result['analysis_failures'][0]['path'], str(source))
+        self.assertTrue(result['analysis_failures'][0]['error'])
+        self.assertEqual(Path(saved['output']).read_bytes(), b'old')
+        # A failed analysis is not "unchanged" even with identical metadata.
+        fixture(source, [('a.bin', b'new', 0)])
+        os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+        result = compare(self.catalog, [source])
+        self.assertEqual(result['counts']['changed'], 1)
+        jobs = Jobs(self.catalog); jobs.start('compare', dict(paths=[str(source)])); jobs.thread.join(5)
+        self.assertFalse(jobs.thread.is_alive())
+        self.assertEqual(jobs.snapshot()['status'], 'issues')
+        self.catalog.scan([source], retry_errors=True)
+        result = compare(self.catalog, [source])
+        self.assertEqual(result['counts']['unchanged'], 1)
+        self.assertEqual(result['analysis_failed'], 0)
+
+    def test_compare_initial_failure_and_drive_root_scope(self):
+        source = self.root/'bad.cmf'; source.write_bytes(b'broken')
+        self.catalog.scan([source])
+        # Bound discovery to the fixture while checking real drive-root matching.
+        with patch.object(self.catalog, 'candidates', return_value=iter([source])):
+            result = compare(self.catalog, [Path(source.anchor)])
+        self.assertEqual(result['counts'], dict(added=0,changed=1,missing=0,unchanged=0))
+        self.assertEqual(result['analysis_failed'], 1)
+
+    def test_compare_header_index_uses_successful_index_metadata(self):
+        from test_preservation import header_fixture
+        source = header_fixture(self.root)
+        self.catalog.scan([source])
+        result = compare(self.catalog, [source])
+        self.assertEqual(result['counts'], dict(added=0,changed=0,missing=0,unchanged=1))
+        self.assertEqual(result['analysis_failed'], 0)
 
     def test_reports_are_lazy_revision_checked_and_failure_atomic(self):
         source = fixture(self.root / 'a.cmf',[('a.bin',b'old',1)])
