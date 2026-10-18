@@ -50,7 +50,7 @@ class CompositionImages:
 
     def prepare(self,entry_id):
         with self.gate:
-            row = self.catalog.get(int(entry_id))
+            row = self.catalog.get_resource(int(entry_id))
             if row['category'] != 'images' or row['flag'] == 2 or row['format'] not in NATIVE | {'dds','tga'}:
                 raise ValueError('복원 가능한 이미지 항목을 선택해 주세요.')
             stored = saved_file(row)

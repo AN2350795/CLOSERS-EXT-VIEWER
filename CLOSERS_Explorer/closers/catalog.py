@@ -1,5 +1,5 @@
 import csv
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from functools import wraps
 import hashlib
 import json
@@ -82,6 +82,7 @@ class Catalog:
                 CREATE INDEX IF NOT EXISTS idx_category ON entries(category, detail, id);
                 CREATE INDEX IF NOT EXISTS idx_status ON entries(status, id);
                 CREATE INDEX IF NOT EXISTS idx_format ON entries(format, id);
+                CREATE INDEX IF NOT EXISTS idx_entry_name_nocase ON entries(name COLLATE NOCASE);
                 CREATE INDEX IF NOT EXISTS idx_archive_offset ON entries(archive_id, offset, id);
             ''')
         if version < 2:
@@ -464,6 +465,16 @@ class Catalog:
         return dict(groups=groups, statuses=statuses, archives=archives, errors=errors, error_count=error_count,
                     entry_error_count=entry_error_count, error_groups=error_groups, formats=formats,
                     index_count=index_count,issue_entry_count=issue_entry_count,entry_issues=entry_issues)
+
+    def get_resource(self, entry_id):
+        """Resource bytes do not depend on the optional game-name index."""
+        with closing(sqlite3.connect(self.db, timeout=30)) as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute('''SELECT e.*,a.path AS archive,a.size AS archive_size,a.mtime AS archive_mtime,a.version,a.status AS archive_status
+                                FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.id=?''', (entry_id,)).fetchone()
+        if row is None:
+            raise ValueError('항목이 없습니다.')
+        return dict(row)
 
     def get(self, entry_id):
         with self.connect() as db:

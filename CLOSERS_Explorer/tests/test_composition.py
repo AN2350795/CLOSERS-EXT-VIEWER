@@ -32,6 +32,13 @@ class CompositionTests(unittest.TestCase):
 
     def tearDown(self):self.temp.cleanup()
 
+    def test_image_preparation_does_not_refresh_unrelated_game_name_sources(self):
+        self.catalog.scan([fixture(self.root/'a.cmf',[('frame.PNG',png(4,4),0)])])
+        with patch.object(self.catalog.game_names,'refresh',side_effect=AssertionError('unrelated source scan')):
+            path, metadata = self.images.prepare(1)
+        self.assertEqual(metadata['width'],4)
+        self.assertTrue(path.is_file())
+
     def test_native_full_resolution_and_catalog_unmodified(self):
         body=png(4096,2,lambda x,y:(x%256,10,20,255))
         source=fixture(self.root/'a.cmf',[('illustration.PNG',body,1)])
