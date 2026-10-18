@@ -144,24 +144,31 @@ globalThis.ParticleEffects=(()=>{
     r.quad([project.canvas.width,0,0,0,project.canvas.height,0,project.canvas.width/2,project.canvas.height/2,1],[1,1,1,1],[0,0],true,false);
     gl.enable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);
     if(p.mask){gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,r.texture(images.get(p.mask)));}
-    const total=animation.frames.reduce((n,f)=>n+f.duration,0),sx=layer.width/p.basis[0]*p.scale[0],sy=layer.height/p.basis[1]*p.scale[1];
+    const total=animation.frames.reduce((n,f)=>n+f.duration,0),sx=layer.width/p.basis[0]*p.scale[0],sy=layer.height/p.basis[1]*p.scale[1],draws=[];
     for(const state of particles){
       let phase=state.age%total,frame=animation.frames.at(-1);
       for(const f of animation.frames){if(phase<f.duration-1e-9){frame=f;break;}phase-=f.duration;}
       const image=images.get(frame.source);if(!image)continue;
-      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,r.texture(image));
       const [rx,ry,rz]=state.rotation.map(v=>v*Math.PI/180),cz=Math.cos(rz),sz=Math.sin(rz),cx=Math.cos(rx),cy=Math.cos(ry),sinx=Math.sin(rx),siny=Math.sin(ry);
       const w=state.size[0]*state.scale*sx,h=state.size[1]*state.scale*sy;
       const matrix=[cy*cz*w,cy*sz*w,0,(sinx*siny*cz-cx*sz)*h,(sinx*siny*sz+cx*cz)*h,0,layer.x+layer.width/2+state.position[0]*sx,layer.y+layer.height/2+state.position[1]*sy,1];
-      const pass=(color,count,src,dst)=>{
-        gl.blendFuncSeparate(gl[src],gl[dst],src==='ZERO'?gl.ZERO:gl.ONE,src==='ZERO'?gl.ONE:gl.ONE_MINUS_SRC_ALPHA);
+      draws.push({state,image,matrix});
+    }
+    const factors={ZERO:'ZERO',ONE:'ONE',SRCALPHA:'SRC_ALPHA',INVSRCALPHA:'ONE_MINUS_SRC_ALPHA',DESTALPHA:'DST_ALPHA',INVSRCCOLOR:'ONE_MINUS_SRC_COLOR'};
+    const pass=(dual,count,src,dst)=>{
+      if(!count)return;
+      gl.blendFuncSeparate(gl[src],gl[dst],src==='ZERO'?gl.ZERO:gl.ONE,src==='ZERO'?gl.ONE:gl.ONE_MINUS_SRC_ALPHA);
+      for(const {state,image,matrix} of draws){
+        gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,r.texture(image));
+        const color=dual?state.dualColor:state.color;
         const rgb=color.slice(0,3).map(v=>src==='ZERO'?v*layer.opacity:v);
         for(let i=0;i<count;i++)r.quad(matrix,[...rgb,Math.max(0,Math.min(1,color[3]*layer.opacity))],state.uv,p.clamp,Boolean(p.mask),src==='SRC_ALPHA'&&['ONE','DST_ALPHA'].includes(dst));
-      };
-      const factors={ZERO:'ZERO',ONE:'ONE',SRCALPHA:'SRC_ALPHA',INVSRCALPHA:'ONE_MINUS_SRC_ALPHA',DESTALPHA:'DST_ALPHA',INVSRCCOLOR:'ONE_MINUS_SRC_COLOR'};
-      pass(state.color,p.drawCount,factors[p.blend[0]],factors[p.blend[1]]);
-      if(p.dual)pass(state.dualColor,p.dualDrawCount,'SRC_ALPHA','DST_ALPHA');
-    }
+      }
+    };
+    // The client completes the base pass for the whole effect before its dual pass.
+    // Reuse the sampled particles so both passes keep identical ages/frames/transforms.
+    pass(false,p.drawCount,factors[p.blend[0]],factors[p.blend[1]]);
+    if(p.dual)pass(true,p.dualDrawCount,'SRC_ALPHA','DST_ALPHA');
     context.save();context.setTransform(1,0,0,1,0,0);context.globalAlpha=1;context.globalCompositeOperation='copy';context.drawImage(r.canvas,0,0);context.restore();
   }
   return Object.freeze({validate,states,valueAt,integral,draw,prune});

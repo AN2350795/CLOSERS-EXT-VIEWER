@@ -75,6 +75,33 @@ try{
   motion=CompositionCore.validate(motionRaw);check(motionPixel(0)[0]>250&&Math.abs(motionPixel(0)[2]-128)<=2,'dual additive blending pass');
   motionRaw.layers[0].animation.particle.dual=false;motionRaw.layers[0].opacity=0;
   motion=CompositionCore.validate(motionRaw);check(motionPixel(0)[0]>250&&motionPixel(0)[2]<3,'zero-opacity inverse blend changed the canvas');
+  // Opaque RGB reference: finish every inverse-color pass before any glow pass.
+  // Per-particle base/glow interleaving incorrectly erases the earlier glow.
+  const gray=value=>{const c=document.createElement('canvas');c.width=4;c.height=4;const ctx=c.getContext('2d');ctx.fillStyle=`rgb(${value},${value},${value})`;ctx.fillRect(0,0,4,4);return c;};
+  const passImages=new Map([['s1',gray(128)],['s2',gray(64)]]),passRaw=JSON.parse(JSON.stringify(motionRaw));
+  passRaw.canvas.color='#ffffff';passRaw.layers[0].opacity=1;
+  passRaw.layers[0].animation.frames=[{source:'s1',duration:.2},{source:'s2',duration:.8}];
+  passRaw.layers[0].animation.particle={...particle,life:10,maxParticles:2,instant:2,rate:0,gravity:[0,0,0],
+    blend:['ZERO','INVSRCCOLOR'],dual:true,dualDrawCount:2,tracks:[initial('size',[4,4,1]),initial('color',[1,1,1,1]),initial('dualColor',[.2,.4,.6,.5])]};
+  const clampByte=v=>Math.min(255,Math.max(0,Math.round(v)));
+  const referencePasses=(textures,dual=true)=>{
+    let rgb=[255,255,255];
+    for(const value of textures)rgb=rgb.map(v=>clampByte(v*(1-value/255)));
+    if(dual)for(const value of textures)for(let n=0;n<2;n++)rgb=rgb.map((v,i)=>clampByte(v+value*[.2,.4,.6][i]*.5));
+    return [...rgb,255];
+  };
+  const passPixel=(project,time)=>{const c=document.createElement('canvas');c.width=4;c.height=4;CompositionCore.draw(c.getContext('2d'),project,passImages,4,4,time);return [...c.getContext('2d').getImageData(1,1,1,1).data];};
+  const nearPixel=(actual,expected)=>actual.every((v,i)=>Math.abs(v-expected[i])<=2);
+  const sameTexturePasses=CompositionCore.validate(passRaw);
+  check(nearPixel(passPixel(sameTexturePasses,0),referencePasses([128,128])),'overlapping particles must finish all base passes before dual glow');
+  passRaw.layers[0].animation.particle.instant=1;passRaw.layers[0].animation.particle.rate=2;
+  const timedPasses=CompositionCore.validate(passRaw),timedStates=ParticleEffects.states(timedPasses.layers[0].animation.particle,.6);
+  check(timedStates.length===2&&Math.abs(timedStates[0].age-.6)<1e-9&&Math.abs(timedStates[1].age-.1)<1e-9,'pass ordering changed particle ages');
+  check(nearPixel(passPixel(timedPasses,.6),referencePasses([64,128])),'both passes must reuse each particle\'s own animation frame');
+  passRaw.layers[0].animation.particle.dual=false;
+  check(nearPixel(passPixel(CompositionCore.validate(passRaw),.6),referencePasses([64,128],false)),'non-dual particles changed');
+  passRaw.layers[0].animation.particle.dual=true;passRaw.layers[0].opacity=0;
+  check(nearPixel(passPixel(CompositionCore.validate(passRaw),.6),[255,255,255,255]),'hidden dual particles changed the canvas');
   const translucent=document.createElement('canvas');translucent.width=4;translucent.height=4;const translucentContext=translucent.getContext('2d');translucentContext.fillStyle='rgba(255,0,0,.5)';translucentContext.fillRect(0,0,4,4);
   const translucentBitmap=await createImageBitmap(await new Promise(resolve=>translucent.toBlob(resolve)),{premultiplyAlpha:'none',colorSpaceConversion:'none'});images.set('s1',translucentBitmap);
   motionRaw.canvas.transparent=true;motionRaw.layers[0].opacity=1;motionRaw.layers[0].animation.frames=[{source:'s1',duration:1}];motionRaw.layers[0].animation.particle.blend=['SRCALPHA','INVSRCALPHA'];
