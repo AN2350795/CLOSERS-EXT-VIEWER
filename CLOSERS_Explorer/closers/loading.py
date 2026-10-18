@@ -1,9 +1,7 @@
 """Source-verified loading frame definitions and named texture atlas regions."""
 from contextlib import nullcontext
 import hashlib
-from collections import OrderedDict
 from io import BytesIO
-import json
 import re
 import threading
 from pathlib import Path
@@ -12,6 +10,7 @@ from . import ntf
 from .cmf import Archive
 from .lua_literals import tables
 from .loading_particles import compile_particle, preview_passes, composite_preview
+from .loading_cache import LoadingCache, stamp
 
 
 class MissingDefinition(ValueError):
@@ -35,14 +34,45 @@ class LoadingData:
         self.cache = {}
         self.keys = None
         self.parsed = {}
-        self.thumbnails = OrderedDict()
+        self._derived = None
+        self.thumbnail_locks = [threading.Lock() for _ in range(32)]
+        self.thumbnail_gate = threading.BoundedSemaphore(2)
+        self.key_source = None
+        self.key_stamp = None
         self.name_cache = {}
         self.registry_cache = None
+
+    @property
+    def derived(self):
+        # Lazy construction also keeps simple definition parsers independent of disk caches.
+        if self._derived is not None:
+            return self._derived
+        with self.lock:
+            if self._derived is None:
+                self._derived = LoadingCache(self.catalog)
+            return self._derived
+
+    def cached(self, key, build, persistent=False):
+        cache = self.derived
+        found, value = cache.get(key, persistent)
+        if found:
+            return value
+        # All definition builders take this lock before nested cache misses.
+        with self.lock, self.session():
+            found, value = cache.get(key, persistent)
+            if found:
+                return value
+            with cache.capture() as record:
+                value = build()
+            return cache.put(key, value, record, persistent)
 
     def session(self):
         return nullcontext() if getattr(self.catalog.local,'db',None) is not None else self.catalog.session()
 
     def strings(self):
+        return self.cached(('strings',), self._strings)
+
+    def _strings(self):
         result = {}
         for name in ('STRING_TABLE_KOREA.NTF','STRING_TABLE_UI_KOREA.NTF',
                      'STRING_TABLE_ITEM_KOREA.NTF','STRING_TABLE_ITEM2_KOREA.NTF','STRING_TABLE_ITEM3_KOREA.NTF'):
@@ -74,6 +104,9 @@ class LoadingData:
                 source='DLG_LOADING_DUNGEON_START_V2.LUA',control=slot['m_Name'])
 
     def illustration_registry(self):
+        return self.cached(('illustration-registry',), self._illustration_registry)
+
+    def _illustration_registry(self):
         skin_body, convert_body = self.body('ILLUST_TEMPLET.NTF'), self.body('ILLUST_CONVERT_DATA.NTF')
         digest = hashlib.sha256(skin_body+convert_body).digest()
         if self.registry_cache and self.registry_cache[0]==digest: return self.registry_cache[1]
@@ -96,6 +129,7 @@ class LoadingData:
     def illustration_plan(self, entry_id):
         with self.lock,self.session():
             row = self.catalog.get_resource(entry_id)
+            self.derived.watch(row['archive'])
             registered = self.illustration_registry().get(row['name'].upper())
             if not registered: raise ValueError('게임에 등록된 로딩 일러스트가 아닙니다.')
             self.catalog.verify_source(row)
@@ -114,10 +148,21 @@ class LoadingData:
 
     def rows(self, name):
         with self.catalog.connect() as db:
-            return [dict(r) for r in db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
+            rows = [dict(r) for r in db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
                 FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.name=? COLLATE NOCASE ORDER BY e.id''', (name,))]
+        for row in rows:
+            self.derived.watch(row['archive'])
+        return rows
 
     def body(self, name):
+        if self.key_source:
+            self.derived.watch(self.key_source)
+            if stamp(self.key_source) != self.key_stamp:
+                self.keys = None
+                self.cache.clear()
+                self.parsed.clear()
+                self.name_cache.clear()
+                self.registry_cache = None
         rows = self.rows(name)
         if not rows:
             raise MissingDefinition('게임 정의를 찾을 수 없습니다: '+name)
@@ -138,7 +183,10 @@ class LoadingData:
                         for parent in [folder, *list(folder.parents)[:3]]:
                             if (parent/'CW.EXE').is_file(): candidates.add(parent/'CW.EXE')
                     if len(candidates) != 1: raise ValueError('게임 정의 복원에 필요한 CW.EXE를 찾을 수 없습니다.')
-                    self.keys = ntf.script_keys(candidates.pop())
+                    self.key_source = candidates.pop()
+                    self.derived.watch(self.key_source)
+                    self.keys = ntf.script_keys(self.key_source)
+                    self.key_stamp = stamp(self.key_source)
                 body = ntf.restore(stored, entry.size, *self.keys)
                 self.catalog.verify_source(row)
                 self.cache[key] = body
@@ -191,6 +239,9 @@ class LoadingData:
         return sorted(result, key=lambda e:e['order']), warnings
 
     def presets(self):
+        return self.cached(('presets',), self._presets, persistent=True)
+
+    def _presets(self):
         with self.lock,self.session():
             names = self.strings()
             result = {}
@@ -206,6 +257,9 @@ class LoadingData:
             return list(result.values())
 
     def image_id(self, name):
+        return self.cached(('image-id', name.upper()), lambda: self._image_id(name))
+
+    def _image_id(self, name):
         rows = self.rows(name)
         if not rows: raise ValueError('연결된 이미지를 찾을 수 없습니다: '+name)
         # Images with the same name must have identical source content.
@@ -255,12 +309,34 @@ class LoadingData:
 
     def thumbnail(self, ident, kind, composition):
         if kind not in ('frame', 'mark','illustration'): raise ValueError('썸네일 종류가 올바르지 않습니다.')
+        key = ('thumbnail', kind, ident)
+        cache = self.derived
+        found, value = cache.get(key, persistent=True)
+        if found:
+            return value
+        # Cache hits bypass both the generation queue and the shared definition lock.
+        gate = self.thumbnail_locks[int(hashlib.sha256(repr(key).encode()).hexdigest(),16) % len(self.thumbnail_locks)]
+        with gate, self.thumbnail_gate:
+            found, value = cache.get(key, persistent=True)
+            if found:
+                return value
+            with cache.capture() as record:
+                value = self._thumbnail(ident, kind, composition)
+            return cache.put(key, value, record, persistent=True)
+
+    def _thumbnail(self, ident, kind, composition):
         try:
             from PIL import Image, ImageChops
         except ImportError as exc:
             raise ValueError('프레임·마크 썸네일에는 Pillow가 필요합니다.') from exc
         with self.lock, self.session():
             plan = self.illustration_plan(ident) if kind=='illustration' else self._plan(ident, preview=True, mark_only=kind=='mark')
+        # Pixel preparation/rendering does not hold the definition lock: lists remain responsive.
+        return self.render_thumbnail(plan, kind, composition)
+
+    def render_thumbnail(self, plan, kind, composition):
+        from PIL import Image, ImageChops
+        with self.session():
             if kind == 'mark':
                 mark = plan['mark']; crop = mark['crop']
                 width, height = crop['width'], crop['height']
@@ -274,11 +350,12 @@ class LoadingData:
                 entries = [layer.get('entry_id') or layer['frames'][0]['entry_id']]
                 if layer.get('particle',{}).get('mask_entry_id'): entries.append(layer['particle']['mask_entry_id'])
                 for entry in entries:
-                    if entry not in prepared: prepared[entry] = composition.prepare(entry)
-            fingerprint = hashlib.sha256(json.dumps([kind, layers, [m['image_sha256'] for _,m in prepared.values()]],sort_keys=True).encode()).digest()
-            if fingerprint in self.thumbnails:
-                self.thumbnails.move_to_end(fingerprint)
-                return self.thumbnails[fingerprint]
+                    if entry not in prepared:
+                        row = self.catalog.get_resource(entry)
+                        self.derived.watch(row['archive'])
+                        if row.get('output'):
+                            self.derived.watch(row['output'])
+                        prepared[entry] = composition.prepare(entry)
             scale = min(128/width,128/height) if kind=='mark' else min(144/width,205/height)
             canvas = Image.new('RGBA', (max(1,round(width*scale)), max(1,round(height*scale))))
             for layer in layers:
@@ -298,11 +375,16 @@ class LoadingData:
                     overlay.paste(tinted,(round(layer['x']*scale),round(layer['y']*scale)))
                     for _ in range(count): canvas = composite_preview(canvas,overlay,blend)
             output = BytesIO();canvas.save(output,'PNG');body = output.getvalue()
-            self.thumbnails[fingerprint] = body
-            while len(self.thumbnails)>128: self.thumbnails.popitem(last=False)
             return body
 
     def illustrations(self, query='', page=1):
+        resources = self.cached(('illustrations',), self._illustration_items, persistent=True)
+        text = query.casefold()
+        items = [item for item in resources if text in ' '.join([item['name'],item['display_name'],item['character']]).casefold()]
+        page=max(1,min(int(page),max(1,(len(items)+11)//12)))
+        return dict(items=items[(page-1)*12:page*12],total=len(items),page=page)
+
+    def _illustration_items(self):
         from .model_groups import CHARACTERS
         with self.lock,self.session():
             registry, names = self.illustration_registry(), self.strings()
@@ -319,7 +401,6 @@ class LoadingData:
                 labels = list(dict.fromkeys(names[v['string_key']] for v in registered if names.get(v['string_key'])))
                 characters = list(dict.fromkeys(CHARACTERS.get(v['character'].removeprefix('GUST_USER_'),v['character']) for v in registered))
                 resource.update(display_name=' / '.join(labels),character=' / '.join(characters),illust_ids=[v['illust_id'] for v in registered])
-                if query.casefold() in (' '.join([resource['name'],resource['display_name'],resource['character']])).casefold(): items.append(resource)
+                items.append(resource)
             items.sort(key=lambda v:(v['display_name'] or v['name'],v['character'],v['id']))
-            page=max(1,min(int(page),max(1,(len(items)+11)//12)))
-            return dict(items=items[(page-1)*12:page*12],total=len(items),page=page)
+            return items

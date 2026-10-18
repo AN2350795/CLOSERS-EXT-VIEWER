@@ -23,7 +23,9 @@ def literal_chunk(opcodes, constants):
 class LoadingTests(unittest.TestCase):
     def test_localized_names_strip_game_color_codes_and_cache_decoding(self):
         from test_game_names import table
-        data=LoadingData(Mock());data.keys=(b'',b'')
+        from closers.catalog import Catalog
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        data=LoadingData(Catalog(Path(temp.name)/'work'));data.keys=(b'',b'')
         body=table((5,8,8),[(1,'ST_SKIN_NAME_7','#CFFCC00암흑의 광휘#CX'),(2,'ST_FRAME_NAME_67','알로하 아일랜드'),(3,'UNRELATED','기타')])
         data.body=lambda name:body
         with patch('closers.loading.ntf.decrypt',side_effect=lambda payload,*args:payload) as decrypt:
@@ -39,7 +41,10 @@ class LoadingTests(unittest.TestCase):
             image = Image.new('RGBA',(450,256));image.paste((255,0,0,255),(0,0,450,170));image.paste((0,0,255,255),(0,172,450,256));image.save(path)
             metadata = dict(width=450,height=256,image_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
             composition = Mock();composition.prepare.return_value = path,metadata
-            data = LoadingData(MagicMock())
+            from closers.catalog import Catalog
+            catalog = Catalog(Path(temp)/'work')
+            data = LoadingData(catalog)
+            catalog.get_resource = Mock(return_value=dict(archive=str(path),output=str(path)))
             data._plan = Mock(return_value=dict(width=450,height=640,effects=[],layers=[
                 dict(entry_id=1,crop=dict(x=0,y=0,width=450,height=170),x=0,y=0,width=450,height=170),
                 dict(entry_id=1,crop=dict(x=0,y=172,width=450,height=84),x=0,y=556,width=450,height=84)],
@@ -72,7 +77,9 @@ class LoadingTests(unittest.TestCase):
 
     def test_registration_excludes_portraits_and_unregistered_characters(self):
         from test_game_names import table
-        data = LoadingData(Mock())
+        from closers.catalog import Catalog
+        temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
+        data = LoadingData(Catalog(Path(temp.name)/'work'))
         skin = table((8,4,4,12,8,12,8,8),[('VERSION',7,1,0,'"GUST_USER_STRIKER"',0,'NAME','DESC')])
         convert = table((4,8,2,8),[(7,'GUST_USER_STRIKER',3,'loading.PNG'),(7,'GUST_USER_STRIKER',2,'portrait.PNG'),
             (7,'GUST_USER_CASTER',3,'wrong-character.PNG'),(9,'GUST_USER_STRIKER',3,'unregistered.PNG')])

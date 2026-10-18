@@ -128,7 +128,7 @@ class Reset:
                 files[str(path)] = (meta.st_size, meta.st_mtime_ns, meta.st_dev, meta.st_ino)
 
         # Enumerate files only. Never recursively remove directories that might contain sources.
-        roots = {workspace / name for name in ('assets', 'preview-cache', 'composition-cache')}
+        roots = {workspace / name for name in ('assets', 'preview-cache', 'composition-cache', 'thumbnail-cache')}
         if delete_preserved:
             roots |= preserved_roots
         for root in sorted(roots):

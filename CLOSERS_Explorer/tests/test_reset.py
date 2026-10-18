@@ -45,7 +45,7 @@ class ResetTests(unittest.TestCase):
             db.execute("INSERT INTO archive_history(id,archive_id,path,saved) VALUES(1,1,?,0)", (str(self.source),))
             db.execute("INSERT INTO entry_history(revision_id,record) VALUES(1,?)", (json.dumps({'output': str(history)}),))
         self.catalog.save_group('prefix', 'ok', 'custom', 'tag')
-        for name in ('preview-cache', 'composition-cache', 'assets'):
+        for name in ('preview-cache', 'composition-cache', 'thumbnail-cache', 'assets'):
             folder = self.catalog.workspace / name; folder.mkdir(exist_ok=True)
             (folder / 'generated.bin').write_bytes(b'cached')
         embedded_source = self.catalog.workspace / 'assets' / 'original.CMF'

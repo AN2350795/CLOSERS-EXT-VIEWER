@@ -333,4 +333,4 @@ $('image-prev').onclick=()=>{pickerPage--;searchImages();};$('image-next').oncli
 new ResizeObserver(()=>renderCanvas()).observe($('canvas-stage'));
 commit();
 const initialIds=new URLSearchParams(location.search).get('entries');
-operation(async()=>{$('editor-status').textContent='게임 로딩 화면을 준비하고 있습니다…';await ensureLayout();commit();await searchImages();if(initialIds){const ids=initialIds.split(',');if(ids.length>20||ids.some(id=>!/^\d{1,12}$/.test(id)))throw Error('한 번에 이미지 20개까지 선택해 주세요.');for(const id of ids)await addImage(Number(id));}else $('editor-status').textContent='로딩 일러스트를 선택하세요.';});
+operation(async()=>{$('editor-status').textContent='게임 로딩 화면을 준비하고 있습니다…';await Promise.all([ensureLayout(),searchImages()]);commit();if(initialIds){const ids=initialIds.split(',');if(ids.length>20||ids.some(id=>!/^\d{1,12}$/.test(id)))throw Error('한 번에 이미지 20개까지 선택해 주세요.');for(const id of ids)await addImage(Number(id));}else $('editor-status').textContent='로딩 일러스트를 선택하세요.';});

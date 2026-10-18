@@ -1,5 +1,6 @@
 """Loopback-only UI; all archive processing happens outside HTTP/UI threads."""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import json
 import mimetypes
 import os
@@ -290,18 +291,24 @@ def create_server(catalog, port=0):
                 if not secrets.compare_digest(supplied, token):
                     raise PermissionError('인증 토큰이 올바르지 않습니다. 화면을 새로고침해 주세요.')
 
-        def respond(self, body, mime='application/json; charset=utf-8', status=200):
+        def respond(self, body, mime='application/json; charset=utf-8', status=200,
+                    cache_control='no-store', etag=None):
             if not isinstance(body, bytes):
                 body = json.dumps(body, ensure_ascii=False).encode('utf-8')
+            if etag and self.headers.get('If-None-Match') == etag:
+                status = 304
             self.send_response(status)
             self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(body)))
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Cache-Control', cache_control)
+            if etag:
+                self.send_header('ETag', etag)
             self.send_header('Referrer-Policy', 'no-referrer')
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; media-src 'self' blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
-            self.wfile.write(body)
+            if status != 304:
+                self.wfile.write(body)
 
         def do_GET(self):
             try:
@@ -366,7 +373,9 @@ def create_server(catalog, port=0):
                     self.respond(loading.illustrations(query.get('q',''),query.get('page',1)))
                 elif url.path.startswith('/api/loading-thumbnail/'):
                     kind,ident = url.path.removeprefix('/api/loading-thumbnail/').split('/')
-                    self.respond(loading.thumbnail(int(ident),kind,composition),'image/png')
+                    body = loading.thumbnail(int(ident),kind,composition)
+                    self.respond(body,'image/png', cache_control='private, no-cache',
+                                 etag='"'+hashlib.sha256(body).hexdigest()+'"')
                 elif url.path.startswith('/api/loading-plan/'):
                     self.respond(loading.plan(int(url.path.rsplit('/',1)[1]),mark_only=query.get('mark')=='1'))
                 elif url.path.startswith('/api/loading-atlas/'):
