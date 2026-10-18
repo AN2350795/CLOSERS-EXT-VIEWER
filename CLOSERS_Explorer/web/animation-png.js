@@ -7,11 +7,16 @@ globalThis.AnimationPNG=(()=>{
     let crc=0xffffffff;for(let i=4;i<out.length-4;i++)crc=table[(crc^out[i])&255]^(crc>>>8);view.setUint32(out.length-4,(crc^0xffffffff)>>>0);return out;
   }
   function uints(...numbers){const bytes=new Uint8Array(numbers.length*4),view=new DataView(bytes.buffer);numbers.forEach((n,i)=>view.setUint32(i*4,n));return bytes;}
-  async function encode({width,height,count,fps,render,progress=()=>{}}){
+  async function encode({width,height,count,fps,render,progress=()=>{},requireMotion=false}){
     if(!Number.isInteger(count)||count<1||count>250||!Number.isInteger(fps)||fps<1||fps>60||width*height*count>268435456)throw Error('움직이는 PNG는 250프레임·합계 268,435,456픽셀까지입니다.');
-    const parts=[new Uint8Array([137,80,78,71,13,10,26,10])];let sequence=0,total=0;
+    const parts=[new Uint8Array([137,80,78,71,13,10,26,10])];let sequence=0,total=0,firstPixels=null,hasMotion=false;
     for(let frame=0;frame<count;frame++){
       const canvas=render(frame/fps);let data;
+      if(requireMotion&&!hasMotion){
+        const pixels=canvas.getContext('2d').getImageData(0,0,width,height).data;
+        if(firstPixels===null)firstPixels=pixels;
+        else if(pixels.some((value,index)=>value!==firstPixels[index])){hasMotion=true;firstPixels=null;}
+      }
       try{const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));if(!blob)throw Error('PNG 프레임 생성에 실패했습니다.');data=new Uint8Array(await blob.arrayBuffer());}finally{canvas.width=1;canvas.height=1;}
       const view=new DataView(data.buffer),idat=[];let header;
       for(let offset=8;offset+12<=data.length;){const size=view.getUint32(offset),type=String.fromCharCode(...data.slice(offset+4,offset+8));if(offset+size+12>data.length)throw Error('PNG 프레임이 잘렸습니다.');if(type==='IHDR')header=data.slice(offset+8,offset+8+size);if(type==='IDAT')idat.push(data.slice(offset+8,offset+8+size));offset+=size+12;}
@@ -22,6 +27,7 @@ globalThis.AnimationPNG=(()=>{
       if(total>128*1024*1024)throw Error('움직이는 PNG가 128 MiB를 초과했습니다. 길이나 출력 크기를 줄여 주세요.');
       progress(frame+1,count);await new Promise(resolve=>setTimeout(resolve,0));
     }
+    if(requireMotion&&!hasMotion)throw Error('저장 구간에 화면 변화가 없어 움직이는 PNG를 저장하지 않았습니다. 현재 프레임의 효과 지원 안내와 저장 길이를 확인하세요. 정지 이미지는 PNG로 저장할 수 있습니다.');
     parts.push(chunk('IEND',new Uint8Array()));return new Blob(parts,{type:'image/apng'});
   }
   return Object.freeze({encode});

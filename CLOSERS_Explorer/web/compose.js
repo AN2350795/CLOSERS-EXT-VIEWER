@@ -150,7 +150,7 @@ async function exportAnimation(){
   playing=false;$('play-effects').textContent='효과 재생';
   const duration=Number($('animation-duration').value),fps=Number($('animation-fps').value);
   if(!Number.isFinite(duration)||duration<.1||duration>10)throw Error('저장 길이는 0.1~10초입니다.');
-  const blob=await AnimationPNG.encode({width:composition.canvas.width,height:composition.canvas.height,count:Math.ceil(duration*fps),fps,render:time=>makeExportCanvas(time),progress:(n,total)=>$('editor-status').textContent=`움직이는 PNG 생성 중 · ${n}/${total}`});
+  const blob=await AnimationPNG.encode({width:composition.canvas.width,height:composition.canvas.height,count:Math.ceil(duration*fps),fps,requireMotion:true,render:time=>makeExportCanvas(time),progress:(n,total)=>$('editor-status').textContent=`움직이는 PNG 생성 중 · ${n}/${total}`});
   downloadBlob(blob,'closers-composition.apng');$('editor-status').textContent='움직이는 PNG 저장 요청 완료';
 }
 $('export-apng').onclick=()=>operation(exportAnimation);
@@ -218,7 +218,11 @@ async function searchImages(){
       image.src='/api/loading-thumbnail/'+kind+'/'+item.id+'?token='+encodeURIComponent(token);
       image.onerror=()=>{thumb.replaceChildren(node('span','asset-missing','미리보기 없음'));};
       thumb.append(image);button.append(thumb,node('span','asset-name',label));
-      if(kind==='frame'&&item.effects.trim())button.append(node('span','asset-badge','움직임'));
+      if(kind==='frame'&&item.effects.trim()){
+        const badge=node('span','asset-badge','게임 효과');
+        badge.title='게임에 효과가 등록된 프레임입니다. 현재 재현하지 못하는 효과는 선택 후 안내됩니다.';
+        button.append(badge);
+      }
       button.append(node('span','asset-caption',kind==='frame'?`프레임 ${item.id}`:kind==='mark'?'마크 적용':(item.character||'로딩 일러스트 적용')));
       button.onclick=()=>operation(()=>kind==='illustration'?addImage(item.id):applyGameFrame(kind==='mark',item.id));$('image-results').append(button);
     }

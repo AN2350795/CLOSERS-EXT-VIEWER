@@ -12,9 +12,15 @@ try{
   check(pixel(0)[3]===0,'latency');check(pixel(.1)[0]===255,'first frame');check(pixel(.2)[2]===255,'boundary timing');check(pixel(.4)[0]===255,'sequence loop');
   const copy=CompositionCore.validate(JSON.parse(JSON.stringify(project)));check(copy.layers[0].gameFrame&&copy.layers[0].animation.frames.length===2,'animation settings round trip');
   const bad=JSON.parse(JSON.stringify(project));bad.layers[0].animation.frames[1].source='s9';let rejected=false;try{CompositionCore.validate(bad);}catch{rejected=true;}check(rejected,'missing animation source');
-  const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render});
+  const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render,requireMotion:true});
   const decoder=new ImageDecoder({data:await blob.arrayBuffer(),type:'image/png'});await decoder.tracks.ready;check(decoder.tracks.selectedTrack.frameCount===4,'APNG frame count');
   for(let i=0;i<4;i++){const {image}=await decoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);const actual=[...ctx.getImageData(0,0,1,1).data];check(JSON.stringify(actual)===JSON.stringify(pixel(i/10)),'APNG decoded pixels '+i);check(Math.abs(image.duration-100000)<1,'APNG timing');image.close();}decoder.close();
+  let staticRejected=false;
+  try{await AnimationPNG.encode({width:4,height:4,count:3,fps:10,render:()=>render(.1),requireMotion:true});}catch(e){staticRejected=e.message.includes('저장 구간에 화면 변화가 없어');}
+  check(staticRejected,'identical rendered frames should not export as moving PNG');
+  let delayedRejected=false;
+  try{await AnimationPNG.encode({width:4,height:4,count:2,fps:60,render,requireMotion:true});}catch(e){delayedRejected=e.message.includes('저장 구간에 화면 변화가 없어');}
+  check(delayedRejected,'export ending before the effect starts should report no motion');
   project.layers[0].animation.color=[0,0,0,.5];check(pixel(.1)[0]===0&&Math.abs(pixel(.1)[3]-128)<=1,'color and alpha');
   let limited=false;try{await AnimationPNG.encode({width:8192,height:8192,count:5,fps:25,render});}catch{limited=true;}check(limited,'export memory limit');
   const atlas=JSON.parse(JSON.stringify(raw));delete atlas.layers[0].animation;atlas.layers[0].gameIllustration=true;atlas.layers[0].crop.y=1;
