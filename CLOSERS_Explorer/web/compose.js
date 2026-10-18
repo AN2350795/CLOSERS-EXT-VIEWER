@@ -21,13 +21,16 @@ async function ensureLayout(){
 }
 function node(tag,className,text){const el=document.createElement(tag);if(className)el.className=className;if(text!==undefined)el.textContent=text;return el;}
 function setMessage(id,message,state='info'){
-  const target=$(id),labels={info:'안내',loading:'불러오는 중',working:'처리 중',success:'완료',warning:'확인 필요',error:'오류'};
-  target.dataset.state=state;target.dataset.label=labels[state];target.textContent=message;
+  const target=$(id);target.dataset.state=state;target.textContent=message;
 }
-function editorStatus(message,state='success'){setMessage('editor-status',message,state);}
+function editorStatus(message,state='success'){
+  setMessage('editor-status',message,state);
+  $('editor-status').hidden=state!=='working';
+  if(state==='working'){clearTimeout(toastTimer);$('editor-toast').hidden=true;}
+}
 function toast(message){$('editor-toast').textContent=message;$('editor-toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('editor-toast').hidden=true,10000);}
 async function api(path,data){const response=await fetch(path,{headers:{'X-Explorer-Token':token,...(data?{'Content-Type':'application/json'}:{})},...(data?{method:'POST',body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'요청 실패');return result;}
-async function operation(action){if(busy)return;busy=true;editorStatus('요청한 작업을 처리하고 있습니다…','working');updateControls();try{await action();}catch(e){toast(e.message);editorStatus(e.message,'error');}finally{busy=false;if($('editor-status').dataset.state==='working')editorStatus('작업을 완료했습니다.');updateControls();}}
+async function operation(action){if(busy)return;busy=true;editorStatus('요청한 작업을 처리하고 있습니다…','working');updateControls();try{await action();}catch(e){toast(e.message);}finally{busy=false;$('editor-status').hidden=true;updateControls();}}
 function currentLayer(){return composition.layers.find(l=>l.id===selectedLayer);}
 function snapshot(){return JSON.parse(JSON.stringify(composition));}
 function validateCurrent(){composition=Core.validate(gameLayout?fixedCanvas(composition):composition);}
@@ -117,7 +120,7 @@ async function applyGameFrame(mark=false,ident=mark?selectedMarkId:selectedFrame
     playing=composition.layers.some(l=>l.visible&&l.animation);$('play-effects').textContent=playing?'효과 일시 정지':'효과 재생';$('animation-time').value='0';
     if(mark)selectedMarkId=Number(ident);else selectedFrameId=Number(ident);commit();
     const warnings=[...plan.warnings,...(mark&&!plan.mark.placement?['이 던전 로딩 화면에는 별도 마크의 기본 위치가 등록되어 있지 않습니다. 마크 위치는 직접 조정하세요.']:[]),...(mark&&plan.effects.length?['마크 효과는 마크 중심에 연결했습니다. 마크를 이동하거나 크기를 바꾸면 효과도 함께 바뀝니다.']:[])];
-    setMessage('game-frame-status',warnings.length?warnings.join(' '):'게임 정의의 영역과 배치를 적용했습니다.',warnings.length?'warning':'success');
+    setMessage('game-frame-status',warnings.length?warnings.join(' '):'썸네일을 누르면 조합에 적용합니다. 프레임과 마크는 따로 고를 수 있습니다.',warnings.length?'warning':'info');
     editorStatus(mark?(plan.mark.placement?'게임 기본 위치에 마크를 적용했습니다.':previousMark?'이전 마크 위치를 유지해 교체했습니다.':'마크를 추가했습니다. 기본 위치가 없어 직접 조정할 수 있습니다.'):'일러스트 테두리에 게임 프레임을 적용했습니다.');
   }catch(e){for(const s of staged)if(!s.reused)s.value.bitmap.close();throw e;}
 }
@@ -280,7 +283,7 @@ async function searchImages(){
       button.onclick=()=>operation(()=>kind==='illustration'?addImage(item.id):applyGameFrame(kind==='mark',item.id));$('image-results').append(button);
     }
     const pages=Math.max(1,Math.ceil(result.total/limit));$('image-page').textContent=`${pickerPage} / ${pages}`;$('image-prev').disabled=pickerPage<=1;$('image-next').disabled=pickerPage>=pages;
-    setMessage('picker-summary',result.items.length?`${pickerLabels[kind]} ${result.total}개 · 썸네일을 눌러 적용하세요.`:query?'검색 결과가 없습니다. 다른 이름으로 검색해 주세요.':'선택할 에셋이 없습니다. 라이브러리에서 원본 폴더를 먼저 분석하세요.',result.items.length?'success':'warning');
+    setMessage('picker-summary',result.items.length?`${pickerLabels[kind]} ${result.total}개`:query?'검색 결과가 없습니다. 다른 이름으로 검색해 주세요.':'선택할 에셋이 없습니다. 라이브러리에서 원본 폴더를 먼저 분석하세요.',result.items.length?'info':'warning');
     if(!result.items.length)$('image-results').append(node('p','muted',query?'검색 결과가 없습니다.':'선택할 에셋이 없습니다. 라이브러리에서 원본 폴더를 먼저 분석하세요.'));
     updateControls();
   }catch(e){if(seq===pickerGeneration){$('image-results').replaceChildren(node('p','picker-error',e.message));setMessage('picker-summary','목록을 불러오지 못했습니다. 새로고침으로 다시 시도하세요.','error');$('image-page').textContent='';}}

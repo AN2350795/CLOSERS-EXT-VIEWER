@@ -7,32 +7,22 @@
 @media(max-width:420px){#image-results.asset-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #animation-preview{width:min(520px,90vw);max-height:90vh;overflow:auto;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;background:#151d29;color:var(--text);padding:20px}#animation-preview::backdrop{background:#0009}#animation-preview h2{font-size:18px;margin-top:0}#animation-preview p{font-size:12px;line-height:1.6}.animation-preview-image{text-align:center;background:repeating-conic-gradient(#242c39 0% 25%,#333e4f 0% 50%) 50%/14px 14px;border-radius:5px}.animation-preview-image img{display:block;margin:auto;max-width:100%;max-height:58vh;object-fit:contain}
 
-.status-notice,.image-picker>.status-notice,#editor-status{
-  padding:12px 14px;border:1px solid #537b9d;border-left:4px solid #83c9ff;border-radius:8px;
-  background:#192c40;color:#e0f1ff;font-size:13px;font-weight:500;line-height:1.7;overflow-wrap:anywhere;
-}
-.status-notice::before{
-  content:attr(data-label);display:inline-block;margin-right:8px;padding:1px 7px;border:1px solid currentColor;
-  border-radius:4px;font-size:11px;font-weight:700;line-height:1.6;vertical-align:1px;
-}
-.status-notice[data-state=success]{background:#182f2b;border-color:#477c6b;border-left-color:#7edbb8;color:#d2f9e9}
-.status-notice[data-state=warning],#editor-status[data-state=warning]{background:#372c19;border-color:#94723c;border-left-color:#ffd17c;color:#ffe7ba}
-.status-notice[data-state=error],#editor-status[data-state=error]{background:#3b2229;border-color:#a75b6c;border-left-color:#ff93a6;color:#ffe1e7}
+.status-notice[data-state=loading]{padding:8px 10px;border-radius:6px;background:#192c40;color:#e0f1ff;line-height:1.6}
 .status-notice[data-state=loading]::after,.status-notice[data-state=working]::after,.asset-loading::before{
   content:'';display:inline-block;width:13px;height:13px;border:2px solid currentColor;border-right-color:transparent;
   border-radius:50%;margin-left:10px;vertical-align:-3px;animation:compose-status-spin .85s linear infinite;
 }
-#editor-status{position:sticky;top:8px;z-index:20;margin:14px 0;box-shadow:0 5px 18px #0005;max-height:30vh;overflow:auto;font-size:14px}
-#editor-status[data-state=success]{background:#182f2b;border-color:#477c6b;border-left-color:#7edbb8;color:#d2f9e9}
-.image-picker>#picker-summary{min-height:66px;box-sizing:border-box;margin:14px 0}
+#editor-status{position:fixed;bottom:20px;right:20px;z-index:100;max-width:min(460px,90vw);margin:0;padding:10px 14px;border:1px solid #537b9d;border-radius:8px;background:#192c40;color:#e0f1ff;box-shadow:0 5px 18px #0005;font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.image-picker>#picker-summary{margin:12px 0}
+#picker-summary[data-state=error]{color:#ffb7c5}
+#game-frame-status[data-state=warning]{color:#e4c18b}
 #image-results[aria-busy=true]{opacity:.45;pointer-events:none}
 .asset-thumbnail{position:relative}
 .asset-thumbnail[data-state=loading] img{opacity:0}
 .asset-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#192534;color:#d9eeff;font-size:11px;text-align:center;padding:6px}
 .asset-loading::before{margin:0;width:19px;height:19px}
-.asset-grid>.picker-error{padding:12px;border:1px solid #a75b6c;border-radius:6px;background:#3b2229;color:#ffe1e7;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
-#editor-toast{font-size:14px;line-height:1.7;border-left:4px solid #ffd17c;box-shadow:0 8px 30px #0009;background:#382b1d;color:#ffe7ba}
-#editor-toast::before{content:'확인 필요';display:block;font-weight:700;margin-bottom:4px;color:#ffd17c}
+.asset-grid>.picker-error{color:#ffb7c5;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+#editor-toast{font-size:13px;line-height:1.6;box-shadow:0 5px 18px #0005}
 @keyframes compose-status-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.status-notice[data-state=loading]::after,.status-notice[data-state=working]::after,.asset-loading::before{animation:none}}
-@media(max-width:760px){#editor-status{top:4px;padding:10px 12px;font-size:13px}#editor-toast{left:12px;right:12px;bottom:12px;max-width:none}}
+@media(max-width:760px){#editor-status,#editor-toast{left:12px;right:12px;bottom:12px;max-width:none}}
