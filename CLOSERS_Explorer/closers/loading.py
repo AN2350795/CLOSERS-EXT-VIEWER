@@ -25,6 +25,13 @@ class LoadingData:
         self.lock = threading.RLock()
         self.cache = {}
         self.keys = None
+        self.parsed = {}
+
+    def table(self, name):
+        body = self.body(name)
+        digest = hashlib.sha256(body).digest()
+        if digest not in self.parsed: self.parsed[digest] = tables(body)
+        return self.parsed[digest]
 
     def rows(self, name):
         with self.catalog.connect() as db:
@@ -65,7 +72,53 @@ class LoadingData:
     def atlas(self, name):
         tet = str(Path(name).with_suffix('.TET'))
         with self.lock:
-            return {v['m_Key']: region(v) for v in tables(self.body(tet))['TEXTURE_UV'].values()}
+            return {v['m_Key']: region(v) for v in self.table(tet)['TEXTURE_UV'].values()}
+
+    def effects(self, preset):
+        """Compile single-plane texture sequences; report every unhandled effect."""
+        names = re.findall(r'"([A-Z0-9_]+)"', preset['effects'])
+        if not names: return [], []
+        sequences = {}
+        for name in ('PARTICLE_SYSTEM_UI.LUA', 'PARTICLE_SYSTEM_UI_2.LUA', 'PARTICLE_SYSTEM_UI_3.LUA'):
+            sequences.update({v['m_SeqName']: v for v in self.table(name)['PARTICLE_SYSTEM'].values()})
+        animations = {v['m_AnimName']: v for v in self.table('TEX_ANIM_DATA.LUA')['m_mapTexAnimData'].values()}
+        def pairs(raw):
+            return [tuple(map(float, p)) for p in re.findall(r'\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}', raw)]
+        positions, scales = pairs(preset['positions']), pairs(preset['scales'])
+        result, warnings = [], []
+        for i, name in enumerate(names):
+            try:
+                seq = sequences[name]
+                events = list(seq['m_vecEventList'].values())
+                allowed = {'PCET_TEXTURE', 'PCET_TEX_ANIM', 'PCET_COLOR', 'PCET_SIZE', 'PCET_SCALE'}
+                if (seq.get('m_ParticleType') != 'PCT_2D_PLANE' or seq.get('m_iMaxParticleNum', 1) != 1
+                        or seq.get('m_LifeTime', 0) < 60 or seq.get('m_DrawCount', 1) != 1
+                        or any(v != 0 for v in seq.get('m_EmitRadius', {}).values())
+                        or any(e.get(1) != 'PCET_INITIAL' or e.get(2) not in allowed for e in events)
+                        or seq.get('m_bDualBlending') == 'TRUE' or seq.get('m_MaskTexName')
+                        or seq.get('m_SrcBlend') != 'CON_D3DBLEND_SRCALPHA'
+                        or seq.get('m_DestBlend') not in ('CON_D3DBLEND_INVSRCALPHA', 'CON_D3DBLEND_ONE')):
+                    raise ValueError('추가 파티클·셰이더 규칙 필요')
+                ev = {e[2]: e for e in events}
+                size = ev['PCET_SIZE']['XYZ']
+                scale = ev.get('PCET_SCALE', {}).get('VAL', 1)
+                rgba = ev.get('PCET_COLOR', {}).get('RGBA', {1:1,2:1,3:1,4:1})
+                color = [rgba[n] for n in range(1,5)]
+                if not all(type(v) in (int,float) and 0 <= v <= 1 for v in color):
+                    raise ValueError('확률 색상 필요')
+                pos, factor = positions[i], scales[i]
+                width, height = size[1]*scale*factor[0], size[2]*scale*factor[1]
+                frames = animations[ev['PCET_TEX_ANIM']['STR']]['m_vecFrame'].values() if 'PCET_TEX_ANIM' in ev else [dict(m_TexName=ev['PCET_TEXTURE']['STR'], m_fTime=1)]
+                frames = [dict(entry_id=self.image_id(f['m_TexName']), duration=f['m_fTime']) for f in frames]
+                if not 1 <= len(frames) <= 120 or any(not 0 < f['duration'] <= 60 for f in frames):
+                    raise ValueError('텍스처 재생 시간 범위 초과')
+                result.append(dict(name=name, role='fragment', x=pos[0]-width/2, y=pos[1]-height/2,
+                    width=width, height=height, frames=frames, color=color,
+                    delay=seq.get('m_fLatencyTime', 0), blend='lighter' if seq['m_DestBlend']=='CON_D3DBLEND_ONE' else 'source-over',
+                    order=seq.get('m_Layer','ROL_EFFECT_1')))
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                warnings.append(name+' · '+str(exc))
+        return sorted(result, key=lambda e:e['order']), warnings
 
     def presets(self):
         with self.lock:
@@ -93,6 +146,10 @@ class LoadingData:
         return rows[0]['id']
 
     def plan(self, ident):
+        with self.lock, self.catalog.session():
+            return self._plan(ident)
+
+    def _plan(self, ident):
         preset = next((p for p in self.presets() if p['id'] == ident), None)
         if preset is None: raise ValueError('프레임 등록 번호가 없습니다.')
         with self.lock:
@@ -101,16 +158,17 @@ class LoadingData:
             pictures = list(slot['m_vecPicData'].values())
             illustration = next(p for p in pictures if p.get('UVKey') == 'LOADING_DUNGEON')
             origin = illustration['m_Pos']
-            atlas = self.atlas(preset['image'])
-            entry = self.image_id(preset['image'])
+            atlas = self.atlas(preset['image']) if preset['image'] else {}
+            entry = self.image_id(preset['image']) if preset['image'] else None
             layers = []
             for key, uv in [('TOP', preset['top']), ('BOT', preset['bottom'])]:
-                if not uv: continue
+                if not uv or not preset['image']: continue
                 placement = next(p for p in pictures if p.get('UVKey') == key)
                 layers.append(dict(entry_id=entry, name=preset['image']+' · '+uv, role='frame', crop=atlas[uv],
                     x=placement['m_Pos'][1]-origin[1], y=placement['m_Pos'][2]-origin[2],
                     width=placement['m_fWidth'], height=placement['m_fHeight']))
-            return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=layers,
+            effects, warnings = self.effects(preset)
+            return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=layers, effects=effects,
                 mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'],
                           crop=self.atlas(preset['mark'])[preset['mark_key']]) if preset['mark'] and preset['mark_key'] else None,
-                warnings=['별도 파티클 효과가 등록된 프레임입니다.'] if preset['effects'].strip() else [])
+                warnings=warnings)
