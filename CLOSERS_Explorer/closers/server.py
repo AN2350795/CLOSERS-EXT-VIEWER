@@ -261,6 +261,8 @@ def create_server(catalog, port=0):
     media = Media(catalog)
     from .composition import CompositionImages,resolve_sources
     composition = CompositionImages(catalog)
+    from .animation_export import AnimationExport, MAX_BYTES as ANIMATION_MAX_BYTES
+    animations = AnimationExport()
     from .loading import LoadingData
     loading = LoadingData(catalog)
     from .model_library import Models
@@ -535,6 +537,17 @@ def create_server(catalog, port=0):
             try:
                 self.authorized(True)
                 length = int(self.headers.get('Content-Length', 0))
+                if self.path == '/api/composition-animation/webp':
+                    if not 0 < length <= ANIMATION_MAX_BYTES:
+                        self.close_connection = True
+                        raise ValueError('애니메이션 요청은 128 MiB까지입니다.')
+                    if self.headers.get('Content-Type','').split(';')[0] != 'image/apng':
+                        self.close_connection = True
+                        raise ValueError('APNG 애니메이션 입력이 필요합니다.')
+                    body = self.rfile.read(length)
+                    if len(body)!=length: raise ValueError('애니메이션 요청이 잘렸습니다.')
+                    self.respond(animations.webp(body),'image/webp')
+                    return
                 if length <= 0 or length > 64 * 1024:
                     raise ValueError('잘못된 요청 크기입니다.')
                 args = json.loads(self.rfile.read(length))

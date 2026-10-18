@@ -15,6 +15,7 @@ class PickerBrowserTests(unittest.TestCase):
     page_file = 'model.html'
     entry_script = '<script type="module" src="/model.js"></script>'
     extra_images = ()
+    animation_export = False
 
     def test_picker(self):
         browser = next((p for p in [shutil.which('chromium'), shutil.which('google-chrome'),
@@ -28,10 +29,18 @@ class PickerBrowserTests(unittest.TestCase):
         web = Path(__file__).resolve().parents[1] / 'web'
         script = (Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
         page_file, entry_script, extra_images = self.page_file, self.entry_script, self.extra_images
+        animation_export = self.animation_export
 
         class Handler(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+
+            def do_POST(self):
+                if not animation_export or self.path!='/api/composition-animation/webp':
+                    self.send_error(404);return
+                from closers.animation_export import encode_webp
+                data=encode_webp(self.rfile.read(int(self.headers['Content-Length'])))
+                self.send_response(200);self.send_header('Content-Type','image/webp');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
             def do_GET(self):
                 if self.path.startswith('/api/model-icon/'+'a'*64) or self.path.split('?')[0] in extra_images:

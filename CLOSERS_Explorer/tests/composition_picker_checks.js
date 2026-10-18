@@ -69,6 +69,8 @@ try{
   const scaled=projectForSave();scaled.canvas.width*=2;scaled.canvas.height*=2;const parent=scaled.layers.find(l=>!l.markParent);parent.x*=2;parent.y*=2;parent.width*=2;parent.height*=2;
   await importProject(scaled);playing=false;check(makeExportCanvas(.5).toDataURL()===before,'canvas normalization scaled attached effects twice');
   const actualDownload=downloadBlob,downloads=[];downloadBlob=(blob,name)=>downloads.push({blob,name});
+  check(document.querySelector('#animation-format').value==='webp','lossless WebP should be the default');
+  document.querySelector('#animation-format').value='apng';
   document.querySelector('#animation-duration').value='3';document.querySelector('#animation-fps').value='25';
   await exportAnimation();downloadBlob=actualDownload;
   const decoded=new ImageDecoder({data:await downloads[0].blob.arrayBuffer(),type:'image/png'});await decoded.tracks.ready;
@@ -77,6 +79,20 @@ try{
   const preview=await (await nativeFetch(document.querySelector('#animation-preview-image').src)).blob();
   const hash=async blob=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].join(',');
   check(await hash(preview)===await hash(downloads[0].blob),'preview does not use the downloaded APNG');
+  document.querySelector('#close-animation-preview').click();await until(()=>!document.querySelector('#animation-preview-image').hasAttribute('src'));
+  downloadBlob=(blob,name)=>downloads.push({blob,name});document.querySelector('#animation-format').value='webp';
+  await exportAnimation();downloadBlob=actualDownload;
+  const webpDecoded=new ImageDecoder({data:await downloads[1].blob.arrayBuffer(),type:'image/webp'});await webpDecoded.tracks.ready;
+  check(downloads[1].name==='closers-composition.webp'&&webpDecoded.tracks.selectedTrack.frameCount===75,'WebP export dropped frames');
+  const last=await webpDecoded.decode({frameIndex:74});check(last.image.duration===40000,'WebP frame duration');last.image.close();webpDecoded.close();
+  const originalDecoder=new ImageDecoder({data:await downloads[0].blob.arrayBuffer(),type:'image/png'}),convertedDecoder=new ImageDecoder({data:await downloads[1].blob.arrayBuffer(),type:'image/webp'});
+  for(const index of [0,12,49,74]){
+    const pixels=async decoder=>{const {image}=await decoder.decode({frameIndex:index});const c=new OffscreenCanvas(450,640),ctx=c.getContext('2d');ctx.drawImage(image,0,0);image.close();return ctx.getImageData(0,0,40,50).data;};
+    const original=await pixels(originalDecoder),converted=await pixels(convertedDecoder);
+    check(original.every((v,i)=>v===converted[i]),'WebP changed browser-decoded colors or alpha at frame '+index);
+  }
+  originalDecoder.close();convertedDecoder.close();
+  check(document.querySelector('#animation-preview-info').textContent.startsWith('WebP · 75프레임'),'WebP preview format missing');
   document.querySelector('#close-animation-preview').click();await until(()=>!document.querySelector('#animation-preview-image').hasAttribute('src'));
   selectedLayer=composition.layers.find(l=>!l.markParent).id;document.querySelector('#duplicate-layer').click();
   check(composition.layers.length===4&&composition.layers[3].markParent===composition.layers[2].id,'duplicating a mark lost its effects');
