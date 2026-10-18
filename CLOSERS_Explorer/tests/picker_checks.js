@@ -91,19 +91,18 @@ try{
  const scene={frames:[],meshes:[{name:'preview-triangle',frame:-1,vertices:[-1,0,0,1,0,0,0,2,0],indices:[0,2,1],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,0,0,1],image:null}]}]};
  const hiddenScene=structuredClone(scene);hiddenScene.meshes[0].equipment_hidden=true;
  const hiddenModel=buildModel(hiddenScene);check(!hiddenModel.meshes[0].visible&&hiddenModel.meshes[0].userData.equipmentHidden,'equipment culling reaches renderer');hiddenModel.dispose();
- let sceneRequests=0;
- const previews=setupPreviews({api:async url=>{if(url.startsWith('/api/model-bundle'))return {slots:[{checked:true,selected:null}],face:{},motion:{candidates:[]}};sceneRequests++;return scene;}});
+ let previewRequests=0;
+ const previews=setupPreviews({api:async()=>{previewRequests++;throw Error('Disabled model preview requested data');}});
  $('model-results').replaceChildren();const previewRow=element('div');previewRow.className='model-row';$('model-results').append(previewRow);previews.attach(previewRow,{id:1,name:'triangle'},'files','existing');
- previewRow.scrollIntoView();await until(()=>previewRow.querySelector('img'));
- const image=previewRow.querySelector('img');await image.decode();const canvas=document.createElement('canvas');canvas.width=160;canvas.height=180;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);const pixels=ctx.getImageData(0,0,160,180).data;
- check(pixels.some((v,i)=>i%4===0&&v>200&&pixels[i+1]<40),'preview contains rendered triangle');
+ previewRow.scrollIntoView();await until(()=>previewRow.textContent.includes('아이콘 없음'));
+ check(previewRequests===0&&!previewRow.querySelector('img'),'missing icon does not generate a model preview');
  const ambiguous=element('div');ambiguous.className='model-row';$('model-results').append(ambiguous);previews.attach(ambiguous,{key:'ambiguous',label:'ambiguous'},'sets','existing');
- ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('출처 선택 필요'));check(sceneRequests===1,'ambiguous preview never chooses source');
+ ambiguous.scrollIntoView();await until(()=>ambiguous.textContent.includes('아이콘 없음'));check(previewRequests===0,'missing outfit icon does not resolve model dependencies');
  const iconRow=element('div');iconRow.className='model-row';$('model-results').append(iconRow);previews.attach(iconRow,{key:'icon-outfit',label:'Icon outfit',item_icon:{sha256:'a'.repeat(64),part_label:'상의'}},'sets','existing');
  iconRow.scrollIntoView();await until(()=>iconRow.querySelector('img'));await iconRow.querySelector('img').decode();
- check(sceneRequests===1&&iconRow.querySelector('.is-item-icon')&&!iconRow.textContent.trim()&&iconRow.querySelector('.model-thumbnail').title.includes('상의')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon has no visible caption and keeps accessible description');
+ check(previewRequests===0&&iconRow.querySelector('.is-item-icon')&&!iconRow.textContent.trim()&&iconRow.querySelector('.model-thumbnail').title.includes('상의')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon has no visible caption and keeps accessible description');
  const unavailable=element('div');unavailable.className='model-row';$('model-results').append(unavailable);previews.attach(unavailable,{id:2,name:'unavailable icon',item_icon:{sha256:'b'.repeat(64)}},'files','existing');
- unavailable.scrollIntoView();await until(()=>unavailable.querySelector('img'));
- check(sceneRequests===2&&!unavailable.querySelector('.is-item-icon')&&unavailable.querySelector('img').alt.includes('3D'),'unavailable item icon falls back to 3D preview');previews.reset();
+ unavailable.scrollIntoView();await until(()=>unavailable.textContent.includes('아이콘 없음'));
+ check(previewRequests===0&&!unavailable.querySelector('img'),'failed item icon does not fall back to a model preview');previews.reset();
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(element('pre',e.stack));}

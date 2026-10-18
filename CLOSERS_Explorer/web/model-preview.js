@@ -11,8 +11,14 @@ export function setupPreviews({api}){
     if(item.item_icon?.sha256){
       const token=document.querySelector('meta[name="explorer-token"]').content;
       const src='/api/model-icon/'+encodeURIComponent(item.item_icon.sha256)+'?'+new URLSearchParams({token});
-      try{const image=new Image();image.src=src;await image.decode();return src;}catch{/* Keep the 3D preview when the icon is unavailable. */}
+      try{const image=new Image();image.src=src;await image.decode();return src;}catch{/* 아이콘을 불러오지 못하면 빈 상태를 표시합니다. */}
     }
+    // 목록 로딩 비용을 줄이기 위해 아이콘이 없을 때의 3D 미리보기 생성을 사용하지 않습니다.
+    // 나중에 다시 사용할 수 있도록 구현을 보존합니다. 재활성화 시 아래 호출을 복원하세요.
+    // return renderModelPreview(item,mode,saved);
+    return null;
+  }
+  async function renderModelPreview(item,mode,saved){
     let ids,skeleton;
     if(mode==='sets'){
       const bundle=await api('/api/model-bundle?'+new URLSearchParams({key:item.key,saved}));
@@ -59,12 +65,13 @@ export function setupPreviews({api}){
       const {item,mode,saved}=target.preview;
       const key=JSON.stringify([mode,item.key||item.id,saved,item.item_icon?.sha256]);
       try{
-        let src=cache.get(key);if(!src){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
+        let src=cache.get(key);if(!cache.has(key)){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
+        if(!src){if(target.isConnected){target.textContent='아이콘 없음';target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
         if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon);if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
       }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
     }}finally{running=false;}
   }
-  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';target.textContent='미리보기 대기';target.title=mode==='sets'?'사용 가능한 기본 부위로 만든 참고 미리보기':'원본 모델의 기본 자세 미리보기';target.preview={item,mode,saved};row.prepend(target);observer.observe(target);}
+  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';target.textContent='아이콘 대기';target.title='인게임 아이템 아이콘';target.preview={item,mode,saved};row.prepend(target);observer.observe(target);}
   function reset(){observer.disconnect();queue.length=0;}
   window.addEventListener('pagehide',()=>{stopped=true;reset();cache.clear();renderer?.dispose();});
   return {attach,reset};
