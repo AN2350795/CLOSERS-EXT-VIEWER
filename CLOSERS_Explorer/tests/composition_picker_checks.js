@@ -68,6 +68,16 @@ try{
   check(composition.layers[1].markParent===composition.layers[0].id,'restored mark parent id was not remapped');
   const scaled=projectForSave();scaled.canvas.width*=2;scaled.canvas.height*=2;const parent=scaled.layers.find(l=>!l.markParent);parent.x*=2;parent.y*=2;parent.width*=2;parent.height*=2;
   await importProject(scaled);playing=false;check(makeExportCanvas(.5).toDataURL()===before,'canvas normalization scaled attached effects twice');
+  const actualDownload=downloadBlob,downloads=[];downloadBlob=(blob,name)=>downloads.push({blob,name});
+  document.querySelector('#animation-duration').value='3';document.querySelector('#animation-fps').value='25';
+  await exportAnimation();downloadBlob=actualDownload;
+  const decoded=new ImageDecoder({data:await downloads[0].blob.arrayBuffer(),type:'image/png'});await decoded.tracks.ready;
+  check(downloads[0].name==='closers-composition.apng'&&decoded.tracks.selectedTrack.frameCount===75,'default export should contain 75 frames');decoded.close();
+  check(document.querySelector('#animation-preview').open&&document.querySelector('#animation-preview-info').textContent.includes('75프레임 · 25 FPS · 3초'),'export playback preview or frame count missing');
+  const preview=await (await nativeFetch(document.querySelector('#animation-preview-image').src)).blob();
+  const hash=async blob=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].join(',');
+  check(await hash(preview)===await hash(downloads[0].blob),'preview does not use the downloaded APNG');
+  document.querySelector('#close-animation-preview').click();await until(()=>!document.querySelector('#animation-preview-image').hasAttribute('src'));
   selectedLayer=composition.layers.find(l=>!l.markParent).id;document.querySelector('#duplicate-layer').click();
   check(composition.layers.length===4&&composition.layers[3].markParent===composition.layers[2].id,'duplicating a mark lost its effects');
   document.querySelector('#remove-layer').click();check(composition.layers.length===2,'deleting a duplicated mark removed the original effects');

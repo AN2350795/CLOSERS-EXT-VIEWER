@@ -7,6 +7,7 @@ const roles={illustration:'일러스트',frame:'프레임',fragment:'조각'};
 let gamePlan=null,gamePresets=null,atlasRegions={},atlasSource=null,animationTime=0,playing=false,lastTick=0;
 let pickerKind='illustration',selectedFrameId=null,selectedMarkId=null;
 let gameLayout=null;
+let animationPreviewURL=null;
 const pickerLabels={illustration:'일러스트',frame:'프레임',mark:'마크'};
 function fixedCanvas(project){
   if(!gameLayout)throw Error('게임 로딩 화면 크기를 먼저 불러와 주세요.');
@@ -145,6 +146,13 @@ function fitLayer(l,fill){const c=composition.canvas,r=(fill?Math.max:Math.min)(
 function changeLayer(change){if(busy)return;const l=currentLayer();if(!l)return;const previous=snapshot();try{change(l);validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
 function changeCanvas(){if(busy)return;const previous=snapshot();try{composition.canvas.transparent=$('canvas-transparent').checked;composition.canvas.color=$('canvas-color').value;composition=fixedCanvas(composition);validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),link=node('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
+function clearAnimationPreview(){
+  $('animation-preview-image').removeAttribute('src');
+  if(animationPreviewURL){URL.revokeObjectURL(animationPreviewURL);animationPreviewURL=null;}
+}
+$('close-animation-preview').onclick=()=>$('animation-preview').close();
+$('animation-preview').addEventListener('close',clearAnimationPreview);
+window.addEventListener('pagehide',clearAnimationPreview);
 function makeExportCanvas(time=animationTime,validated=false){if(!validated)validateCurrent();const canvas=document.createElement('canvas');canvas.width=composition.canvas.width;canvas.height=composition.canvas.height;Core.draw(canvas.getContext('2d'),composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,time);return canvas;}
 async function exportPNG(){
   $('editor-status').textContent='원본 해상도로 PNG를 만들고 있습니다…';
@@ -156,8 +164,13 @@ async function exportAnimation(){
   validateCurrent();
   const duration=Number($('animation-duration').value),fps=Number($('animation-fps').value);
   if(!Number.isFinite(duration)||duration<.1||duration>10)throw Error('저장 길이는 0.1~10초입니다.');
-  const blob=await AnimationPNG.encode({width:composition.canvas.width,height:composition.canvas.height,count:Math.ceil(duration*fps),fps,requireMotion:true,render:time=>makeExportCanvas(time,true),progress:(n,total)=>$('editor-status').textContent=`움직이는 PNG 생성 중 · ${n}/${total}`});
-  downloadBlob(blob,'closers-composition.apng');$('editor-status').textContent='움직이는 PNG 저장 요청 완료';
+  const count=Math.ceil(duration*fps);
+  const blob=await AnimationPNG.encode({width:composition.canvas.width,height:composition.canvas.height,count,fps,requireMotion:true,render:time=>makeExportCanvas(time,true),progress:(n,total)=>$('editor-status').textContent=`움직이는 PNG 생성 중 · ${n}/${total}`});
+  downloadBlob(blob,'closers-composition.apng');
+  const summary=`${count}프레임 · ${fps} FPS · ${Number((count/fps).toFixed(3))}초 · ${composition.canvas.width} × ${composition.canvas.height}px`;
+  $('editor-status').textContent='움직이는 PNG 저장 요청 완료 · '+summary;
+  clearAnimationPreview();animationPreviewURL=URL.createObjectURL(blob);$('animation-preview-image').src=animationPreviewURL;
+  $('animation-preview-info').textContent=summary;$('animation-preview').showModal();
 }
 $('export-apng').onclick=()=>operation(exportAnimation);
 $('play-effects').onclick=()=>{playing=!playing;lastTick=0;$('play-effects').textContent=playing?'효과 일시 정지':'효과 재생';};

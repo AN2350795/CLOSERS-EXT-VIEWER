@@ -10,6 +10,13 @@
       <input id="project-file" type="file" accept=".json,application/json" hidden><input id="template-file" type="file" accept=".json,application/json" hidden>
     </section>
     <p id="editor-status" role="status">이미지를 추가하면 편집을 시작할 수 있습니다.</p>
+    <dialog id="animation-preview" aria-labelledby="animation-preview-title">
+      <h2 id="animation-preview-title">저장한 움직이는 PNG</h2>
+      <p id="animation-preview-info"></p>
+      <div class="animation-preview-image"><img id="animation-preview-image" alt="방금 저장한 APNG 재생 미리보기"></div>
+      <p class="muted">다운로드한 파일과 같은 이미지를 재생합니다. 외부 뷰어의 재생 결과가 다르면 이 미리보기에서도 확인할 수 있습니다.</p>
+      <button id="close-animation-preview" class="secondary" type="button">닫기</button>
+    </dialog>
     <div class="editor-layout">
       <section class="image-picker panel" aria-label="이미지 선택">
         <div class="picker-heading"><h2>에셋 선택</h2><button id="refresh-picker" class="secondary" aria-label="선택 목록 새로고침">새로고침</button></div>
