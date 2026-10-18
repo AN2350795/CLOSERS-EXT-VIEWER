@@ -28,14 +28,15 @@ globalThis.CompositionCore=(()=>{
     const layers=value.layers.map(l=>{
       if(!l||!/^l[0-9]{1,10}$/.test(l.id)||ids.has(l.id)||!sourceMap.has(l.source))fail('레이어의 이미지 연결이 올바르지 않습니다.');ids.add(l.id);
       if(!['illustration','frame','fragment'].includes(l.role))fail('레이어 용도가 올바르지 않습니다.');
-      const s=sourceMap.get(l.source),crop=l.crop||{},x=number(crop.x,'자르기 X',0,s.width),y=number(crop.y,'자르기 Y',0,s.height);
+      const s=sourceMap.get(l.source),crop=l.crop||{},x=number(crop.x,'자르기 X',0,s.width),y=number(crop.y,'자르기 Y',0,s.height),edge=bool(l.gameIllustration,false)?1:0;
       const result={id:l.id,source:l.source,name:text(l.name,'레이어 이름',200),role:l.role,
         x:number(l.x,'배치 X',-100000,100000),y:number(l.y,'배치 Y',-100000,100000),
         width:number(l.width,'배치 너비',.01,65536),height:number(l.height,'배치 높이',.01,65536),
-        crop:{x,y,width:number(crop.width,'자르기 너비',.01,s.width-x),height:number(crop.height,'자르기 높이',.01,s.height-y)},
+        crop:{x,y,width:number(crop.width,'자르기 너비',.01,s.width-x+edge),height:number(crop.height,'자르기 높이',.01,s.height-y+edge)},
         opacity:number(l.opacity,'불투명도',0,1),visible:bool(l.visible,true),locked:bool(l.locked,false),keepRatio:bool(l.keepRatio,true)};
       if(l.gameFrame!==undefined)result.gameFrame=bool(l.gameFrame,false);
       if(l.gameMark!==undefined)result.gameMark=bool(l.gameMark,false);
+      if(l.gameIllustration!==undefined)result.gameIllustration=bool(l.gameIllustration,false);
       if(l.animation!==undefined){
         const a=l.animation;if(!a||!Array.isArray(a.frames)||!a.frames.length||a.frames.length>120)fail('애니메이션은 1~120프레임까지입니다.');
         if(!['source-over','lighter'].includes(a.blend)||!Array.isArray(a.color)||a.color.length!==4)fail('애니메이션 색상·합성 설정이 잘못되었습니다.');

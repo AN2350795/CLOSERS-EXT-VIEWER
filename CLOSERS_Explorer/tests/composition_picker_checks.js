@@ -8,10 +8,13 @@ try{
   const requests=[],nativeFetch=window.fetch;let staleResolve;
   window.fetch=async(path,options)=>{
     const url=new URL(path,location.origin);requests.push(url.pathname+url.search);
+    if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640});
+    if(url.pathname==='/api/loading-illustration/9')return Response.json({width:450,height:640,layers:[{entry_id:9,name:'테스트 로딩',role:'illustration',gameIllustration:true,x:0,y:0,width:450,height:640,crop:{x:0,y:0,width:4,height:4}}]});
     if(url.pathname==='/api/loading-presets')return Response.json({items:presets});
+    if(url.pathname==='/api/composition-resolve')return Response.json({ids:JSON.parse(options.body).sources.map(s=>s.ordinal)});
     if(url.pathname==='/api/loading-illustrations'){
       if(url.searchParams.get('q')==='slow')await new Promise(r=>staleResolve=r);
-      return Response.json({items:[],total:0});
+      return Response.json({items:[{id:9,name:'DLG_PVP_LOADING_TEST.PNG',display_name:'테스트 로딩',character:'이세하'}],total:1});
     }
     if(url.pathname.startsWith('/api/loading-plan/')){
       const id=Number(url.pathname.split('/').at(-1));return Response.json({preset:presets[id-1],width:450,height:640,effects:[],warnings:[],
@@ -24,27 +27,35 @@ try{
   };
   await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/compose.js';s.onload=resolve;s.onerror=reject;document.head.append(s);});
   await until(()=>document.querySelector('#image-results[aria-busy=false]'));
+  await until(()=>!busy);
+  check(composition.canvas.width===450&&composition.canvas.height===640&&document.querySelector('#canvas-width').disabled&&document.querySelector('#canvas-height').disabled,'game output dimensions are not fixed');
+  check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
+  document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
+  const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
   check(!document.querySelector('#game-frame')&&!document.querySelector('#find-all'),'old dropdown/search controls remain');
   document.querySelector('#pick-frame').click();await until(()=>document.querySelectorAll('.asset-card').length===12);
   check(document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/frame/1'),'assembled frame thumbnail URL');
-  document.querySelector('.asset-card[data-id="2"]').click();await until(()=>!busy&&composition.layers.length===2);
+  document.querySelector('.asset-card[data-id="2"]').click();await until(()=>!busy&&composition.layers.length===3);
   check(selectedFrameId===2&&document.querySelector('.asset-card[data-id="2"]').getAttribute('aria-pressed')==='true','selected frame state');
   document.querySelector('#image-next').click();await until(()=>document.querySelector('.asset-card[data-id="13"]'));check(document.querySelectorAll('.asset-card').length===3,'frame pagination');
   document.querySelector('#image-query').value='FRAME_14';await searchImages();check(document.querySelectorAll('.asset-card').length===1&&document.querySelector('.asset-card').dataset.id==='14','frame name filter and page clamp');
   document.querySelector('#pick-mark').click();await until(()=>document.querySelector('.asset-card[data-kind="mark"]'));
   check(document.querySelector('#picker-summary').textContent.includes('14'),'duplicate mark regions were not merged');
   check(document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/mark/'),'individual mark thumbnail URL');
-  document.querySelector('.asset-card[data-id="3"]').click();await until(()=>!busy&&composition.layers.length===3);
+  document.querySelector('.asset-card[data-id="3"]').click();await until(()=>!busy&&composition.layers.length===4);
   check(selectedFrameId===2&&selectedMarkId===3&&composition.layers.at(-1).crop.x===4,'independent mark selection');
   check(requests.some(p=>p==='/api/loading-plan/3?mark=1'),'mark request unnecessarily loads frame effects');
   document.querySelector('.asset-card[data-id="4"]').click();await until(()=>!busy&&selectedMarkId===4);
-  check(composition.layers.length===3&&composition.layers.filter(l=>l.gameMark).length===1&&selectedFrameId===2,'switching marks did not replace only the previous mark');
+  check(composition.layers.length===4&&composition.layers.filter(l=>l.gameMark).length===1&&selectedFrameId===2,'switching marks did not replace only the previous mark');
   document.querySelector('#pick-mark').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));await until(()=>document.querySelector('.asset-card[data-kind="frame"]'));
   check(document.activeElement.id==='pick-frame','keyboard tab navigation');
   document.querySelector('#pick-illustration').click();await until(()=>document.querySelector('#image-results[aria-busy=false]'));
   document.querySelector('#image-query').value='slow';const pending=searchImages();await until(()=>staleResolve);document.querySelector('#pick-frame').click();await until(()=>document.querySelector('.asset-card[data-kind="frame"]'));staleResolve();await pending;
   check(document.querySelectorAll('.asset-card').length===12,'stale illustration response replaced frame menu');
   check(!requests.some(p=>p.startsWith('/api/entries')),'generic CMF search still used');
+  const legacy=projectForSave();legacy.canvas.width*=2;legacy.canvas.height*=2;for(const l of legacy.layers){l.x*=2;l.y*=2;l.width*=2;l.height*=2;}
+  await importProject(legacy);check(composition.canvas.width===450&&composition.canvas.height===640&&composition.layers.find(l=>l.gameIllustration).width===450,'old settings were not adapted to the fixed game layout');
+  document.querySelector('#new-project').click();check(composition.canvas.width===450&&composition.canvas.height===640,'new project lost game dimensions');
   document.body.dataset.checks='passed';
 }catch(error){errors.push(error.stack||String(error));document.body.dataset.checks='failed';}
 const pre=document.createElement('pre');pre.textContent=errors.join('\n');document.body.append(pre);

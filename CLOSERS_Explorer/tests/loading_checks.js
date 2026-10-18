@@ -17,6 +17,9 @@ try{
   for(let i=0;i<4;i++){const {image}=await decoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);const actual=[...ctx.getImageData(0,0,1,1).data];check(JSON.stringify(actual)===JSON.stringify(pixel(i/10)),'APNG decoded pixels '+i);check(Math.abs(image.duration-100000)<1,'APNG timing');image.close();}decoder.close();
   project.layers[0].animation.color=[0,0,0,.5];check(pixel(.1)[0]===0&&Math.abs(pixel(.1)[3]-128)<=1,'color and alpha');
   let limited=false;try{await AnimationPNG.encode({width:8192,height:8192,count:5,fps:25,render});}catch{limited=true;}check(limited,'export memory limit');
+  const atlas=JSON.parse(JSON.stringify(raw));delete atlas.layers[0].animation;atlas.layers[0].gameIllustration=true;atlas.layers[0].crop.y=1;
+  check(CompositionCore.validate(atlas).layers[0].crop.height===4,'game atlas one-pixel edge was discarded');
+  atlas.layers[0].gameIllustration=false;let cropped=false;try{CompositionCore.validate(atlas);}catch{cropped=true;}check(cropped,'manual crop escaped source bounds');
   document.body.dataset.checks='passed';
 }catch(e){errors.push(e.stack||String(e));document.body.dataset.checks='failed';}
 const pre=document.createElement('pre');pre.textContent=errors.join('\n');document.body.append(pre);
