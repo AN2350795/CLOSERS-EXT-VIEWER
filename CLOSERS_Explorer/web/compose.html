@@ -9,7 +9,7 @@
       <button id="save-template" class="secondary">프레임 템플릿 저장</button><button id="load-template" class="secondary">프레임 템플릿 추가</button><button id="new-project" class="secondary">새 조합</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden><input id="template-file" type="file" accept=".json,application/json" hidden>
     </section>
-    <p id="editor-status" role="status">이미지를 추가하면 편집을 시작할 수 있습니다.</p>
+    <p id="editor-status" class="status-notice" data-state="info" data-label="안내" role="status" aria-live="polite" aria-atomic="true">이미지를 추가하면 편집을 시작할 수 있습니다.</p>
     <dialog id="animation-preview" aria-labelledby="animation-preview-title">
       <h2 id="animation-preview-title">저장한 애니메이션</h2>
       <p id="animation-preview-info"></p>
@@ -26,10 +26,10 @@
           <button id="pick-mark" role="tab" aria-selected="false" aria-controls="image-results" tabindex="-1">마크</button>
         </div>
         <label id="asset-query-label" for="image-query">일러스트 이름 검색</label><input id="image-query" type="search" placeholder="이름으로 찾기" maxlength="200">
-        <p id="picker-summary" class="muted" role="status">로딩 일러스트를 불러오고 있습니다…</p>
+        <p id="picker-summary" class="status-notice" data-state="loading" data-label="불러오는 중" role="status" aria-live="polite" aria-atomic="true">로딩 일러스트를 불러오고 있습니다…</p>
         <div id="image-results" class="asset-grid" role="tabpanel" aria-labelledby="pick-illustration"></div>
         <div class="picker-pagination"><button id="image-prev" class="secondary">이전</button><span id="image-page"></span><button id="image-next" class="secondary">다음</button></div>
-        <p id="game-frame-status" class="muted" role="status">썸네일을 누르면 조합에 적용합니다. 프레임과 마크는 따로 고를 수 있습니다.</p>
+        <p id="game-frame-status" class="status-notice" data-state="info" data-label="안내" role="status" aria-live="polite" aria-atomic="true">썸네일을 누르면 조합에 적용합니다. 프레임과 마크는 따로 고를 수 있습니다.</p>
       </section>
       <section class="canvas-panel panel" aria-label="합성 화면">
         <div class="canvas-controls"><label>게임 로딩 너비<input id="canvas-width" type="number" disabled aria-label="게임 데이터로 고정한 출력 너비"></label><label>게임 로딩 높이<input id="canvas-height" type="number" disabled aria-label="게임 데이터로 고정한 출력 높이"></label><label><input id="canvas-transparent" type="checkbox" checked> 투명 배경</label><label>배경색<input id="canvas-color" type="color" value="#172033"></label></div>
