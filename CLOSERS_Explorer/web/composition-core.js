@@ -8,7 +8,7 @@ globalThis.CompositionCore=(()=>{
   const text=(v,label,max)=>typeof v==='string'&&v.length<=max?v:fail(label+' 형식이 올바르지 않습니다.');
   const bool=(v,fallback)=>v===undefined?fallback:typeof v==='boolean'?v:fail('선택 설정 형식이 올바르지 않습니다.');
   function validate(value){
-    if(!value||value.schema!=='closers-composition'||![1,2].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
+    if(!value||value.schema!=='closers-composition'||![1,2,3].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
     const c=value.canvas||{},canvas={width:integer(c.width,'출력 너비',1,8192),height:integer(c.height,'출력 높이',1,8192),transparent:bool(c.transparent,true),color:text(c.color,'배경색',7)};
     if(canvas.width*canvas.height>MAX_PIXELS)fail('출력은 16,777,216픽셀까지 지원합니다.');
     if(!/^#[0-9a-f]{6}$/i.test(canvas.color))fail('배경색이 올바르지 않습니다.');
@@ -37,6 +37,7 @@ globalThis.CompositionCore=(()=>{
       if(l.gameFrame!==undefined)result.gameFrame=bool(l.gameFrame,false);
       if(l.gameMark!==undefined)result.gameMark=bool(l.gameMark,false);
       if(l.gameIllustration!==undefined)result.gameIllustration=bool(l.gameIllustration,false);
+      if(l.markParent!==undefined){if(!/^l[0-9]{1,10}$/.test(l.markParent))fail('마크 효과 연결이 올바르지 않습니다.');result.markParent=l.markParent;}
       if(l.animation!==undefined){
         const a=l.animation;if(!a||!Array.isArray(a.frames)||!a.frames.length||a.frames.length>120)fail('애니메이션은 1~120프레임까지입니다.');
         if(!['source-over','lighter'].includes(a.blend)||!Array.isArray(a.color)||a.color.length!==4)fail('애니메이션 색상·합성 설정이 잘못되었습니다.');
@@ -44,11 +45,13 @@ globalThis.CompositionCore=(()=>{
           if(!f||!sourceMap.has(f.source))fail('애니메이션 원본이 없습니다.');
           return {source:f.source,duration:number(f.duration,'프레임 시간',.001,60)};
         })};
+        if(a.particle!==undefined)result.animation.particle=ParticleEffects.validate(a.particle,sourceMap);
       }
       if(value.kind==='frame-template'&&result.role==='illustration')fail('프레임 템플릿에는 프레임·조각만 넣어 주세요.');
       return result;
     });
-    return {schema:'closers-composition',version:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers};
+    for(const l of layers)if(l.markParent&&!layers.some(p=>p.id===l.markParent&&p.id!==l.id&&p.gameMark&&!p.markParent&&!p.animation))fail('효과를 연결할 마크가 없습니다.');
+    return {schema:'closers-composition',version:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers};
   }
   function frameAt(animation,time){
     if(time<animation.delay)return null;
@@ -63,11 +66,15 @@ globalThis.CompositionCore=(()=>{
     const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<pixels.data.length;i+=4)for(let j=0;j<3;j++)pixels.data[i+j]=Math.round(pixels.data[i+j]*color[j]);ctx.putImageData(pixels,0,0);cache.set(key,canvas);return canvas;
   }
   function draw(context,project,images,width=project.canvas.width,height=project.canvas.height,time=0){
+    globalThis.ParticleEffects?.prune(images);
     context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,width,height);
     context.save();context.scale(width/project.canvas.width,height/project.canvas.height);
     if(!project.canvas.transparent){context.fillStyle=project.canvas.color;context.fillRect(0,0,project.canvas.width,project.canvas.height);}
     context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
     for(const l of project.layers){
+      if(l.visible&&l.animation?.particle){
+        const placed=placement(l,project.layers);if(placed)ParticleEffects.draw(context,placed,l.animation,images,project,time);continue;
+      }
       if(!l.visible)continue;const a=l.animation,f=a?frameAt(a,time):null;if(a&&!f)continue;
       let image=images.get(f?.source||l.source);if(!image)continue;const c=a?{x:0,y:0,width:image.width,height:image.height}:l.crop;
       context.globalAlpha=l.opacity*(a?a.color[3]:1);context.globalCompositeOperation=a?a.blend:'source-over';if(a)image=colorImage(image,a.color);
@@ -75,6 +82,12 @@ globalThis.CompositionCore=(()=>{
     }
     context.restore();
   }
-  function usedSources(layers){return new Set(layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[])]));}
-  return Object.freeze({validate,draw,frameAt,usedSources,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
+  function placement(l,layers){
+    if(!l.markParent)return l;
+    const parent=layers.find(p=>p.id===l.markParent);if(!parent?.visible)return null;
+    const sx=parent.width/parent.crop.width,sy=parent.height/parent.crop.height;
+    return {...l,x:parent.x+parent.width/2+l.x*sx,y:parent.y+parent.height/2+l.y*sy,width:l.width*sx,height:l.height*sy,opacity:l.opacity*parent.opacity};
+  }
+  function usedSources(layers){return new Set(layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])]));}
+  return Object.freeze({validate,draw,frameAt,usedSources,placement,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
 })();

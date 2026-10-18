@@ -106,9 +106,72 @@ class LoadingTests(unittest.TestCase):
         self.assertEqual(len(preview[0]['frames']),1)
         data.image_id.assert_called_once_with('a.png')
         seq['m_MaskTexName'] = 'mask.png'
+        data.image_id = lambda name: {'a.png':1,'b.png':2,'mask.png':3}[name]
+        effects, warnings = data.effects(preset)
+        self.assertEqual(warnings, [])
+        self.assertEqual(effects[0]['particle']['mask_entry_id'],3)
+        self.assertEqual(effects[0]['particle']['basis'],[200,200])
+        seq['m_vecEventList'][5] = {1:'PCET_INITIAL',2:'UNKNOWN_EVENT','VAL':1}
         effects, warnings = data.effects(preset)
         self.assertEqual(effects, [])
         self.assertIn('EFFECT', warnings[0])
+
+    def test_particle_compiler_preserves_ranges_and_all_loading_event_properties(self):
+        from closers.loading_particles import compile_particle, PROPERTIES
+        seq = dict(m_ParticleType='PCT_2D_PLANE',m_LifeTime={1:.6,2:.8},m_EmitRate={1:9,2:19},
+            m_EmitRateInstant={1:2,2:6},m_iMaxParticleNum=50,m_EmitRadius={1:{1:-220,2:220},2:{1:-47,2:47}},
+            m_vGravity={1:{1:-50,2:50}},m_EmitRadiusMin={1:70,2:140,3:0},m_bDualBlending='TRUE',m_DrawCount=1.5,m_DrawCountDualBlending=3,
+            m_MaskTexName='mask.dds',m_SrcBlend='CON_D3DBLEND_ZERO',m_DestBlend='CON_D3DBLEND_INVSRCCOLOR',m_vecEventList={})
+        for i,(prop,(_,field,count)) in enumerate(PROPERTIES.items()):
+            seq['m_vecEventList'][i+1] = {1:'PCET_INITIAL',2:prop,field:{j:{1:.2,2:.4} for j in range(1,count+1)} if count>1 else {1:.2,2:.4}}
+        seq['m_vecEventList'][20] = {1:'PCET_FADE_FINAL',2:'PCET_TEX0UV','XY':{1:230000,2:0}}
+        seq['m_vecEventList'][21] = {1:'PCET_FADE',2:'PCET_COLOR','RGBA':{1:1,2:1,3:1,4:0},3:.3,4:1.2}
+        particle,_,_,_=compile_particle(seq,(1,1),123,lambda name:99)
+        self.assertEqual(particle['life'],[.6,.8])
+        self.assertEqual(particle['rate'],[9,19])
+        self.assertEqual(particle['radius'],[[-220,220],[-47,47],0])
+        self.assertEqual(particle['gravity'],[[-50,50],0,0])
+        self.assertEqual(particle['radiusMin'],[70,140])
+        self.assertTrue(particle['dual'])
+        self.assertEqual(particle['blend'],['ZERO','INVSRCCOLOR'])
+        self.assertEqual(particle['drawCount'],1)
+        self.assertEqual(particle['mask_entry_id'],99)
+        self.assertEqual(particle['tracks'][-2],dict(property='uv',mode='final',value=[230000,0],start=0,end=None))
+        self.assertEqual(particle['tracks'][-1]['end'],1.2)
+        seq['m_vecEventList']={1:{1:'PCET_INITIAL',2:'PCET_SCALE','XYZ':10},2:{1:'PCET_INITIAL',2:'PCET_SIZE','XYZ':{1:4,2:0,3:1}}}
+        particle,width,height,_=compile_particle(seq,(1,1),123,lambda name:99)
+        self.assertEqual((width,height),(40,.01))
+        self.assertEqual(particle['tracks'][0]['value'],[10])
+
+    def test_mark_plan_compiles_separate_effects_without_other_screen_coordinates(self):
+        data=LoadingData(MagicMock())
+        data.presets=lambda:[dict(id=1,mark='mark.png',mark_key='MARK',mark_effects='"EFFECT",')]
+        data.layout=lambda:dict(width=450,height=640,origin={1:2,2:2},pictures=[dict(UVKey='LOADING_DUNGEON',m_fWidth=450,m_fHeight=640)])
+        data.image_id=lambda name:1
+        data.atlas=lambda name:{'MARK':dict(x=0,y=0,width=161,height=161)}
+        data.effects=Mock(return_value=([dict(name='EFFECT')],[]))
+        result=data.plan(1,mark_only=True)
+        self.assertIsNone(result['mark']['placement'])
+        self.assertEqual(result['effects'],[dict(name='EFFECT')])
+        data.effects.assert_called_once_with(dict(effects='"EFFECT",',positions='{0,0},',scales='{1,1},'),preview=False)
+
+    def test_effect_thumbnail_preserves_inverse_and_dual_blending(self):
+        from PIL import Image
+        from closers.loading_particles import composite_preview, preview_passes
+        canvas=Image.new('RGBA',(1,1),(255,0,0,255))
+        mask=Image.new('RGBA',(1,1),(128,128,128,255))
+        result=composite_preview(canvas,mask,['ZERO','INVSRCCOLOR'])
+        self.assertEqual(result.getpixel((0,0)),(127,0,0,255))
+        glow=Image.new('RGBA',(1,1),(0,0,255,128))
+        result=composite_preview(result,glow,['SRCALPHA','DESTALPHA'])
+        self.assertEqual(result.getpixel((0,0)),(127,0,128,255))
+        transparent=Image.new('RGBA',(1,1))
+        black=Image.new('RGBA',(1,1),(0,0,0,255))
+        self.assertEqual(composite_preview(transparent,black,['SRCALPHA','DESTALPHA']).getpixel((0,0)),(0,0,0,0))
+        passes=preview_passes(dict(color=[1,1,1,1],particle=dict(blend=['ZERO','INVSRCCOLOR'],drawCount=1,
+            dual=True,dualDrawCount=2,tracks=[dict(property='dualColor',mode='initial',value=[1,1,1,[.2,.4]])])))
+        self.assertAlmostEqual(passes[1][0][3],.3)
+        self.assertEqual(passes[1][1:],(['SRCALPHA','DESTALPHA'],2))
 
     def test_same_name_different_images_are_not_selected_automatically(self):
         from closers.catalog import Catalog

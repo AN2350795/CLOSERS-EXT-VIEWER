@@ -11,6 +11,7 @@ from pathlib import Path
 from . import ntf
 from .cmf import Archive
 from .lua_literals import tables
+from .loading_particles import compile_particle, preview_passes, composite_preview
 
 
 class MissingDefinition(ValueError):
@@ -153,7 +154,7 @@ class LoadingData:
             return {v['m_Key']: region(v) for v in self.table(tet)['TEXTURE_UV'].values()}
 
     def effects(self, preset, preview=False):
-        """Compile single-plane texture sequences; report every unhandled effect."""
+        """Preserve particle emitters, ranges and event tracks for timed rendering."""
         names = re.findall(r'"([A-Z0-9_]+)"', preset['effects'])
         if not names: return [], []
         sequences = {}
@@ -164,36 +165,26 @@ class LoadingData:
             return [tuple(map(float, p)) for p in re.findall(r'\{\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\}', raw)]
         positions, scales = pairs(preset['positions']), pairs(preset['scales'])
         result, warnings = [], []
+        image_ids = {}
+        def resolve(name):
+            if name.upper() not in image_ids: image_ids[name.upper()] = self.image_id(name)
+            return image_ids[name.upper()]
         for i, name in enumerate(names):
             try:
                 seq = sequences[name]
                 events = list(seq['m_vecEventList'].values())
-                allowed = {'PCET_TEXTURE', 'PCET_TEX_ANIM', 'PCET_COLOR', 'PCET_SIZE', 'PCET_SCALE'}
-                if (seq.get('m_ParticleType') != 'PCT_2D_PLANE' or seq.get('m_iMaxParticleNum', 1) != 1
-                        or seq.get('m_LifeTime', 0) < 60 or seq.get('m_DrawCount', 1) != 1
-                        or any(v != 0 for v in seq.get('m_EmitRadius', {}).values())
-                        or any(e.get(1) != 'PCET_INITIAL' or e.get(2) not in allowed for e in events)
-                        or seq.get('m_bDualBlending') == 'TRUE' or seq.get('m_MaskTexName')
-                        or seq.get('m_SrcBlend') != 'CON_D3DBLEND_SRCALPHA'
-                        or seq.get('m_DestBlend') not in ('CON_D3DBLEND_INVSRCALPHA', 'CON_D3DBLEND_ONE')):
-                    raise ValueError('추가 파티클·셰이더 규칙 필요')
-                ev = {e[2]: e for e in events}
-                size = ev['PCET_SIZE']['XYZ']
-                scale = ev.get('PCET_SCALE', {}).get('VAL', 1)
-                rgba = ev.get('PCET_COLOR', {}).get('RGBA', {1:1,2:1,3:1,4:1})
-                color = [rgba[n] for n in range(1,5)]
-                if not all(type(v) in (int,float) and 0 <= v <= 1 for v in color):
-                    raise ValueError('확률 색상 필요')
+                ev = {e[2]: e for e in events if e[1]=='PCET_INITIAL'}
                 pos, factor = positions[i], scales[i]
-                width, height = size[1]*scale*factor[0], size[2]*scale*factor[1]
                 frames = animations[ev['PCET_TEX_ANIM']['STR']]['m_vecFrame'].values() if 'PCET_TEX_ANIM' in ev else [dict(m_TexName=ev['PCET_TEXTURE']['STR'], m_fTime=1)]
                 if preview: frames = list(frames)[:1]
-                frames = [dict(entry_id=self.image_id(f['m_TexName']), duration=f['m_fTime']) for f in frames]
+                frames = [dict(entry_id=resolve(f['m_TexName']), duration=f['m_fTime']) for f in frames]
                 if not 1 <= len(frames) <= 120 or any(not 0 < f['duration'] <= 60 for f in frames):
                     raise ValueError('텍스처 재생 시간 범위 초과')
+                particle, width, height, color = compile_particle(seq, factor,
+                    int.from_bytes(hashlib.sha256(name.encode()).digest()[:4], 'little'), resolve)
                 result.append(dict(name=name, role='fragment', x=pos[0]-width/2, y=pos[1]-height/2,
-                    width=width, height=height, frames=frames, color=color,
-                    delay=seq.get('m_fLatencyTime', 0), blend='lighter' if seq['m_DestBlend']=='CON_D3DBLEND_ONE' else 'source-over',
+                    width=width, height=height, frames=frames, color=color, particle=particle,
+                    delay=seq.get('m_fLatencyTime', 0), blend='lighter' if seq.get('m_DestBlend') in ('CON_D3DBLEND_ONE','CON_D3DBLEND_DESTALPHA') else 'source-over',
                     order=seq.get('m_Layer','ROL_EFFECT_1')))
             except (ValueError, KeyError, IndexError, TypeError) as exc:
                 warnings.append(name+' · '+str(exc))
@@ -241,7 +232,10 @@ class LoadingData:
                 placement = next((p for p in pictures if p.get('TexName','').upper()==preset['mark'].upper() and p.get('UVKey')==preset['mark_key']),None)
                 rect = dict(x=placement.get('m_Pos',{}).get(1,0)-layout['origin'][1],y=placement.get('m_Pos',{}).get(2,0)-layout['origin'][2],
                     width=placement['m_fWidth'],height=placement['m_fHeight']) if placement else None
-                return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=[], effects=[], warnings=[],
+                count = len(re.findall(r'"([A-Z0-9_]+)"',preset.get('mark_effects','')))
+                effects, warnings = self.effects(dict(effects=preset.get('mark_effects',''),
+                    positions='{0,0},'*count,scales='{1,1},'*count),preview=preview) if count and not preview else ([],[])
+                return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=[], effects=effects, warnings=warnings,
                     mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'], crop=self.atlas(preset['mark'])[preset['mark_key']],placement=rect))
             origin = illustration['m_Pos']
             atlas = self.atlas(preset['image']) if preset['image'] else {}
@@ -277,8 +271,10 @@ class LoadingData:
             if not layers: raise ValueError('미리볼 수 있는 이미지가 없습니다.')
             prepared = {}
             for layer in layers:
-                entry = layer.get('entry_id') or layer['frames'][0]['entry_id']
-                if entry not in prepared: prepared[entry] = composition.prepare(entry)
+                entries = [layer.get('entry_id') or layer['frames'][0]['entry_id']]
+                if layer.get('particle',{}).get('mask_entry_id'): entries.append(layer['particle']['mask_entry_id'])
+                for entry in entries:
+                    if entry not in prepared: prepared[entry] = composition.prepare(entry)
             fingerprint = hashlib.sha256(json.dumps([kind, layers, [m['image_sha256'] for _,m in prepared.values()]],sort_keys=True).encode()).digest()
             if fingerprint in self.thumbnails:
                 self.thumbnails.move_to_end(fingerprint)
@@ -291,12 +287,16 @@ class LoadingData:
                 crop = layer.get('crop') or dict(x=0,y=0,width=metadata['width'],height=metadata['height'])
                 with Image.open(path) as source:
                     image = source.convert('RGBA').crop((crop['x'],crop['y'],crop['x']+crop['width'],crop['y']+crop['height']))
+                mask_entry = layer.get('particle',{}).get('mask_entry_id')
+                if mask_entry:
+                    with Image.open(prepared[mask_entry][0]) as mask:
+                        image = ImageChops.multiply(image,mask.convert('RGBA').resize(image.size,Image.Resampling.BILINEAR))
                 image = image.resize((max(1,round(layer['width']*scale)),max(1,round(layer['height']*scale))),Image.Resampling.LANCZOS)
-                if 'color' in layer:
-                    image = Image.merge('RGBA', [channel.point([round(n*factor) for n in range(256)]) for channel,factor in zip(image.split(),layer['color'])])
-                overlay = Image.new('RGBA',canvas.size)
-                overlay.paste(image,(round(layer['x']*scale),round(layer['y']*scale)))
-                canvas = ImageChops.add(canvas,overlay) if layer.get('blend')=='lighter' else Image.alpha_composite(canvas,overlay)
+                for color,blend,count in preview_passes(layer):
+                    tinted = Image.merge('RGBA', [channel.point([round(n*factor) for n in range(256)]) for channel,factor in zip(image.split(),color)])
+                    overlay = Image.new('RGBA',canvas.size)
+                    overlay.paste(tinted,(round(layer['x']*scale),round(layer['y']*scale)))
+                    for _ in range(count): canvas = composite_preview(canvas,overlay,blend)
             output = BytesIO();canvas.save(output,'PNG');body = output.getvalue()
             self.thumbnails[fingerprint] = body
             while len(self.thumbnails)>128: self.thumbnails.popitem(last=False)
