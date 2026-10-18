@@ -1,5 +1,8 @@
 """Source-verified loading frame definitions and named texture atlas regions."""
 import hashlib
+from collections import OrderedDict
+from io import BytesIO
+import json
 import re
 import threading
 from pathlib import Path
@@ -26,6 +29,7 @@ class LoadingData:
         self.cache = {}
         self.keys = None
         self.parsed = {}
+        self.thumbnails = OrderedDict()
 
     def table(self, name):
         body = self.body(name)
@@ -74,7 +78,7 @@ class LoadingData:
         with self.lock:
             return {v['m_Key']: region(v) for v in self.table(tet)['TEXTURE_UV'].values()}
 
-    def effects(self, preset):
+    def effects(self, preset, preview=False):
         """Compile single-plane texture sequences; report every unhandled effect."""
         names = re.findall(r'"([A-Z0-9_]+)"', preset['effects'])
         if not names: return [], []
@@ -109,6 +113,7 @@ class LoadingData:
                 pos, factor = positions[i], scales[i]
                 width, height = size[1]*scale*factor[0], size[2]*scale*factor[1]
                 frames = animations[ev['PCET_TEX_ANIM']['STR']]['m_vecFrame'].values() if 'PCET_TEX_ANIM' in ev else [dict(m_TexName=ev['PCET_TEXTURE']['STR'], m_fTime=1)]
+                if preview: frames = list(frames)[:1]
                 frames = [dict(entry_id=self.image_id(f['m_TexName']), duration=f['m_fTime']) for f in frames]
                 if not 1 <= len(frames) <= 120 or any(not 0 < f['duration'] <= 60 for f in frames):
                     raise ValueError('텍스처 재생 시간 범위 초과')
@@ -145,11 +150,11 @@ class LoadingData:
         if len(digests) != 1: raise ValueError('서로 다른 이미지 출처가 있습니다: '+name)
         return rows[0]['id']
 
-    def plan(self, ident):
+    def plan(self, ident, mark_only=False):
         with self.lock, self.catalog.session():
-            return self._plan(ident)
+            return self._plan(ident, mark_only=mark_only)
 
-    def _plan(self, ident):
+    def _plan(self, ident, preview=False, mark_only=False):
         preset = next((p for p in self.presets() if p['id'] == ident), None)
         if preset is None: raise ValueError('프레임 등록 번호가 없습니다.')
         with self.lock:
@@ -157,6 +162,10 @@ class LoadingData:
             slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name') == 'SLOT_1_INFO')
             pictures = list(slot['m_vecPicData'].values())
             illustration = next(p for p in pictures if p.get('UVKey') == 'LOADING_DUNGEON')
+            if mark_only:
+                if not preset['mark'] or not preset['mark_key']: raise ValueError('등록된 마크가 없습니다.')
+                return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=[], effects=[], warnings=[],
+                    mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'], crop=self.atlas(preset['mark'])[preset['mark_key']]))
             origin = illustration['m_Pos']
             atlas = self.atlas(preset['image']) if preset['image'] else {}
             entry = self.image_id(preset['image']) if preset['image'] else None
@@ -167,8 +176,62 @@ class LoadingData:
                 layers.append(dict(entry_id=entry, name=preset['image']+' · '+uv, role='frame', crop=atlas[uv],
                     x=placement['m_Pos'][1]-origin[1], y=placement['m_Pos'][2]-origin[2],
                     width=placement['m_fWidth'], height=placement['m_fHeight']))
-            effects, warnings = self.effects(preset)
+            effects, warnings = self.effects(preset, preview=preview)
             return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=layers, effects=effects,
                 mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'],
-                          crop=self.atlas(preset['mark'])[preset['mark_key']]) if preset['mark'] and preset['mark_key'] else None,
+                          crop=self.atlas(preset['mark'])[preset['mark_key']]) if not preview and preset['mark'] and preset['mark_key'] else None,
                 warnings=warnings)
+
+    def thumbnail(self, ident, kind, composition):
+        if kind not in ('frame', 'mark'): raise ValueError('썸네일 종류가 올바르지 않습니다.')
+        try:
+            from PIL import Image, ImageChops
+        except ImportError as exc:
+            raise ValueError('프레임·마크 썸네일에는 Pillow가 필요합니다.') from exc
+        with self.lock, self.catalog.session():
+            plan = self._plan(ident, preview=True, mark_only=kind=='mark')
+            if kind == 'mark':
+                mark = plan['mark']; crop = mark['crop']
+                width, height = crop['width'], crop['height']
+                layers = [dict(entry_id=mark['entry_id'], crop=crop, x=0, y=0, width=width, height=height)]
+            else:
+                width, height = plan['width'], plan['height']
+                layers = plan['layers']+plan['effects']
+            if not layers: raise ValueError('미리볼 수 있는 이미지가 없습니다.')
+            prepared = {}
+            for layer in layers:
+                entry = layer.get('entry_id') or layer['frames'][0]['entry_id']
+                if entry not in prepared: prepared[entry] = composition.prepare(entry)
+            fingerprint = hashlib.sha256(json.dumps([kind, layers, [m['image_sha256'] for _,m in prepared.values()]],sort_keys=True).encode()).digest()
+            if fingerprint in self.thumbnails:
+                self.thumbnails.move_to_end(fingerprint)
+                return self.thumbnails[fingerprint]
+            scale = min(144/width, 205/height) if kind == 'frame' else min(128/width, 128/height)
+            canvas = Image.new('RGBA', (max(1,round(width*scale)), max(1,round(height*scale))))
+            for layer in layers:
+                entry = layer.get('entry_id') or layer['frames'][0]['entry_id']
+                path, metadata = prepared[entry]
+                crop = layer.get('crop') or dict(x=0,y=0,width=metadata['width'],height=metadata['height'])
+                with Image.open(path) as source:
+                    image = source.convert('RGBA').crop((crop['x'],crop['y'],crop['x']+crop['width'],crop['y']+crop['height']))
+                image = image.resize((max(1,round(layer['width']*scale)),max(1,round(layer['height']*scale))),Image.Resampling.LANCZOS)
+                if 'color' in layer:
+                    image = Image.merge('RGBA', [channel.point([round(n*factor) for n in range(256)]) for channel,factor in zip(image.split(),layer['color'])])
+                overlay = Image.new('RGBA',canvas.size)
+                overlay.paste(image,(round(layer['x']*scale),round(layer['y']*scale)))
+                canvas = ImageChops.add(canvas,overlay) if layer.get('blend')=='lighter' else Image.alpha_composite(canvas,overlay)
+            output = BytesIO();canvas.save(output,'PNG');body = output.getvalue()
+            self.thumbnails[fingerprint] = body
+            while len(self.thumbnails)>128: self.thumbnails.popitem(last=False)
+            return body
+
+    def illustrations(self, query='', page=1):
+        page = max(1,int(page)); limit = 12
+        query = query.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')[:200]
+        with self.catalog.connect() as db:
+            base = '''FROM entries e WHERE e.category='images' AND e.name LIKE 'DLG_PVP_LOADING%'
+                AND e.name LIKE ? ESCAPE '\\' '''
+            grouped = ' GROUP BY e.name,e.sha256,CASE WHEN e.sha256 IS NULL THEN e.id ELSE 0 END'
+            total = db.execute('SELECT count(*) FROM (SELECT min(e.id) '+base+grouped+')',('%'+query+'%',)).fetchone()[0]
+            items = db.execute('SELECT min(e.id) id,e.name '+base+grouped+' ORDER BY e.name,e.id LIMIT ? OFFSET ?',('%'+query+'%',limit,(page-1)*limit)).fetchall()
+            return dict(items=[dict(r) for r in items], total=total, page=page)

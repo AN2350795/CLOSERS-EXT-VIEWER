@@ -12,6 +12,9 @@ import unittest
 
 class PickerBrowserTests(unittest.TestCase):
     checks_script = 'picker_checks.js'
+    page_file = 'model.html'
+    entry_script = '<script type="module" src="/model.js"></script>'
+    extra_images = ()
 
     def test_picker(self):
         browser = next((p for p in [shutil.which('chromium'), shutil.which('google-chrome'),
@@ -24,23 +27,27 @@ class PickerBrowserTests(unittest.TestCase):
             self.skipTest('Node.js 22+ unavailable')
         web = Path(__file__).resolve().parents[1] / 'web'
         script = (Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
+        page_file, entry_script, extra_images = self.page_file, self.entry_script, self.extra_images
 
         class Handler(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass
 
             def do_GET(self):
-                if self.path.startswith('/api/model-icon/'+'a'*64):
+                if self.path.startswith('/api/model-icon/'+'a'*64) or self.path.split('?')[0] in extra_images:
                     from test_composition import png
                     data=png(4,4,lambda x,y:(0,200,0,255))
                     self.send_response(200)
                     self.send_header('Content-Type','image/png')
                     self.send_header('Content-Length',str(len(data)))
                     self.end_headers()
-                    self.wfile.write(data)
+                    try:
+                        self.wfile.write(data)
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                        pass  # A tab switch can cancel an in-flight thumbnail.
                 elif self.path == '/checks':
-                    html = (web / 'model.html').read_text(encoding='utf-8')
-                    html = html.replace('<script type="module" src="/model.js"></script>',
+                    html = (web / page_file).read_text(encoding='utf-8')
+                    html = html.replace(entry_script,
                         '<script type="module">' + script + '</script>')
                     data = html.encode('utf-8')
                     self.send_response(200)
@@ -66,8 +73,11 @@ class PickerBrowserTests(unittest.TestCase):
                         time.sleep(.05)
                     port=port_file.read_text().splitlines()[0]
                     result=subprocess.run([node,'--input-type=module','-e', '''
-const pages=await (await fetch('http://127.0.0.1:'+process.argv[1]+'/json')).json();
-const ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
+let pages;for(let i=0;i<100;i++){
+ try{pages=await (await fetch('http://127.0.0.1:'+process.argv[1]+'/json')).json();if(pages.some(p=>p.type==='page'&&p.url.includes('/checks')))break;}catch{}
+ await new Promise(r=>setTimeout(r,50));
+}
+const ws=new WebSocket(pages.find(p=>p.type==='page'&&p.url.includes('/checks')).webSocketDebuggerUrl);
 await new Promise(r=>ws.onopen=r);
 let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){pending.get(m.id)?.(m.result);pending.delete(m.id);}};
 const call=(method,params={})=>new Promise(r=>{const n=++id;pending.set(n,r);ws.send(JSON.stringify({id:n,method,params}));});

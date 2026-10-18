@@ -35,6 +35,7 @@ globalThis.CompositionCore=(()=>{
         crop:{x,y,width:number(crop.width,'자르기 너비',.01,s.width-x),height:number(crop.height,'자르기 높이',.01,s.height-y)},
         opacity:number(l.opacity,'불투명도',0,1),visible:bool(l.visible,true),locked:bool(l.locked,false),keepRatio:bool(l.keepRatio,true)};
       if(l.gameFrame!==undefined)result.gameFrame=bool(l.gameFrame,false);
+      if(l.gameMark!==undefined)result.gameMark=bool(l.gameMark,false);
       if(l.animation!==undefined){
         const a=l.animation;if(!a||!Array.isArray(a.frames)||!a.frames.length||a.frames.length>120)fail('애니메이션은 1~120프레임까지입니다.');
         if(!['source-over','lighter'].includes(a.blend)||!Array.isArray(a.color)||a.color.length!==4)fail('애니메이션 색상·합성 설정이 잘못되었습니다.');

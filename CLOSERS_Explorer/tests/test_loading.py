@@ -21,6 +21,43 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
+    def test_thumbnails_assemble_frame_and_crop_single_mark(self):
+        from PIL import Image
+        import hashlib
+        from io import BytesIO
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)/'sheet.png'
+            image = Image.new('RGBA',(450,256));image.paste((255,0,0,255),(0,0,450,170));image.paste((0,0,255,255),(0,172,450,256));image.save(path)
+            metadata = dict(width=450,height=256,image_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+            composition = Mock();composition.prepare.return_value = path,metadata
+            data = LoadingData(MagicMock())
+            data._plan = Mock(return_value=dict(width=450,height=640,effects=[],layers=[
+                dict(entry_id=1,crop=dict(x=0,y=0,width=450,height=170),x=0,y=0,width=450,height=170),
+                dict(entry_id=1,crop=dict(x=0,y=172,width=450,height=84),x=0,y=556,width=450,height=84)],
+                mark=dict(entry_id=1,crop=dict(x=0,y=172,width=84,height=84))))
+            frame = data.thumbnail(1,'frame',composition)
+            with Image.open(BytesIO(frame)) as preview:
+                self.assertEqual(preview.size,(144,205))
+                self.assertEqual(preview.getpixel((0,0)),(255,0,0,255))
+                self.assertEqual(preview.getpixel((0,204)),(0,0,255,255))
+                self.assertEqual(preview.getpixel((72,100))[3],0)
+            with Image.open(BytesIO(data.thumbnail(1,'mark',composition))) as mark:
+                self.assertEqual(mark.size,(128,128));self.assertEqual(mark.getpixel((64,64)),(0,0,255,255))
+            with self.assertRaises(ValueError): data.thumbnail(1,'invalid',composition)
+
+    def test_illustration_menu_filters_names_and_excludes_other_images(self):
+        from closers.catalog import Catalog
+        from test_explorer import fixture
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp);catalog = Catalog(root/'work')
+            catalog.scan([fixture(root/'a.cmf',[(name,b'image',0) for name in (
+                'DLG_PVP_LOADING_ALPHA.PNG','DLG_PVP_LOADING_BETA.PNG','DLG_FRAME_1.PNG','OTHER.PNG')])])
+            # Signature-free fixture data is categorized using the PNG extension.
+            data = LoadingData(catalog)
+            self.assertEqual(data.illustrations()['total'],2)
+            self.assertEqual(data.illustrations('BETA')['items'][0]['name'],'DLG_PVP_LOADING_BETA.PNG')
+            self.assertEqual(data.illustrations('%')['total'],0)
+
     def test_effect_uses_registered_frames_times_scale_and_latency(self):
         data = LoadingData(Mock())
         seq = dict(m_SeqName='EFFECT', m_ParticleType='PCT_2D_PLANE', m_LifeTime=99999,
@@ -43,6 +80,10 @@ class LoadingTests(unittest.TestCase):
         self.assertEqual(effects[0]['frames'], [dict(entry_id=1,duration=2),dict(entry_id=2,duration=.03)])
         self.assertEqual((effects[0]['x'],effects[0]['y'],effects[0]['width'],effects[0]['height']), (25,100,200,200))
         self.assertEqual(effects[0]['delay'], .49)
+        data.image_id = Mock(side_effect=lambda name: {'a.png':1,'b.png':2}[name])
+        preview, warnings = data.effects(preset, preview=True)
+        self.assertEqual(len(preview[0]['frames']),1)
+        data.image_id.assert_called_once_with('a.png')
         seq['m_MaskTexName'] = 'mask.png'
         effects, warnings = data.effects(preset)
         self.assertEqual(effects, [])
@@ -86,10 +127,14 @@ class LoadingTests(unittest.TestCase):
             1:pic('LOADING_DUNGEON',2,2,450,640),2:pic('TOP',2,2,450,170),3:pic('BOT',2,558,450,84)})}))
         with patch('closers.loading.tables', return_value=dialog), patch.object(data, 'body', return_value=b''):
             result = data.plan(67)
+            with patch.object(data,'effects',side_effect=AssertionError('unrelated frame effects')):
+                mark = data.plan(67,mark_only=True)
         self.assertEqual(result['layers'][1]['y'], 556)
         self.assertEqual(result['layers'][1]['width'], 450)
         self.assertEqual(result['mark']['crop']['x'], 322)
         self.assertEqual(result['mark']['crop']['width'], 161)
+        self.assertEqual(mark['layers'],[])
+        self.assertEqual(mark['mark']['entry_id'],2)
 
 
 if __name__ == '__main__': unittest.main()

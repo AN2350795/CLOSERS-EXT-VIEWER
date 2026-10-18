@@ -356,8 +356,13 @@ def create_server(catalog, port=0):
                     self.respond(reset.preview(query.get('preserved') == '1'))
                 elif url.path == '/api/loading-presets':
                     self.respond(dict(items=loading.presets()))
+                elif url.path == '/api/loading-illustrations':
+                    self.respond(loading.illustrations(query.get('q',''),query.get('page',1)))
+                elif url.path.startswith('/api/loading-thumbnail/'):
+                    kind,ident = url.path.removeprefix('/api/loading-thumbnail/').split('/')
+                    self.respond(loading.thumbnail(int(ident),kind,composition),'image/png')
                 elif url.path.startswith('/api/loading-plan/'):
-                    self.respond(loading.plan(int(url.path.rsplit('/',1)[1])))
+                    self.respond(loading.plan(int(url.path.rsplit('/',1)[1]),mark_only=query.get('mark')=='1'))
                 elif url.path.startswith('/api/loading-atlas/'):
                     row = catalog.get_resource(int(url.path.rsplit('/',1)[1]))
                     self.respond(dict(regions=loading.atlas(row['name'])))
