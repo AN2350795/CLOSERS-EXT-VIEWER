@@ -23,6 +23,7 @@
 .asset-loading::before{margin:0;width:19px;height:19px}
 .asset-grid>.picker-error{color:#ffb7c5;font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 #editor-toast{font-size:13px;line-height:1.6;box-shadow:0 5px 18px #0005}
+#editor-status,#editor-toast{top:20px;bottom:auto;left:50%;right:auto;transform:translateX(-50%);width:max-content;max-width:min(520px,calc(100vw - 32px));box-sizing:border-box}
 @keyframes compose-status-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.status-notice[data-state=loading]::after,.status-notice[data-state=working]::after,.asset-loading::before{animation:none}}
-@media(max-width:760px){#editor-status,#editor-toast{left:12px;right:12px;bottom:12px;max-width:none}}
+@media(max-width:760px){#editor-status,#editor-toast{top:12px;max-width:calc(100vw - 24px)}}
