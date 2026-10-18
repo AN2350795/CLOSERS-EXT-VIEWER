@@ -1,4 +1,5 @@
 """Source-verified loading frame definitions and named texture atlas regions."""
+from contextlib import nullcontext
 import hashlib
 from collections import OrderedDict
 from io import BytesIO
@@ -10,6 +11,10 @@ from pathlib import Path
 from . import ntf
 from .cmf import Archive
 from .lua_literals import tables
+
+
+class MissingDefinition(ValueError):
+    pass
 
 
 def region(value):
@@ -30,6 +35,75 @@ class LoadingData:
         self.keys = None
         self.parsed = {}
         self.thumbnails = OrderedDict()
+        self.name_cache = {}
+        self.registry_cache = None
+
+    def session(self):
+        return nullcontext() if getattr(self.catalog.local,'db',None) is not None else self.catalog.session()
+
+    def strings(self):
+        result = {}
+        for name in ('STRING_TABLE_KOREA.NTF','STRING_TABLE_UI_KOREA.NTF',
+                     'STRING_TABLE_ITEM_KOREA.NTF','STRING_TABLE_ITEM2_KOREA.NTF','STRING_TABLE_ITEM3_KOREA.NTF'):
+            try: body = self.body(name)
+            except MissingDefinition: continue
+            digest = hashlib.sha256(body).digest()
+            if digest not in self.name_cache:
+                types, _, start = ntf.header(body)
+                if types != (5,8,8): raise ValueError('지원하지 않는 게임 문자열 테이블입니다.')
+                decoded = body[:start]+ntf.decrypt(body[start:],*self.keys)
+                values = {}
+                for _,key,value in ntf.rows(decoded):
+                    if key.startswith(('ST_SKIN_NAME_','ST_FRAME_NAME_')):
+                        values[key] = re.sub(r'#C(?:[0-9A-Fa-f]{6}|X)', '', value).strip()
+                self.name_cache[digest] = values
+            for key,value in self.name_cache[digest].items():
+                if key in result and result[key] != value: raise ValueError('게임 이름 문자열이 충돌합니다: '+key)
+                result[key] = value
+        return result
+
+    def layout(self):
+        with self.lock,self.session():
+            dialog = self.table('DLG_LOADING_DUNGEON_START_V2.LUA')['DIALOG']
+            slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name')=='SLOT_1_INFO')
+            pictures = list(slot['m_vecPicData'].values())
+            illustration = next(p for p in pictures if p.get('UVKey')=='LOADING_DUNGEON')
+            return dict(width=illustration['m_fWidth'],height=illustration['m_fHeight'],
+                uv=illustration['UVKey'],origin=illustration['m_Pos'],pictures=pictures,
+                source='DLG_LOADING_DUNGEON_START_V2.LUA',control=slot['m_Name'])
+
+    def illustration_registry(self):
+        skin_body, convert_body = self.body('ILLUST_TEMPLET.NTF'), self.body('ILLUST_CONVERT_DATA.NTF')
+        digest = hashlib.sha256(skin_body+convert_body).digest()
+        if self.registry_cache and self.registry_cache[0]==digest: return self.registry_cache[1]
+        skins = {}
+        for row in ntf.rows(skin_body):
+            if len(row)!=8: raise ValueError('지원하지 않는 일러스트 등록 테이블입니다.')
+            skins[row[1]] = row
+        result = {}
+        for row in ntf.rows(convert_body):
+            if len(row)!=4: raise ValueError('지원하지 않는 일러스트 변환 테이블입니다.')
+            ident, character, kind, filename = row
+            if kind!=3 or ident not in skins or not filename: continue
+            if character!='GUST_INVALID' and character not in re.findall(r'GUST_USER_[A-Z]+',skins[ident][4]): continue
+            key = filename.upper()
+            value = dict(illust_id=ident,character=character,string_key=skins[ident][6])
+            if value not in result.setdefault(key,[]): result[key].append(value)
+        self.registry_cache = digest,result
+        return result
+
+    def illustration_plan(self, entry_id):
+        with self.lock,self.session():
+            row = self.catalog.get_resource(entry_id)
+            registered = self.illustration_registry().get(row['name'].upper())
+            if not registered: raise ValueError('게임에 등록된 로딩 일러스트가 아닙니다.')
+            self.catalog.verify_source(row)
+            layout = self.layout(); names = self.strings()
+            labels = list(dict.fromkeys(names[v['string_key']] for v in registered if names.get(v['string_key'])))
+            crop = self.atlas(row['name'])[layout['uv']]
+            layer = dict(entry_id=entry_id,name=' / '.join(labels) or row['name'],role='illustration',
+                crop=crop,x=0,y=0,width=layout['width'],height=layout['height'],gameIllustration=True)
+            return dict(width=layout['width'],height=layout['height'],layers=[layer],effects=[],warnings=[])
 
     def table(self, name):
         body = self.body(name)
@@ -45,7 +119,7 @@ class LoadingData:
     def body(self, name):
         rows = self.rows(name)
         if not rows:
-            raise ValueError('게임 정의를 찾을 수 없습니다: '+name)
+            raise MissingDefinition('게임 정의를 찾을 수 없습니다: '+name)
         bodies = {}
         for row in rows:
             self.catalog.verify_source(row)
@@ -75,7 +149,7 @@ class LoadingData:
 
     def atlas(self, name):
         tet = str(Path(name).with_suffix('.TET'))
-        with self.lock:
+        with self.lock,self.session():
             return {v['m_Key']: region(v) for v in self.table(tet)['TEXTURE_UV'].values()}
 
     def effects(self, preset, preview=False):
@@ -126,7 +200,8 @@ class LoadingData:
         return sorted(result, key=lambda e:e['order']), warnings
 
     def presets(self):
-        with self.lock:
+        with self.lock,self.session():
+            names = self.strings()
             result = {}
             for v in ntf.rows(self.body('FRAME_TEMPLET.NTF')):
                 if len(v) != 28: raise ValueError('지원하지 않는 프레임 테이블입니다.')
@@ -136,6 +211,7 @@ class LoadingData:
                 if len(v) != 23: raise ValueError('지원하지 않는 비주얼 프레임 테이블입니다.')
                 result[v[1]] = dict(id=v[1], name=v[6], image=v[8], top=v[9], bottom=v[10],
                     effects=v[11], mark=v[12], mark_key=v[13], mark_effects=v[14], positions=v[17], scales=v[18])
+            for value in result.values(): value['display_name'] = names.get(value['name'],'')
             return list(result.values())
 
     def image_id(self, name):
@@ -151,21 +227,22 @@ class LoadingData:
         return rows[0]['id']
 
     def plan(self, ident, mark_only=False):
-        with self.lock, self.catalog.session():
+        with self.lock, self.session():
             return self._plan(ident, mark_only=mark_only)
 
     def _plan(self, ident, preview=False, mark_only=False):
         preset = next((p for p in self.presets() if p['id'] == ident), None)
         if preset is None: raise ValueError('프레임 등록 번호가 없습니다.')
-        with self.lock:
-            dialog = tables(self.body('DLG_LOADING_DUNGEON_START_V2.LUA'))['DIALOG']
-            slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name') == 'SLOT_1_INFO')
-            pictures = list(slot['m_vecPicData'].values())
+        with self.lock,self.session():
+            layout = self.layout(); pictures = layout['pictures']
             illustration = next(p for p in pictures if p.get('UVKey') == 'LOADING_DUNGEON')
             if mark_only:
                 if not preset['mark'] or not preset['mark_key']: raise ValueError('등록된 마크가 없습니다.')
+                placement = next((p for p in pictures if p.get('TexName','').upper()==preset['mark'].upper() and p.get('UVKey')==preset['mark_key']),None)
+                rect = dict(x=placement.get('m_Pos',{}).get(1,0)-layout['origin'][1],y=placement.get('m_Pos',{}).get(2,0)-layout['origin'][2],
+                    width=placement['m_fWidth'],height=placement['m_fHeight']) if placement else None
                 return dict(preset=preset, width=illustration['m_fWidth'], height=illustration['m_fHeight'], layers=[], effects=[], warnings=[],
-                    mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'], crop=self.atlas(preset['mark'])[preset['mark_key']]))
+                    mark=dict(entry_id=self.image_id(preset['mark']), key=preset['mark_key'], crop=self.atlas(preset['mark'])[preset['mark_key']],placement=rect))
             origin = illustration['m_Pos']
             atlas = self.atlas(preset['image']) if preset['image'] else {}
             entry = self.image_id(preset['image']) if preset['image'] else None
@@ -173,7 +250,7 @@ class LoadingData:
             for key, uv in [('TOP', preset['top']), ('BOT', preset['bottom'])]:
                 if not uv or not preset['image']: continue
                 placement = next(p for p in pictures if p.get('UVKey') == key)
-                layers.append(dict(entry_id=entry, name=preset['image']+' · '+uv, role='frame', crop=atlas[uv],
+                layers.append(dict(entry_id=entry, name=(preset.get('display_name') or preset['image'])+' · '+uv, role='frame', crop=atlas[uv],
                     x=placement['m_Pos'][1]-origin[1], y=placement['m_Pos'][2]-origin[2],
                     width=placement['m_fWidth'], height=placement['m_fHeight']))
             effects, warnings = self.effects(preset, preview=preview)
@@ -183,13 +260,13 @@ class LoadingData:
                 warnings=warnings)
 
     def thumbnail(self, ident, kind, composition):
-        if kind not in ('frame', 'mark'): raise ValueError('썸네일 종류가 올바르지 않습니다.')
+        if kind not in ('frame', 'mark','illustration'): raise ValueError('썸네일 종류가 올바르지 않습니다.')
         try:
             from PIL import Image, ImageChops
         except ImportError as exc:
             raise ValueError('프레임·마크 썸네일에는 Pillow가 필요합니다.') from exc
-        with self.lock, self.catalog.session():
-            plan = self._plan(ident, preview=True, mark_only=kind=='mark')
+        with self.lock, self.session():
+            plan = self.illustration_plan(ident) if kind=='illustration' else self._plan(ident, preview=True, mark_only=kind=='mark')
             if kind == 'mark':
                 mark = plan['mark']; crop = mark['crop']
                 width, height = crop['width'], crop['height']
@@ -206,7 +283,7 @@ class LoadingData:
             if fingerprint in self.thumbnails:
                 self.thumbnails.move_to_end(fingerprint)
                 return self.thumbnails[fingerprint]
-            scale = min(144/width, 205/height) if kind == 'frame' else min(128/width, 128/height)
+            scale = min(128/width,128/height) if kind=='mark' else min(144/width,205/height)
             canvas = Image.new('RGBA', (max(1,round(width*scale)), max(1,round(height*scale))))
             for layer in layers:
                 entry = layer.get('entry_id') or layer['frames'][0]['entry_id']
@@ -226,12 +303,23 @@ class LoadingData:
             return body
 
     def illustrations(self, query='', page=1):
-        page = max(1,int(page)); limit = 12
-        query = query.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')[:200]
-        with self.catalog.connect() as db:
-            base = '''FROM entries e WHERE e.category='images' AND e.name LIKE 'DLG_PVP_LOADING%'
-                AND e.name LIKE ? ESCAPE '\\' '''
-            grouped = ' GROUP BY e.name,e.sha256,CASE WHEN e.sha256 IS NULL THEN e.id ELSE 0 END'
-            total = db.execute('SELECT count(*) FROM (SELECT min(e.id) '+base+grouped+')',('%'+query+'%',)).fetchone()[0]
-            items = db.execute('SELECT min(e.id) id,e.name '+base+grouped+' ORDER BY e.name,e.id LIMIT ? OFFSET ?',('%'+query+'%',limit,(page-1)*limit)).fetchall()
-            return dict(items=[dict(r) for r in items], total=total, page=page)
+        from .model_groups import CHARACTERS
+        with self.lock,self.session():
+            registry, names = self.illustration_registry(), self.strings()
+            filenames = list(registry); resources = []
+            with self.catalog.connect() as db:
+                for offset in range(0,len(filenames),400):
+                    batch = filenames[offset:offset+400]
+                    resources.extend(dict(r) for r in db.execute(
+                        "SELECT min(id) id,name FROM entries WHERE category='images' AND name COLLATE NOCASE IN ("+
+                        ','.join('?' for _ in batch)+") GROUP BY name COLLATE NOCASE",batch))
+            items = []
+            for resource in resources:
+                registered = registry[resource['name'].upper()]
+                labels = list(dict.fromkeys(names[v['string_key']] for v in registered if names.get(v['string_key'])))
+                characters = list(dict.fromkeys(CHARACTERS.get(v['character'].removeprefix('GUST_USER_'),v['character']) for v in registered))
+                resource.update(display_name=' / '.join(labels),character=' / '.join(characters),illust_ids=[v['illust_id'] for v in registered])
+                if query.casefold() in (' '.join([resource['name'],resource['display_name'],resource['character']])).casefold(): items.append(resource)
+            items.sort(key=lambda v:(v['display_name'] or v['name'],v['character'],v['id']))
+            page=max(1,min(int(page),max(1,(len(items)+11)//12)))
+            return dict(items=items[(page-1)*12:page*12],total=len(items),page=page)

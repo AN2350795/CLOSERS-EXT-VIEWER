@@ -21,6 +21,15 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
+    def test_localized_names_strip_game_color_codes_and_cache_decoding(self):
+        from test_game_names import table
+        data=LoadingData(Mock());data.keys=(b'',b'')
+        body=table((5,8,8),[(1,'ST_SKIN_NAME_7','#CFFCC00암흑의 광휘#CX'),(2,'ST_FRAME_NAME_67','알로하 아일랜드'),(3,'UNRELATED','기타')])
+        data.body=lambda name:body
+        with patch('closers.loading.ntf.decrypt',side_effect=lambda payload,*args:payload) as decrypt:
+            names=data.strings();data.strings()
+        self.assertEqual(names,{'ST_SKIN_NAME_7':'암흑의 광휘','ST_FRAME_NAME_67':'알로하 아일랜드'})
+        decrypt.assert_called_once()
     def test_thumbnails_assemble_frame_and_crop_single_mark(self):
         from PIL import Image
         import hashlib
@@ -54,9 +63,21 @@ class LoadingTests(unittest.TestCase):
                 'DLG_PVP_LOADING_ALPHA.PNG','DLG_PVP_LOADING_BETA.PNG','DLG_FRAME_1.PNG','OTHER.PNG')])])
             # Signature-free fixture data is categorized using the PNG extension.
             data = LoadingData(catalog)
+            data.illustration_registry = lambda: {name:[dict(illust_id=i,character='GUST_USER_STRIKER',string_key='NAME_'+str(i))] for i,name in enumerate(('DLG_PVP_LOADING_ALPHA.PNG','DLG_PVP_LOADING_BETA.PNG'))}
+            data.strings = lambda: {'NAME_0':'첫 로딩','NAME_1':'두 번째 로딩'}
             self.assertEqual(data.illustrations()['total'],2)
             self.assertEqual(data.illustrations('BETA')['items'][0]['name'],'DLG_PVP_LOADING_BETA.PNG')
+            self.assertEqual(data.illustrations('두 번째')['items'][0]['display_name'],'두 번째 로딩')
             self.assertEqual(data.illustrations('%')['total'],0)
+
+    def test_registration_excludes_portraits_and_unregistered_characters(self):
+        from test_game_names import table
+        data = LoadingData(Mock())
+        skin = table((8,4,4,12,8,12,8,8),[('VERSION',7,1,0,'"GUST_USER_STRIKER"',0,'NAME','DESC')])
+        convert = table((4,8,2,8),[(7,'GUST_USER_STRIKER',3,'loading.PNG'),(7,'GUST_USER_STRIKER',2,'portrait.PNG'),
+            (7,'GUST_USER_CASTER',3,'wrong-character.PNG'),(9,'GUST_USER_STRIKER',3,'unregistered.PNG')])
+        data.body = lambda name: skin if name=='ILLUST_TEMPLET.NTF' else convert
+        self.assertEqual(list(data.illustration_registry()),['LOADING.PNG'])
 
     def test_effect_uses_registered_frames_times_scale_and_latency(self):
         data = LoadingData(Mock())
@@ -129,12 +150,17 @@ class LoadingTests(unittest.TestCase):
             result = data.plan(67)
             with patch.object(data,'effects',side_effect=AssertionError('unrelated frame effects')):
                 mark = data.plan(67,mark_only=True)
+                self.assertIsNone(mark['mark']['placement'])
+                registered = pic('SUMMER',32,42,106,106);registered['TexName']='marks.PNG'
+                dialog['DIALOG']['CONTROL'][1]['m_vecPicData'][4]=registered
+                positioned = data.plan(67,mark_only=True)
         self.assertEqual(result['layers'][1]['y'], 556)
         self.assertEqual(result['layers'][1]['width'], 450)
         self.assertEqual(result['mark']['crop']['x'], 322)
         self.assertEqual(result['mark']['crop']['width'], 161)
         self.assertEqual(mark['layers'],[])
         self.assertEqual(mark['mark']['entry_id'],2)
+        self.assertEqual(positioned['mark']['placement'],dict(x=30,y=40,width=106,height=106))
 
 
 if __name__ == '__main__': unittest.main()

@@ -356,6 +356,10 @@ def create_server(catalog, port=0):
                     self.respond(reset.preview(query.get('preserved') == '1'))
                 elif url.path == '/api/loading-presets':
                     self.respond(dict(items=loading.presets()))
+                elif url.path == '/api/loading-layout':
+                    self.respond(loading.layout())
+                elif url.path.startswith('/api/loading-illustration/'):
+                    self.respond(loading.illustration_plan(int(url.path.rsplit('/',1)[1])))
                 elif url.path == '/api/loading-illustrations':
                     self.respond(loading.illustrations(query.get('q',''),query.get('page',1)))
                 elif url.path.startswith('/api/loading-thumbnail/'):
