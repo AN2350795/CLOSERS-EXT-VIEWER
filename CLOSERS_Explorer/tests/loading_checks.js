@@ -1,12 +1,27 @@
 const errors=[];
 try{
-  for(const path of ['/particle-effects.js','/composition-core.js','/animation-png.js'])await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=path;s.onload=resolve;s.onerror=reject;document.head.append(s);});
+  for(const path of ['/particle-effects.js','/composition-core.js','/animation-png.js','/animation-loop.js'])await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=path;s.onload=resolve;s.onerror=reject;document.head.append(s);});
   const check=(ok,message)=>{if(!ok)throw Error(message);};
   const red=document.createElement('canvas'),blue=document.createElement('canvas');for(const [c,color] of [[red,'red'],[blue,'blue']]){c.width=4;c.height=4;const ctx=c.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,4,4);}
   const source=key=>({key,archive:'a',ordinal:0,name:key+'.png',format:'png',source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),width:4,height:4});
   const raw={schema:'closers-composition',version:1,kind:'composition',canvas:{width:4,height:4,transparent:true,color:'#000000'},sources:[source('s1'),source('s2')],layers:[{id:'l1',source:'s1',name:'effect',role:'fragment',gameFrame:true,x:0,y:0,width:4,height:4,crop:{x:0,y:0,width:4,height:4},opacity:1,visible:true,locked:false,keepRatio:true,animation:{delay:.1,blend:'source-over',color:[1,1,1,1],frames:[{source:'s1',duration:.1},{source:'s2',duration:.2}]}}]};
   const project=CompositionCore.validate(raw),images=new Map([['s1',red],['s2',blue]]);
   check(CompositionCore.usedSources(project.layers).size===2,'animation references were pruned');
+  check(Math.abs(AnimationLoop.timings(project)[0].texture-.3)<1e-9,'game texture durations were not summed');
+  const cycles={layers:[{visible:true,name:'top',animation:{delay:.49,frames:[{duration:.96} ,{duration:0}]}},{visible:true,name:'logo',animation:{delay:0,frames:[{duration:2.54},{duration:0}]}}]};
+  check(AnimationLoop.textureCycle(cycles,25)===null,'different texture periods must not invent a short game cycle');
+  cycles.layers[0].animation.frames=[{duration:.75},{duration:.75}];cycles.layers[1].animation.frames=[{duration:1.5},{duration:1.5}];
+  check(AnimationLoop.textureCycle(cycles,25)===3,'common texture cycle');
+  const ramp=time=>{const c=document.createElement('canvas');c.width=2;c.height=1;const ctx=c.getContext('2d');ctx.fillStyle='rgb(40,60,100)';ctx.fillRect(0,0,1,1);ctx.fillStyle=`rgb(${Math.round(50+time*10)},0,0)`;ctx.fillRect(1,0,1,1);return c;};
+  const loopPlan=AnimationLoop.plan(project,3,25,true),loopRender=AnimationLoop.renderer(ramp,loopPlan),rawRender=AnimationLoop.renderer(ramp,AnimationLoop.plan(project,3,25,false));
+  const loopPixel=(render,t)=>[...render(t).getContext('2d').getImageData(1,0,1,1).data];
+  check(Math.abs(loopPixel(loopRender,0)[0]-loopPixel(loopRender,2.96)[0])<=1,'loop seam still jumps');
+  check(Math.abs(loopPixel(rawRender,0)[0]-loopPixel(rawRender,2.96)[0])>20,'raw mode unexpectedly changed game timing');
+  check(JSON.stringify(loopPixel(loopRender,0))===JSON.stringify(loopPixel(loopRender,3)),'loop endpoints differ');
+  check(JSON.stringify([...loopRender(2.75).getContext('2d').getImageData(0,0,1,1).data])==='[40,60,100,255]','loop blend dimmed the static illustration');
+  const alphaRender=time=>{const c=document.createElement('canvas');c.width=1;c.height=1;const ctx=c.getContext('2d');if(time>1){ctx.fillStyle='red';ctx.fillRect(0,0,1,1);}return c;};
+  const blended=AnimationLoop.renderer(alphaRender,{warmup:1,period:2,blend:.5})(1.75).getContext('2d').getImageData(0,0,1,1).data;
+  check(blended[0]===255&&blended[3]===128,'loop alpha interpolation was not premultiplied');
   const render=time=>{const c=document.createElement('canvas');c.width=4;c.height=4;CompositionCore.draw(c.getContext('2d'),project,images,4,4,time);return c;};
   const pixel=time=>[...render(time).getContext('2d').getImageData(0,0,1,1).data];
   check(pixel(0)[3]===0,'latency');check(pixel(.1)[0]===255,'first frame');check(pixel(.2)[2]===255,'boundary timing');check(pixel(.4)[0]===255,'sequence loop');
@@ -24,6 +39,10 @@ try{
   const initial=(property,value)=>({property,mode:'initial',value,start:0,end:null});
   const fade=(property,value,start,end)=>({property,mode:'fade',value,start,end});
   const particle={seed:123,life:2,maxParticles:2,rate:2,instant:1,emitterLife:10,deaths:0,radius:[0,0,0],radiusMin:0,gravity:[0,2,0],scale:[1,1],basis:[4,4],drawCount:1,dual:false,dualDrawCount:1,clamp:true,blend:['SRCALPHA','INVSRCALPHA'],tracks:[initial('size',[4,4,1]),initial('color',[1,1,1,1]),initial('velocity',[2,0,0]),fade('velocity',[6,0,0],0,2),initial('rotationSpeed',[0,0,10]),fade('size',[8,8,1],0,2)]};
+  const warmProject={layers:[{visible:true,animation:{delay:.49,particle,frames:[{duration:1}]}}]};
+  check(AnimationLoop.plan(warmProject,3,25,true).warmup>2.99,'continuous particle warm-up omitted the initial build-up');
+  warmProject.layers[0].animation.particle={...particle,life:999999};check(AnimationLoop.plan(warmProject,3,25,true).warmup<1,'persistent plane life was treated as a warm-up duration');
+  warmProject.layers[0].animation.particle={...particle,rate:0};check(AnimationLoop.plan(warmProject,3,25,true).warmup<1,'one-shot effect was skipped by warming past its life');
   const sampled=ParticleEffects.states(particle,1);
   check(sampled.length===2,'emitter particle cap');
   check(Math.abs(sampled[0].position[0]-3)<1e-6&&sampled[0].position[1]===1,'integrated velocity and gravity');

@@ -68,6 +68,12 @@ try{
   check(composition.layers[1].markParent===composition.layers[0].id,'restored mark parent id was not remapped');
   const scaled=projectForSave();scaled.canvas.width*=2;scaled.canvas.height*=2;const parent=scaled.layers.find(l=>!l.markParent);parent.x*=2;parent.y*=2;parent.width*=2;parent.height*=2;
   await importProject(scaled);playing=false;check(makeExportCanvas(.5).toDataURL()===before,'canvas normalization scaled attached effects twice');
+  check(document.querySelector('#animation-loop').checked,'natural loop should be enabled by default');
+  const timedEffect=composition.layers.find(l=>l.animation);timedEffect.animation.frames=[{source:timedEffect.source,duration:.48},{source:timedEffect.source,duration:.48}];commit();
+  check(document.querySelector('#animation-timings').textContent.includes('0.96초')&&!document.querySelector('#match-animation-cycle').disabled,'game time information missing');
+  document.querySelector('#match-animation-cycle').click();check(Number(document.querySelector('#animation-duration').value)===.96,'texture cycle duration button');
+  timedEffect.animation.frames=[{source:timedEffect.source,duration:.015},{source:timedEffect.source,duration:2}];commit();
+  check(document.querySelector('#animation-timings').textContent.includes('0.015초~2초')&&document.querySelector('#animation-loop-info').textContent.includes('FPS를 높이면'),'native hold times or short-frame advice missing');
   const actualDownload=downloadBlob,downloads=[];downloadBlob=(blob,name)=>downloads.push({blob,name});
   check(document.querySelector('#animation-format').value==='webp','lossless WebP should be the default');
   document.querySelector('#animation-format').value='apng';
