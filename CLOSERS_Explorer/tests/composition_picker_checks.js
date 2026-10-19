@@ -57,6 +57,11 @@ try{
   const legacy=projectForSave();legacy.canvas.width*=2;legacy.canvas.height*=2;for(const l of legacy.layers){l.x*=2;l.y*=2;l.width*=2;l.height*=2;}
   await importProject(legacy);check(composition.canvas.width===450&&composition.canvas.height===640&&composition.layers.find(l=>l.gameIllustration).width===450,'old settings were not adapted to the fixed game layout');
   document.querySelector('#new-project').click();check(composition.canvas.width===450&&composition.canvas.height===640,'new project lost game dimensions');
+  check(!composition.canvas.transparent&&!$('canvas-transparent').checked,'new project must include the selected background');
+  let background=makeExportCanvas().getContext('2d').getImageData(0,0,1,1).data;
+  check(background[0]===23&&background[1]===32&&background[2]===51&&background[3]===255,'default background not exported');
+  $('canvas-transparent').checked=true;$('canvas-transparent').dispatchEvent(new Event('change'));
+  check(makeExportCanvas().getContext('2d').getImageData(0,0,1,1).data[3]===0,'transparent output cannot be selected');
   includeParticles=true;await applyGameFrame(true,5);playing=false;
   check(composition.version===3&&composition.layers.length===2,'mark particle plan not loaded');
   const mark=composition.layers.find(l=>!l.markParent),effect=composition.layers.find(l=>l.markParent);
