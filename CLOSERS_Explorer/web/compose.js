@@ -38,6 +38,7 @@ function updateControls(){
   for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-width','canvas-height','canvas-transparent','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
   $('match-animation-cycle').disabled=busy||AnimationLoop.textureCycle(composition,Number($('animation-fps').value))===null;
   $('canvas-width').disabled=true;$('canvas-height').disabled=true;
+  $('output-mode').disabled=busy;$('output-width').disabled=busy||composition.output?.mode!=='custom';
   $('export-png').disabled=busy||!gameLayout;$('export-apng').disabled=busy||!gameLayout;
   $('save-template').disabled=busy||!composition.layers.some(l=>l.role!=='illustration');
   $('layer-fields').disabled=busy||!currentLayer();
@@ -47,7 +48,22 @@ function updateControls(){
 }
 function pruneImages(){const used=Core.usedSources(composition.layers);composition.sources=composition.sources.filter(s=>used.has(s.key));for(const [key,value] of images)if(!used.has(key)){value.bitmap.close();images.delete(key);}}
 function commit(){pruneImages();renderLayers();renderFields();renderCanvas();renderAnimationTiming();updateControls();}
+function renderOutput(){
+  const output=composition.output||{mode:'native',width:720};$('output-mode').value=output.mode;
+  try{
+    const size=Core.exportSize(composition);$('output-width').value=size.width;$('output-height').value=size.height;
+    const fps=Number($('animation-fps').value),count=Math.ceil(Number($('animation-duration').value)*fps-1e-9),limit=$('animation-format').value==='webp'?134217728:268435456;
+    $('output-info').textContent=`저장 ${size.width} × ${size.height}px · 원본 이미지와 프레임·효과를 이 해상도로 직접 합성합니다. 미리보기 크기는 바뀌지 않습니다.`+(size.width*size.height*count>limit?' 현재 애니메이션은 전체 픽셀 한도를 넘습니다. 저장 크기·길이·FPS를 줄여 주세요.':'');
+  }catch(e){$('output-width').value=output.width;$('output-height').value='';$('output-info').textContent=e.message;}
+}
+function changeOutput(){
+  if(busy)return;const previous=snapshot();
+  try{composition.output={mode:$('output-mode').value,width:composition.output?.width||720};if(composition.output.mode==='custom')composition.output.width=Number($('output-width').value);validateCurrent();Core.exportSize(composition);commit();}
+  catch(e){composition=previous;commit();toast(e.message);}
+}
+$('output-mode').onchange=changeOutput;$('output-width').onchange=changeOutput;
 function renderAnimationTiming(){
+  renderOutput();
   const format=value=>Number(value.toFixed(4))+'초',rows=AnimationLoop.timings(composition);
   $('animation-timings').replaceChildren();
   for(const row of rows){
@@ -61,6 +77,7 @@ function renderAnimationTiming(){
 }
 $('animation-loop').onchange=renderAnimationTiming;
 $('animation-fps').onchange=()=>{renderAnimationTiming();updateControls();};
+$('animation-duration').onchange=renderOutput;$('animation-format').onchange=renderOutput;
 $('match-animation-cycle').onclick=()=>{if(busy)return;const cycle=AnimationLoop.textureCycle(composition,Number($('animation-fps').value));if(cycle!==null){$('animation-duration').value=Number(cycle.toFixed(6));renderAnimationTiming();}};
 function renderLayers(){
   $('layers').replaceChildren();
@@ -177,7 +194,7 @@ function clearAnimationPreview(){
 $('close-animation-preview').onclick=()=>$('animation-preview').close();
 $('animation-preview').addEventListener('close',clearAnimationPreview);
 window.addEventListener('pagehide',clearAnimationPreview);
-function makeExportCanvas(time=animationTime,validated=false){if(!validated)validateCurrent();const canvas=document.createElement('canvas');canvas.width=composition.canvas.width;canvas.height=composition.canvas.height;Core.draw(canvas.getContext('2d'),composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,time);return canvas;}
+function makeExportCanvas(time=animationTime,validated=false){if(!validated)validateCurrent();const size=Core.exportSize(composition),canvas=document.createElement('canvas');canvas.width=size.width;canvas.height=size.height;Core.draw(canvas.getContext('2d'),composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,time);return canvas;}
 async function exportPNG(){
   editorStatus('원본 해상도로 PNG를 만들고 있습니다…','working');
   const canvas=makeExportCanvas();
@@ -191,8 +208,10 @@ async function exportAnimation(){
   if(!['webp','apng'].includes(format))throw Error('지원하지 않는 애니메이션 형식입니다.');
   if(!Number.isFinite(duration)||duration<.1||duration>10)throw Error('저장 길이는 0.1~10초입니다.');
   const loop=AnimationLoop.plan(composition,duration,fps,$('animation-loop').checked),count=loop.count;
+  const size=Core.exportSize(composition),maxPixels=format==='webp'?134217728:268435456;
+  if(size.width*size.height*count>maxPixels)throw Error('애니메이션 전체 픽셀 한도를 넘습니다. 저장 크기·길이·FPS를 줄여 주세요.');
   const render=AnimationLoop.renderer(time=>makeExportCanvas(time,true),loop);
-  let blob=await AnimationPNG.encode({width:composition.canvas.width,height:composition.canvas.height,count,fps,requireMotion:true,render,progress:(n,total)=>editorStatus(`애니메이션 생성 중 · ${n}/${total}`,'working')});
+  let blob=await AnimationPNG.encode({width:size.width,height:size.height,count,fps,requireMotion:true,render,progress:(n,total)=>editorStatus(`애니메이션 생성 중 · ${n}/${total}`,'working')});
   if(format==='webp'){
     editorStatus('무손실 WebP로 저장하고 있습니다…','working');
     const response=await fetch('/api/composition-animation/webp',{method:'POST',headers:{'X-Explorer-Token':token,'Content-Type':'image/apng'},body:blob});
@@ -201,7 +220,7 @@ async function exportAnimation(){
     if(blob.type!=='image/webp'||!blob.size||blob.size>128*1024*1024)throw Error('WebP 저장 결과가 올바르지 않습니다.');
   }
   downloadBlob(blob,'closers-composition.'+format);
-  const summary=`${format==='webp'?'WebP':'APNG'} · ${count}프레임 · ${fps} FPS · ${Number((count/fps).toFixed(3))}초 · ${composition.canvas.width} × ${composition.canvas.height}px${loop.blend?' · 순환 보정':''}`;
+  const summary=`${format==='webp'?'WebP':'APNG'} · ${count}프레임 · ${fps} FPS · ${Number((count/fps).toFixed(3))}초 · ${size.width} × ${size.height}px${loop.blend?' · 순환 보정':''}`;
   editorStatus('애니메이션 저장 요청 완료 · '+summary);
   clearAnimationPreview();animationPreviewURL=URL.createObjectURL(blob);$('animation-preview-image').src=animationPreviewURL;
   $('animation-preview-info').textContent=summary;$('animation-preview').showModal();

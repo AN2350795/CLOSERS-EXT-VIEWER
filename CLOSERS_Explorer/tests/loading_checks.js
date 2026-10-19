@@ -27,6 +27,27 @@ try{
   check(pixel(0)[3]===0,'latency');check(pixel(.1)[0]===255,'first frame');check(pixel(.2)[2]===255,'boundary timing');check(pixel(.4)[0]===255,'sequence loop');
   const copy=CompositionCore.validate(JSON.parse(JSON.stringify(project)));check(copy.layers[0].gameFrame&&copy.layers[0].animation.frames.length===2,'animation settings round trip');
   const bad=JSON.parse(JSON.stringify(project));bad.layers[0].animation.frames[1].source='s9';let rejected=false;try{CompositionCore.validate(bad);}catch{rejected=true;}check(rejected,'missing animation source');
+  const high=structuredClone(raw);high.canvas.width=450;high.canvas.height=640;
+  high.sources[0].width=720;high.sources[0].height=1024;
+  Object.assign(high.layers[0],{role:'illustration',gameIllustration:true,width:450,height:640,crop:{x:0,y:0,width:720,height:1024}});delete high.layers[0].animation;
+  const native=CompositionCore.validate(high),nativeSize=CompositionCore.exportSize(native);
+  check(nativeSize.width===720&&nativeSize.height===1024,'original illustration resolution was not preserved');
+  const fineStripes=new OffscreenCanvas(720,1024),fineContext=fineStripes.getContext('2d');
+  for(let x=0;x<720;x++){fineContext.fillStyle=x%2?'white':'black';fineContext.fillRect(x,0,1,1024);}
+  const large=new OffscreenCanvas(720,1024);CompositionCore.draw(large.getContext('2d'),native,new Map([['s1',fineStripes]]),720,1024);
+  const detail=large.getContext('2d').getImageData(0,500,720,1).data;
+  check([...Array(720)].every((_,x)=>detail[x*4]===(x%2?255:0)),'export enlarged a low resolution intermediate image');
+  native.layers.push({...raw.layers[0],animation:undefined,id:'l2',source:'s2',x:0,y:0,width:450,height:40});
+  CompositionCore.draw(large.getContext('2d'),native,new Map([['s1',fineStripes],['s2',blue]]),720,1024);
+  check(large.getContext('2d').getImageData(719,63,1,1).data[2]===255&&large.getContext('2d').getImageData(718,65,1,1).data[2]===0,'frame placement did not scale with the illustration');
+  for(const [mode,w,h] of [['base',450,640],['double',900,1280],['custom',1080,1536]]){
+    native.output={mode,width:1080};const size=CompositionCore.exportSize(native);check(size.width===w&&size.height===h,'output size '+mode);
+    check(CompositionCore.validate(native).output.mode===mode,'output settings round trip '+mode);
+  }
+  native.output={mode:'custom',width:8192};let tooLarge=false;try{CompositionCore.exportSize(native);}catch{tooLarge=true;}check(tooLarge,'oversized output accepted');
+  for(const output of [{mode:'invalid',width:720},{mode:'custom',width:NaN},{mode:'custom',width:0}]){
+    high.output=output;let invalid=false;try{CompositionCore.validate(high);}catch{invalid=true;}check(invalid,'invalid output settings accepted');
+  }
   const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render,requireMotion:true});
   const decoder=new ImageDecoder({data:await blob.arrayBuffer(),type:'image/png'});await decoder.tracks.ready;check(decoder.tracks.selectedTrack.frameCount===4,'APNG frame count');
   for(let i=0;i<4;i++){const {image}=await decoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);const actual=[...ctx.getImageData(0,0,1,1).data];check(JSON.stringify(actual)===JSON.stringify(pixel(i/10)),'APNG decoded pixels '+i);check(Math.abs(image.duration-100000)<1,'APNG timing');image.close();}decoder.close();

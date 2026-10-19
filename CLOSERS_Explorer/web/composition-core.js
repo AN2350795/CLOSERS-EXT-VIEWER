@@ -60,7 +60,23 @@ globalThis.CompositionCore=(()=>{
       return result;
     });
     for(const l of layers)if(l.markParent&&!layers.some(p=>p.id===l.markParent&&p.id!==l.id&&p.gameMark&&!p.markParent&&!p.animation))fail('효과를 연결할 마크가 없습니다.');
-    return {schema:'closers-composition',version:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers};
+    const output=value.output===undefined?{mode:'native',width:720}:value.output;
+    if(!output||!['native','base','double','custom'].includes(output.mode))fail('저장 해상도 설정이 올바르지 않습니다.');
+    return {schema:'closers-composition',version:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
+      output:{mode:output.mode,width:integer(output.width??720,'저장 너비',1,8192)}};
+  }
+  function exportSize(project){
+    const {canvas,layers}=project,output=project.output||{mode:'native'};
+    let scale=1;
+    if(output.mode==='native'){
+      for(const l of layers)if(l.visible&&l.role==='illustration'&&!l.animation)scale=Math.max(scale,l.crop.width/l.width,l.crop.height/l.height);
+    }
+    // Keep one uniform scale for illustration, frame and particle placement.
+    if(output.mode==='double')scale=2;
+    if(output.mode==='custom')scale=output.width/canvas.width;
+    const width=Math.max(1,Math.round(canvas.width*scale)),height=Math.max(1,Math.round(canvas.height*scale));
+    if(width>8192||height>8192||width*height>MAX_PIXELS)fail('저장 이미지는 한 변 8,192픽셀·합계 16,777,216픽셀까지입니다. 저장 크기를 줄여 주세요.');
+    return {width,height};
   }
   function frameAt(animation,time){
     if(time<animation.delay)return null;
@@ -98,5 +114,5 @@ globalThis.CompositionCore=(()=>{
     return {...l,x:parent.x+parent.width/2+l.x*sx,y:parent.y+parent.height/2+l.y*sy,width:l.width*sx,height:l.height*sy,opacity:l.opacity*parent.opacity};
   }
   function usedSources(layers){return new Set(layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])]));}
-  return Object.freeze({validate,draw,frameAt,usedSources,placement,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
+  return Object.freeze({validate,exportSize,draw,frameAt,usedSources,placement,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
 })();

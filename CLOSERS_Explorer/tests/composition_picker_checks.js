@@ -80,12 +80,30 @@ try{
   timedEffect.animation.frames=[{source:timedEffect.source,duration:.015},{source:timedEffect.source,duration:2}];commit();
   check(document.querySelector('#animation-timings').textContent.includes('0.015초~2초')&&document.querySelector('#animation-loop-info').textContent.includes('FPS를 높이면'),'native hold times or short-frame advice missing');
   const actualDownload=downloadBlob,downloads=[];downloadBlob=(blob,name)=>downloads.push({blob,name});
+  const previewWidth=$('composition-canvas').width;
+  $('output-mode').value='double';$('output-mode').dispatchEvent(new Event('change'));
+  check(makeExportCanvas(.5).width===900&&makeExportCanvas(.5).height===1280,'high resolution export dimensions');
+  check($('composition-canvas').width===previewWidth,'output resolution changed the preview scale');
+  const outputSaved=projectForSave();await importProject(outputSaved);playing=false;
+  check(composition.output.mode==='double'&&$('output-mode').value==='double','output settings were not restored');
+  $('output-mode').value='custom';$('output-mode').dispatchEvent(new Event('change'));
+  $('output-width').value='1080';$('output-width').dispatchEvent(new Event('change'));
+  check(makeExportCanvas(.5).height===1536,'custom output lost aspect ratio');
+  const previousOutput=composition.output.width;$('output-width').value='8192';$('output-width').dispatchEvent(new Event('change'));
+  check(composition.output.width===previousOutput,'invalid output size changed the project');
+  $('output-mode').value='double';$('output-mode').dispatchEvent(new Event('change'));
+  await exportPNG();
+  const pngOutput=await createImageBitmap(downloads.pop().blob);check(pngOutput.width===900&&pngOutput.height===1280,'PNG download ignored output size');pngOutput.close();
+  $('animation-duration').value='10';$('animation-fps').value='25';
+  let pixelLimit=false;try{await exportAnimation();}catch(e){pixelLimit=e.message.includes('픽셀 한도');}
+  check(pixelLimit&&downloads.length===0,'large animation was not rejected before rendering');
   check(document.querySelector('#animation-format').value==='webp','lossless WebP should be the default');
   document.querySelector('#animation-format').value='apng';
   document.querySelector('#animation-duration').value='3';document.querySelector('#animation-fps').value='25';
   await exportAnimation();downloadBlob=actualDownload;
   const decoded=new ImageDecoder({data:await downloads[0].blob.arrayBuffer(),type:'image/png'});await decoded.tracks.ready;
   check(downloads[0].name==='closers-composition.apng'&&decoded.tracks.selectedTrack.frameCount===75,'default export should contain 75 frames');decoded.close();
+  const apngHeader=new DataView(await downloads[0].blob.arrayBuffer());check(apngHeader.getUint32(16)===900&&apngHeader.getUint32(20)===1280,'APNG ignored output resolution');
   check(document.querySelector('#animation-preview').open&&document.querySelector('#animation-preview-info').textContent.includes('75프레임 · 25 FPS · 3초'),'export playback preview or frame count missing');
   const preview=await (await nativeFetch(document.querySelector('#animation-preview-image').src)).blob();
   const hash=async blob=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].join(',');
@@ -95,7 +113,7 @@ try{
   await exportAnimation();downloadBlob=actualDownload;
   const webpDecoded=new ImageDecoder({data:await downloads[1].blob.arrayBuffer(),type:'image/webp'});await webpDecoded.tracks.ready;
   check(downloads[1].name==='closers-composition.webp'&&webpDecoded.tracks.selectedTrack.frameCount===75,'WebP export dropped frames');
-  const last=await webpDecoded.decode({frameIndex:74});check(last.image.duration===40000,'WebP frame duration');last.image.close();webpDecoded.close();
+  const last=await webpDecoded.decode({frameIndex:74});check(last.image.duration===40000,'WebP frame duration');check(last.image.displayWidth===900&&last.image.displayHeight===1280,'WebP ignored output resolution');last.image.close();webpDecoded.close();
   const originalDecoder=new ImageDecoder({data:await downloads[0].blob.arrayBuffer(),type:'image/png'}),convertedDecoder=new ImageDecoder({data:await downloads[1].blob.arrayBuffer(),type:'image/webp'});
   for(const index of [0,12,49,74]){
     const pixels=async decoder=>{const {image}=await decoder.decode({frameIndex:index});const c=new OffscreenCanvas(450,640),ctx=c.getContext('2d');ctx.drawImage(image,0,0);image.close();return ctx.getImageData(0,0,40,50).data;};
