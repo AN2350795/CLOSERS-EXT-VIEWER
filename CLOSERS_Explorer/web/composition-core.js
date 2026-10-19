@@ -8,9 +8,10 @@ globalThis.CompositionCore=(()=>{
   const text=(v,label,max)=>typeof v==='string'&&v.length<=max?v:fail(label+' 형식이 올바르지 않습니다.');
   const bool=(v,fallback)=>v===undefined?fallback:typeof v==='boolean'?v:fail('선택 설정 형식이 올바르지 않습니다.');
   function gameCrop(crop,source){
-    const x=number(crop.x,'자르기 X',0,65536),y=number(crop.y,'자르기 Y',0,65536),
-      right=Math.min(source.width,x+number(crop.width,'자르기 너비',.01,65536)),
-      bottom=Math.min(source.height,y+number(crop.height,'자르기 높이',.01,65536));
+    const rawX=number(crop.x,'자르기 X',-65536,65536),rawY=number(crop.y,'자르기 Y',-65536,65536),
+      x=Math.max(0,rawX),y=Math.max(0,rawY),
+      right=Math.min(source.width,rawX+number(crop.width,'자르기 너비',.01,65536)),
+      bottom=Math.min(source.height,rawY+number(crop.height,'자르기 높이',.01,65536));
     if(right<=x||bottom<=y)fail('게임 자르기 영역이 원본 이미지와 겹치지 않습니다.');
     return {x,y,width:right-x,height:bottom-y};
   }

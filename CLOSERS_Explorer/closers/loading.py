@@ -23,7 +23,7 @@ def region(value):
     if lt[2] != rt[2] or lb[2] != rb[2] or lt[1] != lb[1] or rt[1] != rb[1]:
         raise ValueError('회전된 UV 영역은 지원하지 않습니다.')
     x, y, w, h = lt[1], lt[2], rt[1]-lt[1], lb[2]-lt[2]
-    if min(x, y) < 0 or min(w, h) <= 0:
+    if not all(math.isfinite(v) for v in (x, y, w, h)) or min(w, h) <= 0:
         raise ValueError('UV 영역이 잘못되었습니다.')
     return dict(x=x, y=y, width=w, height=h)
 
@@ -31,9 +31,10 @@ def region(value):
 def image_crop(crop, width, height):
     """Intersect game atlas bounds with the image, retaining the display rectangle."""
     x, y, w, h = (crop[k] for k in ('x', 'y', 'width', 'height'))
-    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (x, y, w, h)) or min(x, y) < 0 or min(w, h) <= 0:
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (x, y, w, h)) or min(w, h) <= 0:
         raise ValueError('게임 자르기 영역이 잘못되었습니다.')
     right, bottom = min(width, x+w), min(height, y+h)
+    x, y = max(0, x), max(0, y)
     if right <= x or bottom <= y:
         raise ValueError('게임 자르기 영역이 원본 이미지와 겹치지 않습니다.')
     return dict(x=x, y=y, width=right-x, height=bottom-y)

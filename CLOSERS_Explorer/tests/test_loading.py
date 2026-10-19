@@ -26,6 +26,8 @@ class LoadingTests(unittest.TestCase):
                          dict(x=125,y=2,width=720,height=1022))
         self.assertEqual(image_crop(dict(x=1000,y=1000,width=100,height=100),1024,1024),
                          dict(x=1000,y=1000,width=24,height=24))
+        self.assertEqual(image_crop(dict(x=-2,y=-1,width=10,height=8),8,8),
+                         dict(x=0,y=0,width=8,height=7))
         for crop in [dict(x=1024,y=0,width=1,height=1),dict(x=0,y=1024,width=1,height=1),
                      dict(x=0,y=0,width=float('nan'),height=1),dict(x=0,y=-1,width=1,height=1)]:
             with self.subTest(crop=crop), self.assertRaises(ValueError):
@@ -229,6 +231,9 @@ class LoadingTests(unittest.TestCase):
         self.assertEqual(region(uv), dict(x=0, y=172, width=450, height=84))
         uv['m_RightBottom'][2] = 255
         with self.assertRaises(ValueError): region(uv)
+        uv = dict(m_LeftTop={1:-2,2:-1},m_RightTop={1:8,2:-1},
+                  m_LeftBottom={1:-2,2:8},m_RightBottom={1:8,2:8})
+        self.assertEqual(region(uv),dict(x=-2,y=-1,width=10,height=9))
 
     def test_plan_uses_game_placement_and_named_mark(self):
         data = LoadingData(MagicMock())

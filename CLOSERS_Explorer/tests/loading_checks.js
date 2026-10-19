@@ -125,6 +125,8 @@ try{
   const canvas=new OffscreenCanvas(4,4);CompositionCore.draw(canvas.getContext('2d'),clipped,images);
   check(canvas.getContext('2d').getImageData(3,3,1,1).data[3]===255,'clipped atlas left a transparent output edge');
   check(CompositionCore.validate(clipped).layers[0].crop.height===2,'normalized project could not be restored');
+  const negative=structuredClone(atlas);negative.layers[0].crop={x:-2,y:-1,width:6,height:5};
+  check(JSON.stringify(CompositionCore.validate(negative).layers[0].crop)===JSON.stringify({x:0,y:0,width:4,height:4}),'negative atlas edge was not clipped');
   for(const flag of ['gameIllustration','gameFrame','gameMark']){
     const variant=structuredClone(atlas);delete variant.layers[0].gameIllustration;delete variant.layers[0].gameFrame;variant.layers[0][flag]=true;
     check(CompositionCore.validate(variant).layers[0].crop.height===2,'game crop not shared by '+flag);

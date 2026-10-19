@@ -62,14 +62,16 @@ class LoadingCacheTests(unittest.TestCase):
 
     def test_thumbnail_clips_overflow_instead_of_adding_transparent_edges(self):
         plan = self.data.illustration_plan.side_effect
-        def overflowing(*args, **kwargs):
-            value = plan(*args, **kwargs)
-            value['layers'][0]['crop'] = dict(x=1,y=2,width=8,height=8)
-            return value
-        self.data.illustration_plan.side_effect = overflowing
-        body = self.data.thumbnail(1, 'illustration', self.images)
-        with Image.open(BytesIO(body)) as image:
-            self.assertEqual(image.getchannel('A').getextrema(), (255,255))
+        for ident, crop in enumerate([dict(x=1,y=2,width=8,height=8),dict(x=-1,y=-2,width=8,height=8)],1):
+            with self.subTest(crop=crop):
+                def overflowing(*args, **kwargs):
+                    value = plan(*args, **kwargs)
+                    value['layers'][0]['crop'] = crop
+                    return value
+                self.data.illustration_plan.side_effect = overflowing
+                body = self.data.thumbnail(ident, 'illustration', self.images)
+                with Image.open(BytesIO(body)) as image:
+                    self.assertEqual(image.getchannel('A').getextrema(), (255,255))
 
     def test_saved_image_edit_regenerates_pixels(self):
         before = self.data.thumbnail(1, 'frame', self.images)
