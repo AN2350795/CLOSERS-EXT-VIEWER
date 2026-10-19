@@ -60,6 +60,17 @@ class LoadingCacheTests(unittest.TestCase):
                     self.assertEqual(restarted.thumbnail(1, kind, self.images), body)
         self.assertEqual(len(list((self.catalog.workspace/'thumbnail-cache').glob('*.png'))), 3)
 
+    def test_thumbnail_clips_overflow_instead_of_adding_transparent_edges(self):
+        plan = self.data.illustration_plan.side_effect
+        def overflowing(*args, **kwargs):
+            value = plan(*args, **kwargs)
+            value['layers'][0]['crop'] = dict(x=1,y=2,width=8,height=8)
+            return value
+        self.data.illustration_plan.side_effect = overflowing
+        body = self.data.thumbnail(1, 'illustration', self.images)
+        with Image.open(BytesIO(body)) as image:
+            self.assertEqual(image.getchannel('A').getextrema(), (255,255))
+
     def test_saved_image_edit_regenerates_pixels(self):
         before = self.data.thumbnail(1, 'frame', self.images)
         saved = Path(self.catalog.get_resource(1)['output'])

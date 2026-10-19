@@ -118,8 +118,20 @@ try{
   project.layers[0].animation.color=[0,0,0,.5];check(pixel(.1)[0]===0&&Math.abs(pixel(.1)[3]-128)<=1,'color and alpha');
   let limited=false;try{await AnimationPNG.encode({width:8192,height:8192,count:5,fps:25,render});}catch{limited=true;}check(limited,'export memory limit');
   const atlas=JSON.parse(JSON.stringify(raw));delete atlas.layers[0].animation;atlas.layers[0].gameIllustration=true;atlas.layers[0].crop.y=1;
-  check(CompositionCore.validate(atlas).layers[0].crop.height===4,'game atlas one-pixel edge was discarded');
-  atlas.layers[0].gameIllustration=false;let cropped=false;try{CompositionCore.validate(atlas);}catch{cropped=true;}check(cropped,'manual crop escaped source bounds');
+  check(CompositionCore.validate(atlas).layers[0].crop.height===3,'game atlas was not intersected with the source');
+  atlas.layers[0].crop={x:1,y:2,width:6,height:8};
+  const clipped=CompositionCore.validate(atlas);
+  check(clipped.layers[0].crop.width===3&&clipped.layers[0].crop.height===2,'multi-pixel game atlas overflow');
+  const canvas=new OffscreenCanvas(4,4);CompositionCore.draw(canvas.getContext('2d'),clipped,images);
+  check(canvas.getContext('2d').getImageData(3,3,1,1).data[3]===255,'clipped atlas left a transparent output edge');
+  check(CompositionCore.validate(clipped).layers[0].crop.height===2,'normalized project could not be restored');
+  for(const flag of ['gameIllustration','gameFrame','gameMark']){
+    const variant=structuredClone(atlas);delete variant.layers[0].gameIllustration;delete variant.layers[0].gameFrame;variant.layers[0][flag]=true;
+    check(CompositionCore.validate(variant).layers[0].crop.height===2,'game crop not shared by '+flag);
+  }
+  const outside=structuredClone(atlas);outside.layers[0].crop.x=4;
+  let outsideRejected=false;try{CompositionCore.validate(outside);}catch{outsideRejected=true;}check(outsideRejected,'empty game crop accepted');
+  atlas.layers[0].gameIllustration=false;atlas.layers[0].gameFrame=false;let cropped=false;try{CompositionCore.validate(atlas);}catch{cropped=true;}check(cropped,'manual crop escaped source bounds');
   document.body.dataset.checks='passed';
 }catch(e){errors.push(e.stack||String(e));document.body.dataset.checks='failed';}
 const pre=document.createElement('pre');pre.textContent=errors.join('\n');document.body.append(pre);

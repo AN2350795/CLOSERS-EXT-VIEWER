@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
-from closers.loading import LoadingData, region
+from closers.loading import LoadingData, region, image_crop
 from closers.lua_literals import tables
 
 
@@ -21,6 +21,16 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
+    def test_game_crop_intersects_source_without_transparent_padding(self):
+        self.assertEqual(image_crop(dict(x=125,y=2,width=720,height=1024),1024,1024),
+                         dict(x=125,y=2,width=720,height=1022))
+        self.assertEqual(image_crop(dict(x=1000,y=1000,width=100,height=100),1024,1024),
+                         dict(x=1000,y=1000,width=24,height=24))
+        for crop in [dict(x=1024,y=0,width=1,height=1),dict(x=0,y=1024,width=1,height=1),
+                     dict(x=0,y=0,width=float('nan'),height=1),dict(x=0,y=-1,width=1,height=1)]:
+            with self.subTest(crop=crop), self.assertRaises(ValueError):
+                image_crop(crop,1024,1024)
+
     def test_team_challenge_rectangular_frames_start_both_planes_together(self):
         from closers.loading_particles import compile_particle
         seq = dict(m_ParticleType='PCT_2D_PLANE', m_EmitRate=2,

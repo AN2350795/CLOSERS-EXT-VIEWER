@@ -1,6 +1,7 @@
 """Source-verified loading frame definitions and named texture atlas regions."""
 from contextlib import nullcontext
 import hashlib
+import math
 from io import BytesIO
 import re
 import threading
@@ -25,6 +26,17 @@ def region(value):
     if min(x, y) < 0 or min(w, h) <= 0:
         raise ValueError('UV 영역이 잘못되었습니다.')
     return dict(x=x, y=y, width=w, height=h)
+
+
+def image_crop(crop, width, height):
+    """Intersect game atlas bounds with the image, retaining the display rectangle."""
+    x, y, w, h = (crop[k] for k in ('x', 'y', 'width', 'height'))
+    if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (x, y, w, h)) or min(x, y) < 0 or min(w, h) <= 0:
+        raise ValueError('게임 자르기 영역이 잘못되었습니다.')
+    right, bottom = min(width, x+w), min(height, y+h)
+    if right <= x or bottom <= y:
+        raise ValueError('게임 자르기 영역이 원본 이미지와 겹치지 않습니다.')
+    return dict(x=x, y=y, width=right-x, height=bottom-y)
 
 
 class LoadingData:
@@ -362,6 +374,7 @@ class LoadingData:
                 entry = layer.get('entry_id') or layer['frames'][0]['entry_id']
                 path, metadata = prepared[entry]
                 crop = layer.get('crop') or dict(x=0,y=0,width=metadata['width'],height=metadata['height'])
+                crop = image_crop(crop, metadata['width'], metadata['height'])
                 with Image.open(path) as source:
                     image = source.convert('RGBA').crop((crop['x'],crop['y'],crop['x']+crop['width'],crop['y']+crop['height']))
                 mask_entry = layer.get('particle',{}).get('mask_entry_id')
