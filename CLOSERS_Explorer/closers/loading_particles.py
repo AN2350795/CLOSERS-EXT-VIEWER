@@ -21,6 +21,14 @@ PROPERTIES = {
 }
 BLENDS = {'ZERO', 'ONE', 'SRCALPHA', 'INVSRCALPHA', 'DESTALPHA', 'INVSRCCOLOR'}
 
+# Playback correction confirmed against the user's in-game comparison (case B).
+# The client can create both persistent planes in one update. Its exact startup
+# dt is unknown, so reproduce the observed shared phase explicitly, not a claimed
+# Lua default. Keep both particles and the original texture/blending rules.
+SYNCHRONIZED_FRAME_STARTS = frozenset(
+    'PE_UI_TEAM_CHALLENGE_VISUAL_FRAME_'+variant+'_256'
+    for variant in ('BRONZE', 'SILVER', 'GOLD', 'SPECIAL'))
+
 
 def number(value):
     if type(value) not in (int, float) or not math.isfinite(value) or abs(value) > 1e7:
@@ -114,6 +122,8 @@ def compile_particle(seq, scale, seed, image_id):
         drawCount=int(number(seq.get('m_DrawCount', 1))), dual=seq.get('m_bDualBlending') == 'TRUE',
         dualDrawCount=int(number(seq.get('m_DrawCountDualBlending', 1))),
         clamp=seq.get('m_bTexClamp') == 'TRUE', blend=blend, tracks=tracks)
+    if seq.get('m_SeqName') in SYNCHRONIZED_FRAME_STARTS:
+        particle['instant'] = int(maximum)
     if seq.get('m_MaskTexName'): particle['mask_entry_id'] = image_id(seq['m_MaskTexName'])
     initial = {t['property']: [middle(v) for v in t['value']] for t in tracks if t['mode']=='initial'}
     size, factor = initial.get('size', [1,1,1]), initial.get('scale', [1])[0]

@@ -21,6 +21,21 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
+    def test_team_challenge_rectangular_frames_start_both_planes_together(self):
+        from closers.loading_particles import compile_particle
+        seq = dict(m_ParticleType='PCT_2D_PLANE', m_EmitRate=2,
+                   m_iMaxParticleNum=2, m_LifeTime=999999, m_vecEventList={})
+        for variant in ('BRONZE', 'SILVER', 'GOLD', 'SPECIAL'):
+            with self.subTest(variant=variant):
+                name = 'PE_UI_TEAM_CHALLENGE_VISUAL_FRAME_'+variant+'_256'
+                particle, *_ = compile_particle(dict(seq, m_SeqName=name), [1,1], 1, lambda _: 1)
+                self.assertEqual((particle['instant'], particle['maxParticles'], particle['rate']), (2,2,2))
+        for name in ('PE_UI_TEAM_CHALLENGE_VISUAL_FRAME_GOLD_256_GLOW',
+                     'PE_UI_VISUAL_FRAME_TEAM_CHALLENGE_VISUAL_FRAME_BRONZE', 'UNRELATED'):
+            with self.subTest(name=name):
+                particle, *_ = compile_particle(dict(seq, m_SeqName=name), [1,1], 1, lambda _: 1)
+                self.assertEqual(particle['instant'], 0)
+
     def test_localized_names_strip_game_color_codes_and_cache_decoding(self):
         from test_game_names import table
         from closers.catalog import Catalog
