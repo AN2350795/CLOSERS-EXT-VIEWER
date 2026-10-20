@@ -32,6 +32,9 @@ try{
   check(composition.canvas.width===450&&composition.canvas.height===640&&$('layout-info').textContent.includes('450 × 640'),'game layout information missing');
   check(!$('canvas-width')&&!$('canvas-height')&&$('custom-output').hidden,'uneditable size inputs still visible');
   check(document.querySelectorAll('.asset-tabs [role=tab]').length===2&&!$('extra-assets').open&&!$('layer-edit').open&&!$('layer-role'),'advanced controls remain in the basic view');
+  check(!$('composition-menu').open&&!$('animation-settings').open&&$('export-apng').disabled&&$('play-effects').disabled,'static composition exposes animation controls or open management');
+  const management=$('composition-menu');management.open=true;management.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+  check(!management.open&&document.activeElement===management.querySelector('summary'),'management menu keyboard dismissal');
   check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
   document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
   const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
@@ -90,6 +93,10 @@ try{
   timedEffect.animation.frames=[{source:timedEffect.source,duration:.015},{source:timedEffect.source,duration:2}];commit();
   check(document.querySelector('#animation-timings').textContent.includes('0.015초~2초')&&document.querySelector('#animation-loop-info').textContent.includes('FPS를 높이면'),'native hold times or short-frame advice missing');
   const actualDownload=downloadBlob,downloads=[];downloadBlob=(blob,name)=>downloads.push({blob,name});
+  check(!$('export-apng').disabled&&!$('play-effects').disabled,'animation controls stayed disabled for effects');
+  $('composition-menu').open=true;$('save-project').click();
+  check(!$('composition-menu').open&&downloads.pop().name==='closers-composition.json','management menu save or dismissal');
+  await until(()=>!busy);
   const previewWidth=$('composition-canvas').width;
   $('output-mode').value='double';$('output-mode').dispatchEvent(new Event('change'));
   check(makeExportCanvas(.5).width===900&&makeExportCanvas(.5).height===1280,'high resolution export dimensions');
