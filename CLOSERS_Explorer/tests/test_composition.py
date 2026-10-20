@@ -119,7 +119,7 @@ class CompositionTests(unittest.TestCase):
         server=create_server(self.catalog);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
         base=f'http://127.0.0.1:{server.server_port}'
         try:
-            html=urlopen(base+'/compose').read().decode();self.assertIn('PNG 저장',html)
+            html=urlopen(base+'/compose').read().decode();self.assertIn('id="export-png"',html)
             token=re.search(r'name="explorer-token" content="([^"]+)"',html)[1]
             def request(path,data=None,auth=True):
                 return urlopen(Request(base+path,data=json.dumps(data).encode() if data is not None else None,

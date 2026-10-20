@@ -16,6 +16,7 @@ class PickerBrowserTests(unittest.TestCase):
     entry_script = '<script type="module" src="/model.js"></script>'
     extra_images = ()
     animation_export = False
+    responsive_checks = False
 
     def test_picker(self):
         browser = next((p for p in [shutil.which('chromium'), shutil.which('google-chrome'),
@@ -94,9 +95,19 @@ let value;for(let i=0;i<400;i++){
  const result=await call('Runtime.evaluate',{expression:'JSON.stringify({status:document.body?.dataset.checks,errors:document.querySelector("pre")?.textContent,thumbnails:[...document.querySelectorAll(".model-thumbnail")].map(e=>e.textContent)})',returnByValue:true});
  value=JSON.parse(result.result.value);if(value.status)break;await new Promise(r=>setTimeout(r,50));
 }
+if(value.status==='passed'&&process.argv[2]==='responsive'){
+ const setup=await call('Runtime.evaluate',{expression:'(async()=>{await addImage(9);await applyGameFrame(false,2);$("editor-status").hidden=true;$("editor-toast").hidden=true;$("layer-edit").open=true;$("animation-settings").open=true;})()',awaitPromise:true});
+ if(setup.exceptionDetails)value={status:'failed',errors:JSON.stringify(setup.exceptionDetails)};
+ for(const [width,height] of [[1512,1000],[1024,900],[390,844],[320,800]]){
+  await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
+  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));$("composition-menu").open=true;const rect=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom};};return {width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth+1,picker:rect(".image-picker"),canvas:rect(".canvas-panel"),layers:rect(".layer-panel"),menu:rect(".menu-actions")};})()',awaitPromise:true,returnByValue:true});
+  const layout=result.result.value,ordered=width<760?layout.picker.y<layout.canvas.y&&layout.canvas.y<layout.layers.y:width>1300?layout.picker.x<layout.canvas.x&&layout.canvas.x<layout.layers.x:layout.layers.y>layout.canvas.y;
+  if(layout.overflow||!ordered||layout.menu.x<0||layout.menu.right>width+1){value={status:'failed',errors:'Responsive layout '+JSON.stringify(layout)};break;}
+ }
+}
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
-''',port],capture_output=True,timeout=30)
+''',port,'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
                     self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
                 finally:
                     if process.poll() is None:

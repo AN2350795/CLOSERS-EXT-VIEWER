@@ -50,6 +50,12 @@ try{
   const frameGroup=document.querySelector('.layer-group[data-group=frame]');frameGroup.open=true;frameGroup.querySelector('.layer-row').click();
   check($('layer-edit').open&&document.querySelector('.layer-group[data-group=frame]').open,'piece editing lost the expanded group');
   $('layer-edit').open=false;
+  renderCanvas();const originalX=currentLayer().x;
+  $('composition-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  check(currentLayer().x===originalX&&$('composition-canvas').tabIndex===-1,'basic preview allowed accidental editing');
+  $('layer-edit').open=true;renderCanvas();$('composition-canvas').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  check(currentLayer().x===originalX+1&&$('composition-canvas').tabIndex===0,'advanced keyboard editing unavailable');
+  currentLayer().x=originalX;$('layer-edit').open=false;commit();
   document.querySelector('#image-next').click();await until(()=>document.querySelector('.asset-card[data-id="13"]'));check(document.querySelectorAll('.asset-card').length===3,'frame pagination');
   document.querySelector('#image-query').value='FRAME_14';await searchImages();check(document.querySelectorAll('.asset-card').length===1&&document.querySelector('.asset-card').dataset.id==='14','frame name filter and page clamp');
   document.querySelector('#pick-mark').click();await until(()=>document.querySelector('.asset-card[data-kind="mark"]'));

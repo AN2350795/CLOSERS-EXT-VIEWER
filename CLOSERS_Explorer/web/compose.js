@@ -169,7 +169,8 @@ function renderCanvas(){
   const canvas=$('composition-canvas'),c=composition.canvas,available=Math.max(100,$('canvas-stage').clientWidth-4),scale=Math.min(1,available/c.width,650/c.height);
   canvas.width=Math.max(1,Math.round(c.width*scale));canvas.height=Math.max(1,Math.round(c.height*scale));
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
-  const selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
+  const editing=$('layer-edit').open,selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
+  canvas.tabIndex=editing?0:-1;canvas.setAttribute('aria-label',editing?'선택한 조각을 드래그하거나 방향키로 이동하는 편집 화면':'이미지 조합 미리보기. 조각을 수정하려면 구성 요소에서 세부 편집을 여세요.');
   $('layout-info').textContent=`배치 기준 ${c.width} × ${c.height}px`;$('canvas-transparent').checked=c.transparent;$('canvas-color').value=c.color;
   const pixels=[...images.values()].reduce((n,v)=>n+v.bitmap.width*v.bitmap.height,0);
   $('canvas-summary').textContent=`미리보기 ${(scale*100).toFixed(0)}%`;
@@ -333,17 +334,18 @@ async function searchImages(){
 }
 function pointerPosition(event){const rect=$('composition-canvas').getBoundingClientRect();return {x:(event.clientX-rect.left)*composition.canvas.width/rect.width,y:(event.clientY-rect.top)*composition.canvas.height/rect.height};}
 $('composition-canvas').onpointerdown=event=>{
-  if(busy||event.button!==0)return;const p=pointerPosition(event),selected=currentLayer(),rect=$('composition-canvas').getBoundingClientRect(),tolerance=12*composition.canvas.width/rect.width;
+  if(busy||!$('layer-edit').open||event.button!==0)return;const p=pointerPosition(event),selected=currentLayer(),rect=$('composition-canvas').getBoundingClientRect(),tolerance=12*composition.canvas.width/rect.width;
   const resizing=selected&&selected.visible&&!selected.locked&&Math.abs(p.x-selected.x-selected.width)<tolerance&&Math.abs(p.y-selected.y-selected.height)<tolerance;
   const l=resizing?selected:[...composition.layers].reverse().find(l=>l.visible&&!l.locked&&p.x>=l.x&&p.y>=l.y&&p.x<=l.x+l.width&&p.y<=l.y+l.height);
   if(!l)return;selectedLayer=l.id;drag={id:event.pointerId,x:p.x,y:p.y,layer:JSON.parse(JSON.stringify(l)),resize:resizing};$('composition-canvas').setPointerCapture(event.pointerId);$('composition-canvas').focus();commit();event.preventDefault();
 };
 $('composition-canvas').onpointermove=event=>{
-  if(!drag||busy||event.pointerId!==drag.id)return;const p=pointerPosition(event),original=drag.layer;
+  if(!drag||busy||!$('layer-edit').open||event.pointerId!==drag.id)return;const p=pointerPosition(event),original=drag.layer;
   changeLayer(l=>{if(drag.resize){l.width=Math.max(.01,Math.min(65536,original.width+p.x-drag.x));l.height=l.keepRatio?l.width*original.height/original.width:Math.max(.01,Math.min(65536,original.height+p.y-drag.y));}else{l.x=Math.max(-100000,Math.min(100000,original.x+p.x-drag.x));l.y=Math.max(-100000,Math.min(100000,original.y+p.y-drag.y));}});
 };
 const endDrag=()=>{drag=null;};$('composition-canvas').onpointerup=endDrag;$('composition-canvas').onpointercancel=endDrag;$('composition-canvas').onlostpointercapture=endDrag;
-$('composition-canvas').onkeydown=event=>{if(busy||!currentLayer()||currentLayer().locked)return;const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]},move=moves[event.key];if(move){event.preventDefault();changeLayer(l=>{l.x+=move[0]*(event.shiftKey?10:1);l.y+=move[1]*(event.shiftKey?10:1);});}};
+$('composition-canvas').onkeydown=event=>{if(busy||!$('layer-edit').open||!currentLayer()||currentLayer().locked)return;const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]},move=moves[event.key];if(move){event.preventDefault();changeLayer(l=>{l.x+=move[0]*(event.shiftKey?10:1);l.y+=move[1]*(event.shiftKey?10:1);});}};
+$('layer-edit').ontoggle=()=>{drag=null;renderCanvas();};
 for(const key of ['name','x','y','width','height'])$('layer-'+key).onchange=()=>changeLayer(l=>{const value=key==='name'?$('layer-'+key).value:Number($('layer-'+key).value);if(l.keepRatio&&key==='width')l.height*=value/l.width;if(l.keepRatio&&key==='height')l.width*=value/l.height;l[key]=value;});
 for(const key of ['x','y','width','height'])$('crop-'+key).onchange=()=>changeLayer(l=>{l.crop[key]=Number($('crop-'+key).value);});
 $('layer-ratio').onchange=()=>changeLayer(l=>l.keepRatio=$('layer-ratio').checked);
