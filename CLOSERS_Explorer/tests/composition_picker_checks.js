@@ -9,6 +9,7 @@ try{
   const particle={seed:123,life:2,maxParticles:1,rate:0,instant:1,emitterLife:10,deaths:0,radius:[0,0,0],radiusMin:0,gravity:[0,0,0],scale:[1,1],basis:[4,4],drawCount:1,dual:false,dualDrawCount:1,clamp:true,blend:['SRCALPHA','INVSRCALPHA'],mask_entry_id:1,tracks:[{property:'size',mode:'initial',value:[4,4,1],start:0,end:null},{property:'color',mode:'initial',value:[1,1,1,1],start:0,end:null},{property:'color',mode:'final',value:[1,1,1,0],start:0,end:null}]};
   window.fetch=async(path,options)=>{
     const url=new URL(path,location.origin);requests.push(url.pathname+url.search);
+    if(url.pathname==='/api/loading-background')return Response.json({entry_id:8,name:'게임 기본 · 검은양',crop:{x:0,y:0,width:4,height:4},x:-2,y:-2,width:454,height:724});
     if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640});
     if(url.pathname==='/api/loading-illustration/9')return Response.json({width:450,height:640,layers:[{entry_id:9,name:'테스트 로딩',role:'illustration',gameIllustration:true,x:0,y:0,width:450,height:640,crop:{x:0,y:0,width:4,height:4}}]});
     if(url.pathname==='/api/loading-presets')return Response.json({items:presets});
@@ -76,11 +77,28 @@ try{
   const legacy=projectForSave();legacy.canvas.width*=2;legacy.canvas.height*=2;for(const l of legacy.layers){l.x*=2;l.y*=2;l.width*=2;l.height*=2;}
   await importProject(legacy);check(composition.canvas.width===450&&composition.canvas.height===640&&composition.layers.find(l=>l.gameIllustration).width===450,'old settings were not adapted to the fixed game layout');
   document.querySelector('#new-project').click();check(composition.canvas.width===450&&composition.canvas.height===640,'new project lost game dimensions');
-  check(!composition.canvas.transparent&&!$('canvas-transparent').checked,'new project must include the selected background');
+  check(!composition.canvas.transparent&&document.querySelector('[name="background-mode"][value=color]').checked,'new project must include the selected background');
   let background=makeExportCanvas().getContext('2d').getImageData(0,0,1,1).data;
   check(background[0]===23&&background[1]===32&&background[2]===51&&background[3]===255,'default background not exported');
-  $('canvas-transparent').checked=true;$('canvas-transparent').dispatchEvent(new Event('change'));
+  document.querySelector('[name="background-mode"][value=transparent]').click();
   check(makeExportCanvas().getContext('2d').getImageData(0,0,1,1).data[3]===0,'transparent output cannot be selected');
+  check($('background-color-options').hidden,'transparent background exposes irrelevant color controls');
+  document.querySelector('[name="background-mode"][value=color]').click();
+  document.querySelector('[data-color="#eeeae3"]').click();
+  check(getComputedStyle(document.querySelector('[data-color="#eeeae3"]')).backgroundColor==='rgb(238, 234, 227)','recommended color swatch is not visible');
+  check(composition.canvas.color==='#eeeae3'&&!$('background-color-options').hidden,'color swatch did not apply');
+  document.querySelector('[name="background-mode"][value=game]').click();await until(()=>!busy);
+  check(composition.canvas.background&&composition.version===4&&$('background-color-options').hidden,'game background not applied');
+  const bgSaved=projectForSave(),bgPixels=makeExportCanvas().toDataURL();
+  check(bgSaved.sources.length===1&&bgSaved.canvas.background.x===-2,'game background source pruned or placement lost');
+  await importProject(bgSaved);
+  check(makeExportCanvas().toDataURL()===bgPixels,'game background changed after restore');
+  await addImage(9);await applyGameFrame(false,2);playing=false;
+  check(composition.canvas.background&&images.has(composition.canvas.background.source),'asset replacement pruned the background');
+  check(!projectForSave(true).canvas.background,'frame template includes the canvas background');
+  document.querySelector('[name="background-mode"][value=transparent]').click();
+  check(!composition.canvas.background&&!composition.sources.some(s=>s.ordinal===8),'unused background source leaked');
+  document.querySelector('#new-project').click();await changeBackground('transparent');
   includeParticles=true;await applyGameFrame(true,5);playing=false;
   check(composition.version===3&&composition.layers.length===2,'mark particle plan not loaded');
   const mark=composition.layers.find(l=>!l.markParent),effect=composition.layers.find(l=>l.markParent);

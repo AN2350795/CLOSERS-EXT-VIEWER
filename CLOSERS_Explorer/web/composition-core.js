@@ -16,7 +16,7 @@ globalThis.CompositionCore=(()=>{
     return {x,y,width:right-x,height:bottom-y};
   }
   function validate(value){
-    if(!value||value.schema!=='closers-composition'||![1,2,3].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
+    if(!value||value.schema!=='closers-composition'||![1,2,3,4].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
     const c=value.canvas||{},canvas={width:integer(c.width,'출력 너비',1,8192),height:integer(c.height,'출력 높이',1,8192),transparent:bool(c.transparent,true),color:text(c.color,'배경색',7)};
     if(canvas.width*canvas.height>MAX_PIXELS)fail('출력은 16,777,216픽셀까지 지원합니다.');
     if(!/^#[0-9a-f]{6}$/i.test(canvas.color))fail('배경색이 올바르지 않습니다.');
@@ -33,6 +33,14 @@ globalThis.CompositionCore=(()=>{
     });
     if(sources.reduce((n,s)=>n+s.width*s.height,0)>MAX_TOTAL_PIXELS)fail('불러올 원본 이미지의 합계는 134,217,728픽셀까지 지원합니다.');
     const sourceMap=new Map(sources.map(s=>[s.key,s])),ids=new Set();
+    if(c.background!==undefined){
+      const b=c.background,s=sourceMap.get(b?.source);
+      if(!s||canvas.transparent)fail('게임 배경의 이미지 연결이 올바르지 않습니다.');
+      const crop=gameCrop(b.crop||{},s);
+      canvas.background={source:s.key,name:text(b.name,'배경 이름',200),crop,
+        x:number(b.x,'배경 X',-100000,100000),y:number(b.y,'배경 Y',-100000,100000),
+        width:number(b.width,'배경 너비',.01,65536),height:number(b.height,'배경 높이',.01,65536)};
+    }
     const layers=value.layers.map(l=>{
       if(!l||!/^l[0-9]{1,10}$/.test(l.id)||ids.has(l.id)||!sourceMap.has(l.source))fail('레이어의 이미지 연결이 올바르지 않습니다.');ids.add(l.id);
       if(!['illustration','frame','fragment'].includes(l.role))fail('레이어 용도가 올바르지 않습니다.');
@@ -62,7 +70,7 @@ globalThis.CompositionCore=(()=>{
     for(const l of layers)if(l.markParent&&!layers.some(p=>p.id===l.markParent&&p.id!==l.id&&p.gameMark&&!p.markParent&&!p.animation))fail('효과를 연결할 마크가 없습니다.');
     const output=value.output===undefined?{mode:'native',width:720}:value.output;
     if(!output||!['native','base','double','custom'].includes(output.mode))fail('저장 해상도 설정이 올바르지 않습니다.');
-    return {schema:'closers-composition',version:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
+    return {schema:'closers-composition',version:canvas.background?4:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
       output:{mode:output.mode,width:integer(output.width??720,'저장 너비',1,8192)}};
   }
   function exportSize(project){
@@ -96,6 +104,11 @@ globalThis.CompositionCore=(()=>{
     context.save();context.scale(width/project.canvas.width,height/project.canvas.height);
     if(!project.canvas.transparent){context.fillStyle=project.canvas.color;context.fillRect(0,0,project.canvas.width,project.canvas.height);}
     context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
+    const background=project.canvas.background;
+    if(background){
+      const image=images.get(background.source),c=background.crop;
+      if(image)context.drawImage(image,c.x,c.y,c.width,c.height,background.x,background.y,background.width,background.height);
+    }
     for(const l of project.layers){
       if(l.visible&&l.animation?.particle){
         const placed=placement(l,project.layers);if(placed)ParticleEffects.draw(context,placed,l.animation,images,project,time);continue;
@@ -113,6 +126,6 @@ globalThis.CompositionCore=(()=>{
     const sx=parent.width/parent.crop.width,sy=parent.height/parent.crop.height;
     return {...l,x:parent.x+parent.width/2+l.x*sx,y:parent.y+parent.height/2+l.y*sy,width:l.width*sx,height:l.height*sy,opacity:l.opacity*parent.opacity};
   }
-  function usedSources(layers){return new Set(layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])]));}
+  function usedSources(layers,canvas){return new Set([...(canvas?.background?[canvas.background.source]:[]),...layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])])]);}
   return Object.freeze({validate,exportSize,draw,frameAt,usedSources,placement,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
 })();

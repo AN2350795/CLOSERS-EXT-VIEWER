@@ -48,6 +48,15 @@ try{
   for(const output of [{mode:'invalid',width:720},{mode:'custom',width:NaN},{mode:'custom',width:0}]){
     high.output=output;let invalid=false;try{CompositionCore.validate(high);}catch{invalid=true;}check(invalid,'invalid output settings accepted');
   }
+  const bgRaw=structuredClone(raw);bgRaw.layers=[];bgRaw.canvas.transparent=false;
+  bgRaw.canvas.background={source:'s2',name:'game',crop:{x:0,y:0,width:4,height:4},x:0,y:0,width:4,height:4};
+  const bgProject=CompositionCore.validate(bgRaw),bgCanvas=new OffscreenCanvas(8,8);
+  CompositionCore.draw(bgCanvas.getContext('2d'),bgProject,images,8,8);
+  check(bgProject.version===4&&bgCanvas.getContext('2d').getImageData(7,7,1,1).data[2]===255,'game background missing from scaled export');
+  check(CompositionCore.usedSources([],bgProject.canvas).has('s2'),'background source omitted from persistence');
+  for(const mutate of [p=>p.canvas.background.source='s99',p=>p.canvas.background.width=NaN,p=>p.canvas.transparent=true]){
+    const invalid=structuredClone(bgRaw);mutate(invalid);let rejected=false;try{CompositionCore.validate(invalid);}catch{rejected=true;}check(rejected,'invalid background accepted');
+  }
   const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render,requireMotion:true});
   const decoder=new ImageDecoder({data:await blob.arrayBuffer(),type:'image/png'});await decoder.tracks.ready;check(decoder.tracks.selectedTrack.frameCount===4,'APNG frame count');
   for(let i=0;i<4;i++){const {image}=await decoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);const actual=[...ctx.getImageData(0,0,1,1).data];check(JSON.stringify(actual)===JSON.stringify(pixel(i/10)),'APNG decoded pixels '+i);check(Math.abs(image.duration-100000)<1,'APNG timing');image.close();}decoder.close();

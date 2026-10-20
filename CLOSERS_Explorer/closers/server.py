@@ -367,6 +367,8 @@ def create_server(catalog, port=0):
                     self.respond(dict(items=loading.presets()))
                 elif url.path == '/api/loading-layout':
                     self.respond(loading.layout())
+                elif url.path == '/api/loading-background':
+                    self.respond(loading.background())
                 elif url.path.startswith('/api/loading-illustration/'):
                     self.respond(loading.illustration_plan(int(url.path.rsplit('/',1)[1])))
                 elif url.path == '/api/loading-illustrations':

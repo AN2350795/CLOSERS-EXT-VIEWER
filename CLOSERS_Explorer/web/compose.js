@@ -13,6 +13,7 @@ function fixedCanvas(project){
   if(!gameLayout)throw Error('게임 로딩 화면 크기를 먼저 불러와 주세요.');
   const sx=gameLayout.width/project.canvas.width,sy=gameLayout.height/project.canvas.height;
   for(const l of project.layers)if(!l.markParent){l.x*=sx;l.y*=sy;l.width*=sx;l.height*=sy;}
+  if(project.canvas.background){const b=project.canvas.background;b.x*=sx;b.y*=sy;b.width*=sx;b.height*=sy;}
   project.canvas.width=gameLayout.width;project.canvas.height=gameLayout.height;return project;
 }
 async function ensureLayout(){
@@ -37,7 +38,8 @@ function currentLayer(){return composition.layers.find(l=>l.id===selectedLayer);
 function snapshot(){return JSON.parse(JSON.stringify(composition));}
 function validateCurrent(){composition=Core.validate(gameLayout?fixedCanvas(composition):composition);}
 function updateControls(){
-  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-transparent','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
+  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
+  $('background-settings').disabled=busy;
   $('match-animation-cycle').disabled=busy||AnimationLoop.textureCycle(composition,Number($('animation-fps').value))===null;
   $('output-mode').disabled=busy;$('output-width').disabled=busy||composition.output?.mode!=='custom';
   const hasAnimation=composition.layers.some(l=>l.visible&&l.animation&&(!l.markParent||composition.layers.find(p=>p.id===l.markParent)?.visible));
@@ -51,7 +53,7 @@ function updateControls(){
   for(const input of document.querySelectorAll('.group-visible'))input.disabled=busy;
   for(const card of document.querySelectorAll('.asset-card'))card.setAttribute('aria-pressed',String(card.dataset.kind==='frame'?Number(card.dataset.id)===selectedFrameId:card.dataset.kind==='mark'?Number(card.dataset.id)===selectedMarkId:false));
 }
-function pruneImages(){const used=Core.usedSources(composition.layers);composition.sources=composition.sources.filter(s=>used.has(s.key));for(const [key,value] of images)if(!used.has(key)){value.bitmap.close();images.delete(key);}}
+function pruneImages(){const used=Core.usedSources(composition.layers,composition.canvas);composition.sources=composition.sources.filter(s=>used.has(s.key));for(const [key,value] of images)if(!used.has(key)){value.bitmap.close();images.delete(key);}}
 function commit(){pruneImages();renderLayers();renderFields();renderCanvas();renderAnimationTiming();updateControls();}
 function renderOutput(){
   const output=composition.output||{mode:'native',width:720};$('output-mode').value=output.mode;
@@ -153,7 +155,7 @@ async function applyGameFrame(mark=false,ident=mark?selectedMarkId:selectedFrame
       next.layers.push({id,source,name:d.name,role:d.role,crop:d.crop||{x:0,y:0,width:metadata.width,height:metadata.height},x:(target?.x||0)+d.x*sx,y:(target?.y||0)+d.y*sy,width:d.width*sx,height:d.height*sy,opacity:1,visible:true,locked:mark&&Boolean(d.frames),keepRatio:true,...(mark?{gameMark:true,...(markParent?{markParent}:{})}:{gameFrame:true}),...(d.frames?{animation:{frames:d.frames.map(f=>({source:mapping.get(f.entry_id),duration:f.duration})),delay:d.delay,color:d.color,blend:d.blend,...(particle?{particle}:{})}}:{})});
       if(mark&&!markParent)markParent=id;
     }
-    const used=Core.usedSources(next.layers);next.sources=next.sources.filter(s=>used.has(s.key));
+    const used=Core.usedSources(next.layers,next.canvas);next.sources=next.sources.filter(s=>used.has(s.key));
     const checked=Core.validate(next);for(const s of staged)if(!s.reused)images.set(s.key,s.value);
     composition=checked;selectedLayer=markParent||composition.layers.at(-1)?.id||null;gamePlan=plan;animationTime=0;lastTick=0;
     playing=composition.layers.some(l=>l.visible&&l.animation);$('play-effects').textContent=playing?'효과 일시 정지':'효과 재생';$('animation-time').value='0';
@@ -171,7 +173,7 @@ function renderCanvas(){
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
   const editing=$('layer-edit').open,selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
   canvas.tabIndex=editing?0:-1;canvas.setAttribute('aria-label',editing?'선택한 조각을 드래그하거나 방향키로 이동하는 편집 화면':'이미지 조합 미리보기. 조각을 수정하려면 구성 요소에서 세부 편집을 여세요.');
-  $('layout-info').textContent=`배치 기준 ${c.width} × ${c.height}px`;$('canvas-transparent').checked=c.transparent;$('canvas-color').value=c.color;
+  $('layout-info').textContent=`배치 기준 ${c.width} × ${c.height}px`;renderBackground();
   const pixels=[...images.values()].reduce((n,v)=>n+v.bitmap.width*v.bitmap.height,0);
   $('canvas-summary').textContent=`미리보기 ${(scale*100).toFixed(0)}%`;
   $('source-info').textContent=`레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M`;
@@ -201,7 +203,7 @@ async function addImage(id){
     if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});
     const layer={...definition,id:'l'+(++layerSequence),source:loaded.key,opacity:1,visible:true,locked:true,keepRatio:true};
     delete layer.entry_id;next.layers.unshift(layer);
-    const used=Core.usedSources(next.layers);next.sources=next.sources.filter(s=>used.has(s.key));
+    const used=Core.usedSources(next.layers,next.canvas);next.sources=next.sources.filter(s=>used.has(s.key));
     const checked=Core.validate(fixedCanvas(next));if(!loaded.reused)images.set(loaded.key,loaded.value);
     composition=checked;selectedLayer=layer.id;commit();
     editorStatus(definition.name+' \u00b7 '+gameLayout.width+' \u00d7 '+gameLayout.height+'px');
@@ -209,7 +211,34 @@ async function addImage(id){
 }
 function fitLayer(l,fill){const c=composition.canvas,r=(fill?Math.max:Math.min)(c.width/l.crop.width,c.height/l.crop.height);l.width=l.crop.width*r;l.height=l.crop.height*r;l.x=(c.width-l.width)/2;l.y=(c.height-l.height)/2;}
 function changeLayer(change){if(busy)return;const l=currentLayer();if(!l)return;const previous=snapshot();try{change(l);validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
-function changeCanvas(){if(busy)return;const previous=snapshot();try{composition.canvas.transparent=$('canvas-transparent').checked;composition.canvas.color=$('canvas-color').value;composition=fixedCanvas(composition);validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
+function backgroundMode(){return composition.canvas.background?'game':composition.canvas.transparent?'transparent':'color';}
+function renderBackground(){
+  const mode=backgroundMode(),c=composition.canvas;
+  for(const input of document.querySelectorAll('[name="background-mode"]'))input.checked=input.value===mode;
+  $('background-color-options').hidden=mode!=='color';$('canvas-color').value=c.color;
+  $('background-hex').textContent=c.color.toUpperCase();
+  document.querySelector('.sample-color').style.background=c.color;
+  for(const button of document.querySelectorAll('[data-color]'))button.setAttribute('aria-pressed',String(button.dataset.color===c.color.toLowerCase()));
+  $('background-description').textContent=mode==='game'?'검은양 문양 · 게임의 기본 카드 배치로 저장됩니다.':mode==='transparent'?'투명 영역은 체크무늬로 표시되며, 저장 파일에는 포함되지 않습니다.':'선택한 색이 이미지와 함께 저장됩니다.';
+}
+async function changeBackground(mode){
+  if(busy)return;
+  if(mode!=='game'){
+    delete composition.canvas.background;composition.canvas.transparent=mode==='transparent';validateCurrent();commit();return;
+  }
+  await operation(async()=>{
+    await ensureLayout();editorStatus('게임 기본 배경을 불러오고 있습니다…','working');
+    let loaded;
+    try{
+      const plan=await api('/api/loading-background');loaded=await loadSource(plan.entry_id);
+      const next=snapshot();if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});
+      const {entry_id,...background}=plan;next.canvas.transparent=false;next.canvas.background={...background,source:loaded.key};
+      const checked=Core.validate(next);if(!loaded.reused)images.set(loaded.key,loaded.value);
+      composition=checked;commit();editorStatus('게임 기본 배경을 적용했습니다.');
+    }catch(e){if(loaded&&!loaded.reused)loaded.value.bitmap.close();renderBackground();throw e;}
+  });
+}
+function changeCanvas(){if(busy)return;const previous=snapshot();try{composition.canvas.color=$('canvas-color').value;validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),link=node('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function clearAnimationPreview(){
   $('animation-preview-image').removeAttribute('src');
@@ -259,7 +288,7 @@ function animateEffects(now){
 requestAnimationFrame(animateEffects);
 function projectForSave(template=false){
   const value=snapshot();value.kind=template?'frame-template':'composition';
-  if(template){value.layers=value.layers.filter(l=>l.role!=='illustration');const used=Core.usedSources(value.layers);value.sources=value.sources.filter(s=>used.has(s.key));if(!value.layers.length)throw Error('저장할 프레임·조각 레이어가 없습니다.');}
+  if(template){delete value.canvas.background;value.layers=value.layers.filter(l=>l.role!=='illustration');const used=Core.usedSources(value.layers,value.canvas);value.sources=value.sources.filter(s=>used.has(s.key));if(!value.layers.length)throw Error('저장할 프레임·조각 레이어가 없습니다.');}
   return Core.validate(value);
 }
 function saveProject(template){const value=projectForSave(template);downloadBlob(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}),template?'closers-frame-template.json':'closers-composition.json');editorStatus(template?'프레임 템플릿 저장 요청 완료':'조합 설정 저장 요청 완료');}
@@ -269,7 +298,7 @@ async function importProject(raw,append=false){
   if(append&&value.kind!=='frame-template')throw Error('프레임 템플릿 파일을 선택해 주세요.');
   if(append&&composition.layers.length+value.layers.length>Core.MAX_LAYERS)throw Error('추가 후 레이어가 20개를 초과합니다.');
   editorStatus('설정에 기록된 원본 출처와 해시를 확인하고 있습니다…','working');
-  const needed=Core.usedSources(value.layers),sources=value.sources.filter(s=>needed.has(s.key)),staged=[];
+  const needed=Core.usedSources(value.layers,append?null:value.canvas),sources=value.sources.filter(s=>needed.has(s.key)),staged=[];
   try{
     const resolved={ids:[]};for(let offset=0;offset<sources.length;offset+=20){const batch=await api('/api/composition-resolve',{sources:sources.slice(offset,offset+20)});resolved.ids.push(...batch.ids);}
     for(let i=0;i<sources.length;i++){const loaded=await loadSource(resolved.ids[i],sources[i],staged);staged.push({...loaded,oldKey:sources[i].key});}
@@ -277,6 +306,7 @@ async function importProject(raw,append=false){
     const next=append?snapshot():{...value,sources:[],layers:[]};
     if(append){const scale=Math.min(next.canvas.width/value.canvas.width,next.canvas.height/value.canvas.height),dx=(next.canvas.width-value.canvas.width*scale)/2,dy=(next.canvas.height-value.canvas.height*scale)/2;for(const l of value.layers)if(!l.markParent){l.x=l.x*scale+dx;l.y=l.y*scale+dy;l.width*=scale;l.height*=scale;}}
     for(const s of staged)if(!next.sources.some(source=>source.key===s.key))next.sources.push({...s.value.metadata,key:s.key});
+    if(!append&&next.canvas.background)next.canvas.background.source=mapping.get(next.canvas.background.source);
     const layerMapping=new Map(value.layers.map(l=>[l.id,'l'+(++layerSequence)]));
     for(const l of value.layers)next.layers.push({...l,id:layerMapping.get(l.id),...(l.markParent?{markParent:layerMapping.get(l.markParent)}:{}),source:mapping.get(l.source),...(l.animation?{animation:{...l.animation,frames:l.animation.frames.map(f=>({...f,source:mapping.get(f.source)})),...(l.animation.particle?{particle:{...l.animation.particle,...(l.animation.particle.mask?{mask:mapping.get(l.animation.particle.mask)}:{})}}:{})}}:{})});
     const checked=Core.validate(fixedCanvas(next));
@@ -363,7 +393,9 @@ $('duplicate-layer').onclick=()=>{
   for(const child of children)composition.layers.push({...JSON.parse(JSON.stringify(child)),id:'l'+(++layerSequence),markParent:copy.id});
   selectedLayer=copy.id;commit();
 };
-for(const id of ['canvas-transparent','canvas-color'])$(id).onchange=changeCanvas;
+$('canvas-color').oninput=changeCanvas;
+for(const input of document.querySelectorAll('[name="background-mode"]'))input.onchange=()=>changeBackground(input.value);
+for(const button of document.querySelectorAll('[data-color]'))button.onclick=()=>{if(busy)return;$('canvas-color').value=button.dataset.color;changeCanvas();};
 $('export-png').onclick=()=>operation(exportPNG);$('save-project').onclick=()=>operation(()=>saveProject(false));$('save-template').onclick=()=>operation(()=>saveProject(true));
 $('load-project').onclick=()=>$('project-file').click();$('load-template').onclick=()=>$('template-file').click();
 for(const id of ['save-project','load-project','save-template','load-template'])$(id).addEventListener('click',()=>{$('composition-menu').open=false;});

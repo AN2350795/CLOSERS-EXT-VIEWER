@@ -119,6 +119,19 @@ class LoadingData:
     def illustration_registry(self):
         return self.cached(('illustration-registry',), self._illustration_registry)
 
+    def background(self):
+        """The card background with a source-verified texture and UV definition."""
+        with self.lock, self.session():
+            dialog = self.table('DLG_LOADING_DUNGEON_START_V2.LUA')['DIALOG']
+            slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name') == 'SLOT_1_BG')
+            picture = slot['m_vecPicData'][1]
+            layout = self.layout()
+            filename = 'UI_UNIT_CREATE_BG2_TEAM1.DDS'
+            return dict(entry_id=self.image_id(filename), name='게임 기본 · 검은양',
+                crop=self.atlas(filename)[picture['UVKey']],
+                x=-layout['origin'][1], y=-layout['origin'][2],
+                width=picture['m_fWidth'], height=picture['m_fHeight'])
+
     def _illustration_registry(self):
         skin_body, convert_body = self.body('ILLUST_TEMPLET.NTF'), self.body('ILLUST_CONVERT_DATA.NTF')
         digest = hashlib.sha256(skin_body+convert_body).digest()
