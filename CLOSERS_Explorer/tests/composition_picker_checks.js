@@ -29,7 +29,8 @@ try{
   await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/compose.js';s.onload=resolve;s.onerror=reject;document.head.append(s);});
   await until(()=>document.querySelector('#image-results[aria-busy=false]'));
   await until(()=>!busy);
-  check(composition.canvas.width===450&&composition.canvas.height===640&&document.querySelector('#canvas-width').disabled&&document.querySelector('#canvas-height').disabled,'game output dimensions are not fixed');
+  check(composition.canvas.width===450&&composition.canvas.height===640&&$('layout-info').textContent.includes('450 × 640'),'game layout information missing');
+  check(!$('canvas-width')&&!$('canvas-height')&&$('custom-output').hidden,'uneditable size inputs still visible');
   check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
   document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
   const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
@@ -83,10 +84,12 @@ try{
   const previewWidth=$('composition-canvas').width;
   $('output-mode').value='double';$('output-mode').dispatchEvent(new Event('change'));
   check(makeExportCanvas(.5).width===900&&makeExportCanvas(.5).height===1280,'high resolution export dimensions');
+  check($('output-size').textContent==='900 × 1280px'&&!$('canvas-summary').textContent.includes('출력'),'preview confused with export resolution');
   check($('composition-canvas').width===previewWidth,'output resolution changed the preview scale');
   const outputSaved=projectForSave();await importProject(outputSaved);playing=false;
   check(composition.output.mode==='double'&&$('output-mode').value==='double','output settings were not restored');
   $('output-mode').value='custom';$('output-mode').dispatchEvent(new Event('change'));
+  check(!$('custom-output').hidden,'custom width control missing');
   $('output-width').value='1080';$('output-width').dispatchEvent(new Event('change'));
   check(makeExportCanvas(.5).height===1536,'custom output lost aspect ratio');
   const previousOutput=composition.output.width;$('output-width').value='8192';$('output-width').dispatchEvent(new Event('change'));
@@ -127,6 +130,10 @@ try{
   check(composition.layers.length===4&&composition.layers[3].markParent===composition.layers[2].id,'duplicating a mark lost its effects');
   document.querySelector('#remove-layer').click();check(composition.layers.length===2,'deleting a duplicated mark removed the original effects');
   selectedLayer=composition.layers.find(l=>!l.markParent).id;document.querySelector('#remove-layer').click();check(composition.layers.length===0,'deleting a mark left orphaned effects');
+  await operation(async()=>editorStatus('조합 저장 완료'));
+  check(!busy&&!$('editor-status').hidden&&$('editor-status').textContent==='조합 저장 완료','completion message disappeared after operation');
+  await operation(async()=>{throw Error('검증 오류');});
+  check($('editor-status').hidden&&!$('editor-toast').hidden&&$('editor-toast').textContent==='검증 오류','error message overlapped completion status');
   document.body.dataset.checks='passed';
 }catch(error){errors.push(error.stack||String(error));document.body.dataset.checks='failed';}
 const pre=document.createElement('pre');pre.textContent=errors.join('\n');document.body.append(pre);

@@ -7,7 +7,7 @@ const roles={illustration:'일러스트',frame:'프레임',fragment:'조각'};
 let gamePlan=null,gamePresets=null,atlasRegions={},atlasSource=null,animationTime=0,playing=false,lastTick=0;
 let pickerKind='illustration',selectedFrameId=null,selectedMarkId=null;
 let gameLayout=null;
-let animationPreviewURL=null;
+let animationPreviewURL=null,statusTimer=null;
 const pickerLabels={illustration:'일러스트',frame:'프레임',mark:'마크'};
 function fixedCanvas(project){
   if(!gameLayout)throw Error('게임 로딩 화면 크기를 먼저 불러와 주세요.');
@@ -24,20 +24,21 @@ function setMessage(id,message,state='info'){
   const target=$(id);target.dataset.state=state;target.textContent=message;
 }
 function editorStatus(message,state='success'){
+  clearTimeout(statusTimer);
   setMessage('editor-status',message,state);
-  $('editor-status').hidden=state!=='working';
+  $('editor-status').hidden=false;
   if(state==='working'){clearTimeout(toastTimer);$('editor-toast').hidden=true;}
+  else statusTimer=setTimeout(()=>$('editor-status').hidden=true,4000);
 }
-function toast(message){$('editor-toast').textContent=message;$('editor-toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('editor-toast').hidden=true,10000);}
+function toast(message){clearTimeout(statusTimer);$('editor-status').hidden=true;$('editor-toast').textContent=message;$('editor-toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('editor-toast').hidden=true,10000);}
 async function api(path,data){const response=await fetch(path,{headers:{'X-Explorer-Token':token,...(data?{'Content-Type':'application/json'}:{})},...(data?{method:'POST',body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw Error(result.error||'요청 실패');return result;}
-async function operation(action){if(busy)return;busy=true;editorStatus('요청한 작업을 처리하고 있습니다…','working');updateControls();try{await action();}catch(e){toast(e.message);}finally{busy=false;$('editor-status').hidden=true;updateControls();}}
+async function operation(action){if(busy)return;busy=true;editorStatus('요청한 작업을 처리하고 있습니다…','working');updateControls();try{await action();}catch(e){toast(e.message);}finally{busy=false;if($('editor-status').dataset.state==='working')$('editor-status').hidden=true;updateControls();}}
 function currentLayer(){return composition.layers.find(l=>l.id===selectedLayer);}
 function snapshot(){return JSON.parse(JSON.stringify(composition));}
 function validateCurrent(){composition=Core.validate(gameLayout?fixedCanvas(composition):composition);}
 function updateControls(){
-  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-width','canvas-height','canvas-transparent','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
+  for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-transparent','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
   $('match-animation-cycle').disabled=busy||AnimationLoop.textureCycle(composition,Number($('animation-fps').value))===null;
-  $('canvas-width').disabled=true;$('canvas-height').disabled=true;
   $('output-mode').disabled=busy;$('output-width').disabled=busy||composition.output?.mode!=='custom';
   $('export-png').disabled=busy||!gameLayout;$('export-apng').disabled=busy||!gameLayout;
   $('save-template').disabled=busy||!composition.layers.some(l=>l.role!=='illustration');
@@ -50,11 +51,13 @@ function pruneImages(){const used=Core.usedSources(composition.layers);compositi
 function commit(){pruneImages();renderLayers();renderFields();renderCanvas();renderAnimationTiming();updateControls();}
 function renderOutput(){
   const output=composition.output||{mode:'native',width:720};$('output-mode').value=output.mode;
+  $('custom-output').hidden=output.mode!=='custom';
   try{
-    const size=Core.exportSize(composition);$('output-width').value=size.width;$('output-height').value=size.height;
+    const size=Core.exportSize(composition);$('output-width').value=size.width;$('output-size').textContent=`${size.width} × ${size.height}px`;
     const fps=Number($('animation-fps').value),count=Math.ceil(Number($('animation-duration').value)*fps-1e-9),limit=$('animation-format').value==='webp'?134217728:268435456;
-    $('output-info').textContent=`저장 ${size.width} × ${size.height}px · 원본 이미지와 프레임·효과를 이 해상도로 직접 합성합니다. 미리보기 크기는 바뀌지 않습니다.`+(size.width*size.height*count>limit?' 현재 애니메이션은 전체 픽셀 한도를 넘습니다. 저장 크기·길이·FPS를 줄여 주세요.':'');
-  }catch(e){$('output-width').value=output.width;$('output-height').value='';$('output-info').textContent=e.message;}
+    $('output-info').textContent=size.width*size.height*count>limit?'현재 애니메이션은 전체 픽셀 한도를 넘습니다. 저장 크기·길이·FPS를 줄여 주세요.':'';
+    $('output-info').hidden=!$('output-info').textContent;
+  }catch(e){$('output-width').value=output.width;$('output-size').textContent='크기 조절 필요';$('output-info').textContent=e.message;$('output-info').hidden=false;}
 }
 function changeOutput(){
   if(busy)return;const previous=snapshot();
@@ -148,9 +151,10 @@ function renderCanvas(){
   canvas.width=Math.max(1,Math.round(c.width*scale));canvas.height=Math.max(1,Math.round(c.height*scale));
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
   const selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
-  $('canvas-width').value=c.width;$('canvas-height').value=c.height;$('canvas-transparent').checked=c.transparent;$('canvas-color').value=c.color;
+  $('layout-info').textContent=`배치 기준 ${c.width} × ${c.height}px`;$('canvas-transparent').checked=c.transparent;$('canvas-color').value=c.color;
   const pixels=[...images.values()].reduce((n,v)=>n+v.bitmap.width*v.bitmap.height,0);
-  $('canvas-summary').textContent=`출력 ${c.width} × ${c.height}px · 레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M · 표시 ${(scale*100).toFixed(0)}%`;
+  $('canvas-summary').textContent=`미리보기 ${(scale*100).toFixed(0)}%`;
+  $('source-info').textContent=`레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M`;
 }
 async function loadSource(id,expected=null,staged=[]){
   const metadata=await api('/api/composition-source/'+id);
@@ -338,7 +342,7 @@ $('duplicate-layer').onclick=()=>{
   for(const child of children)composition.layers.push({...JSON.parse(JSON.stringify(child)),id:'l'+(++layerSequence),markParent:copy.id});
   selectedLayer=copy.id;commit();
 };
-for(const id of ['canvas-width','canvas-height','canvas-transparent','canvas-color'])$(id).onchange=changeCanvas;
+for(const id of ['canvas-transparent','canvas-color'])$(id).onchange=changeCanvas;
 $('export-png').onclick=()=>operation(exportPNG);$('save-project').onclick=()=>operation(()=>saveProject(false));$('save-template').onclick=()=>operation(()=>saveProject(true));
 $('load-project').onclick=()=>$('project-file').click();$('load-template').onclick=()=>$('template-file').click();
 for(const [id,append] of [['project-file',false],['template-file',true]])$(id).onchange=()=>{const file=$(id).files[0];$(id).value='';operation(()=>loadFile(file,append));};
