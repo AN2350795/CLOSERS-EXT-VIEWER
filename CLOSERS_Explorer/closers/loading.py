@@ -119,16 +119,19 @@ class LoadingData:
     def illustration_registry(self):
         return self.cached(('illustration-registry',), self._illustration_registry)
 
-    def background(self):
-        """The card background with a source-verified texture and UV definition."""
+    def background(self, team=1):
+        """Keep the whole team emblem when placing the card's background."""
+        names = {1: '검은양', 2: '늑대개', 3: '사냥터지기', 4: '시궁쥐'}
+        if team not in names:
+            raise ValueError('배경 팀은 1~4 중에서 선택해 주세요.')
         with self.lock, self.session():
             dialog = self.table('DLG_LOADING_DUNGEON_START_V2.LUA')['DIALOG']
             slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name') == 'SLOT_1_BG')
             picture = slot['m_vecPicData'][1]
             layout = self.layout()
-            filename = 'UI_UNIT_CREATE_BG2_TEAM1.DDS'
-            return dict(entry_id=self.image_id(filename), name='게임 기본 · 검은양',
-                crop=self.atlas(filename)[picture['UVKey']],
+            filename = f'UI_UNIT_CREATE_BG2_TEAM{team}.DDS'
+            return dict(entry_id=self.image_id(filename), name='게임 기본 · '+names[team], team=team,
+                crop=None,
                 x=-layout['origin'][1], y=-layout['origin'][2],
                 width=picture['m_fWidth'], height=picture['m_fHeight'])
 

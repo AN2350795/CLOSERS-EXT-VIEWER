@@ -215,13 +215,15 @@ function backgroundMode(){return composition.canvas.background?'game':compositio
 function renderBackground(){
   const mode=backgroundMode(),c=composition.canvas;
   for(const input of document.querySelectorAll('[name="background-mode"]'))input.checked=input.value===mode;
+  const team=c.background?.team||Number($('background-team').value);
+  $('background-team').value=String(team);$('background-team-options').hidden=mode!=='game';
+  $('background-summary').textContent=mode==='game'?'게임 기본 · '+$('background-team').selectedOptions[0].textContent:mode==='transparent'?'투명':c.color.toUpperCase();
   $('background-color-options').hidden=mode!=='color';$('canvas-color').value=c.color;
   $('background-hex').textContent=c.color.toUpperCase();
   document.querySelector('.sample-color').style.background=c.color;
   for(const button of document.querySelectorAll('[data-color]'))button.setAttribute('aria-pressed',String(button.dataset.color===c.color.toLowerCase()));
-  $('background-description').textContent=mode==='game'?'검은양 문양 · 게임의 기본 카드 배치로 저장됩니다.':mode==='transparent'?'투명 영역은 체크무늬로 표시되며, 저장 파일에는 포함되지 않습니다.':'선택한 색이 이미지와 함께 저장됩니다.';
 }
-async function changeBackground(mode){
+async function changeBackground(mode,team=Number($('background-team').value)){
   if(busy)return;
   if(mode!=='game'){
     delete composition.canvas.background;composition.canvas.transparent=mode==='transparent';validateCurrent();commit();return;
@@ -230,9 +232,9 @@ async function changeBackground(mode){
     await ensureLayout();editorStatus('게임 기본 배경을 불러오고 있습니다…','working');
     let loaded;
     try{
-      const plan=await api('/api/loading-background');loaded=await loadSource(plan.entry_id);
+      const plan=await api('/api/loading-background?team='+team);loaded=await loadSource(plan.entry_id);
       const next=snapshot();if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});
-      const {entry_id,...background}=plan;next.canvas.transparent=false;next.canvas.background={...background,source:loaded.key};
+      const {entry_id,...background}=plan;next.canvas.transparent=false;next.canvas.background={...background,team,crop:background.crop||{x:0,y:0,width:loaded.value.metadata.width,height:loaded.value.metadata.height},source:loaded.key};
       const checked=Core.validate(next);if(!loaded.reused)images.set(loaded.key,loaded.value);
       composition=checked;commit();editorStatus('게임 기본 배경을 적용했습니다.');
     }catch(e){if(loaded&&!loaded.reused)loaded.value.bitmap.close();renderBackground();throw e;}
@@ -393,6 +395,7 @@ $('duplicate-layer').onclick=()=>{
   for(const child of children)composition.layers.push({...JSON.parse(JSON.stringify(child)),id:'l'+(++layerSequence),markParent:copy.id});
   selectedLayer=copy.id;commit();
 };
+$('background-team').onchange=()=>changeBackground('game');
 $('canvas-color').oninput=changeCanvas;
 for(const input of document.querySelectorAll('[name="background-mode"]'))input.onchange=()=>changeBackground(input.value);
 for(const button of document.querySelectorAll('[data-color]'))button.onclick=()=>{if(busy)return;$('canvas-color').value=button.dataset.color;changeCanvas();};
@@ -402,7 +405,7 @@ for(const id of ['save-project','load-project','save-template','load-template'])
 $('composition-menu').onkeydown=event=>{if(event.key==='Escape'){$('composition-menu').open=false;$('composition-menu').querySelector('summary').focus();}};
 document.addEventListener('click',event=>{if(!$('composition-menu').contains(event.target))$('composition-menu').open=false;});
 for(const [id,append] of [['project-file',false],['template-file',true]])$(id).onchange=()=>{const file=$(id).files[0];$(id).value='';operation(()=>loadFile(file,append));};
-$('new-project').onclick=()=>{if(busy)return;selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
+$('new-project').onclick=()=>{if(busy)return;$('background-team').value='1';selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
 $('image-query').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{pickerPage=1;searchImages();},250);};
 function selectPicker(kind){
   pickerKind=kind;pickerPage=1;$('image-query').value='';clearTimeout(searchTimer);

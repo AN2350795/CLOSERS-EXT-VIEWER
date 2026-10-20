@@ -36,8 +36,11 @@ globalThis.CompositionCore=(()=>{
     if(c.background!==undefined){
       const b=c.background,s=sourceMap.get(b?.source);
       if(!s||canvas.transparent)fail('게임 배경의 이미지 연결이 올바르지 않습니다.');
-      const crop=gameCrop(b.crop||{},s);
-      canvas.background={source:s.key,name:text(b.name,'배경 이름',200),crop,
+      let crop=gameCrop(b.crop||{},s);
+      // The first background implementation saved an enlarged central crop.
+      // Migrate those game backgrounds; their controls never exposed crop edits.
+      if(b.team===undefined&&/^UI_UNIT_CREATE_BG2_TEAM[1-4]\.DDS$/i.test(s.name))crop={x:0,y:0,width:s.width,height:s.height};
+      canvas.background={source:s.key,team:integer(b.team??Number(s.name.match(/_TEAM([1-4])\./i)?.[1]||1),'배경 팀',1,4),name:text(b.name,'배경 이름',200),crop,
         x:number(b.x,'배경 X',-100000,100000),y:number(b.y,'배경 Y',-100000,100000),
         width:number(b.width,'배경 너비',.01,65536),height:number(b.height,'배경 높이',.01,65536)};
     }

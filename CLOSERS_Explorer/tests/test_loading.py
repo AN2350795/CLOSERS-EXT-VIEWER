@@ -21,6 +21,24 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
+    def test_background_team_selection_preserves_full_emblem_and_card_placement(self):
+        from contextlib import nullcontext
+        data = LoadingData(Mock())
+        data.session = nullcontext
+        data.table = Mock(return_value={'DIALOG': {'CONTROL': {1: {
+            'm_Name': 'SLOT_1_BG', 'm_vecPicData': {1: {
+                'm_fWidth': 454, 'm_fHeight': 724, 'UVKey': 'BG_LOADING'}}}}}})
+        data.layout = Mock(return_value={'origin': {1: 2, 2: 2}})
+        data.image_id = Mock(return_value=7)
+        data.atlas = Mock(side_effect=AssertionError('Do not crop team emblems'))
+        for team in range(1, 5):
+            plan = data.background(team)
+            data.image_id.assert_called_with(f'UI_UNIT_CREATE_BG2_TEAM{team}.DDS')
+            self.assertEqual((plan['team'], plan['crop'], plan['x'], plan['y'],
+                              plan['width'], plan['height']), (team, None, -2, -2, 454, 724))
+        with self.assertRaises(ValueError):
+            data.background(5)
+
     def test_game_crop_intersects_source_without_transparent_padding(self):
         self.assertEqual(image_crop(dict(x=125,y=2,width=720,height=1024),1024,1024),
                          dict(x=125,y=2,width=720,height=1022))

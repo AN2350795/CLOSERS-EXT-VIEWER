@@ -34,21 +34,21 @@
       <section class="canvas-panel panel" aria-label="합성 화면">
         <div class="canvas-controls"><label>저장 해상도<select id="output-mode"><option value="native">원본 해상도 유지</option><option value="base">기준 크기 · 1배</option><option value="double">기준 크기 · 2배</option><option value="custom">사용자 지정</option></select></label><strong id="output-size" aria-live="polite"></strong><label id="custom-output" hidden>저장 너비<input id="output-width" type="number" min="1" max="8192" step="1" value="720">높이는 비율에 맞춰 자동 계산</label></div>
         <p id="output-info" class="muted" role="status" hidden></p>
-        <fieldset class="background-panel" id="background-settings">
-          <legend>배경 스타일</legend>
+        <details class="background-panel" id="background-panel"><summary>배경 스타일<span id="background-summary">단색</span></summary>
+        <fieldset id="background-settings"><legend class="sr-only">배경 스타일 선택</legend>
           <div class="background-modes">
-            <label class="background-choice"><input type="radio" name="background-mode" value="game"><span class="background-sample sample-game" aria-hidden="true">✦</span><span><strong>게임 기본</strong><small>문양이 있는 로딩 카드</small></span></label>
-            <label class="background-choice"><input type="radio" name="background-mode" value="color" checked><span class="background-sample sample-color" aria-hidden="true"></span><span><strong>단색</strong><small>원하는 색으로 채우기</small></span></label>
-            <label class="background-choice"><input type="radio" name="background-mode" value="transparent"><span class="background-sample sample-transparent" aria-hidden="true"></span><span><strong>투명</strong><small>일러스트와 프레임만</small></span></label>
+            <label class="background-choice"><input type="radio" name="background-mode" value="game"><span class="background-sample sample-game" aria-hidden="true">✦</span><span><strong>게임 기본</strong></span></label>
+            <label class="background-choice"><input type="radio" name="background-mode" value="color" checked><span class="background-sample sample-color" aria-hidden="true"></span><span><strong>단색</strong></span></label>
+            <label class="background-choice"><input type="radio" name="background-mode" value="transparent"><span class="background-sample sample-transparent" aria-hidden="true"></span><span><strong>투명</strong></span></label>
           </div>
+          <label id="background-team-options" class="background-team-options" hidden>팀<select id="background-team"><option value="1">검은양</option><option value="2">늑대개</option><option value="3">사냥터지기</option><option value="4">시궁쥐</option></select></label>
           <div id="background-color-options" class="background-options">
             <div class="background-swatches" aria-label="추천 배경색">
               <button type="button" data-color="#172033" aria-label="미드나이트" title="미드나이트"></button><button type="button" data-color="#232b30" aria-label="차콜" title="차콜"></button><button type="button" data-color="#eeeae3" aria-label="아이보리" title="아이보리"></button><button type="button" data-color="#cbd9e8" aria-label="미스트 블루" title="미스트 블루"></button><button type="button" data-color="#d9cde3" aria-label="라벤더" title="라벤더"></button>
             </div>
             <label class="custom-background-color">직접 선택<input id="canvas-color" type="color" value="#172033"><span id="background-hex">#172033</span></label>
           </div>
-          <p id="background-description" class="muted" role="status" aria-live="polite">선택한 색이 이미지와 함께 저장됩니다.</p>
-        </fieldset>
+        </fieldset></details>
         <details><summary>화면 정보</summary><p id="layout-info" class="muted"></p><p id="source-info" class="muted"></p><p class="muted">배치 기준은 게임의 일러스트 표시 영역이며, 저장 해상도와 미리보기 배율은 별개입니다.</p></details>
         <div id="canvas-stage"><canvas id="composition-canvas" width="700" height="700" tabindex="0" aria-label="이미지 조합 화면. 선택한 레이어를 드래그해 이동하고 오른쪽 아래 손잡이로 크기를 바꿀 수 있습니다."></canvas></div>
         <p id="canvas-summary" class="muted"></p>
