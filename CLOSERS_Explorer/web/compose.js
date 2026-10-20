@@ -366,11 +366,11 @@ $('duplicate-layer').onclick=()=>{
 for(const id of ['canvas-transparent','canvas-color'])$(id).onchange=changeCanvas;
 $('export-png').onclick=()=>operation(exportPNG);$('save-project').onclick=()=>operation(()=>saveProject(false));$('save-template').onclick=()=>operation(()=>saveProject(true));
 $('load-project').onclick=()=>$('project-file').click();$('load-template').onclick=()=>$('template-file').click();
-for(const id of ['save-project','load-project','save-template','load-template','new-project'])$(id).addEventListener('click',()=>{$('composition-menu').open=false;});
+for(const id of ['save-project','load-project','save-template','load-template'])$(id).addEventListener('click',()=>{$('composition-menu').open=false;});
 $('composition-menu').onkeydown=event=>{if(event.key==='Escape'){$('composition-menu').open=false;$('composition-menu').querySelector('summary').focus();}};
 document.addEventListener('click',event=>{if(!$('composition-menu').contains(event.target))$('composition-menu').open=false;});
 for(const [id,append] of [['project-file',false],['template-file',true]])$(id).onchange=()=>{const file=$(id).files[0];$(id).value='';operation(()=>loadFile(file,append));};
-$('new-project').onclick=()=>{if(busy)return;selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('새 조합을 시작했습니다. 이전 조합을 보관하려면 먼저 설정을 저장하세요.','info');};
+$('new-project').onclick=()=>{if(busy)return;selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
 $('image-query').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{pickerPage=1;searchImages();},250);};
 function selectPicker(kind){
   pickerKind=kind;pickerPage=1;$('image-query').value='';clearTimeout(searchTimer);

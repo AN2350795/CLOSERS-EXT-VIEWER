@@ -6,7 +6,8 @@
     <header><div><h1>일러스트 · 프레임 조합</h1><p class="muted">일러스트와 프레임을 골라 이미지나 애니메이션으로 저장하세요.</p></div><a href="/" class="button secondary">라이브러리</a></header>
     <section class="editor-toolbar" aria-label="조합 저장">
       <button id="export-png">이미지 저장 · PNG</button><button id="export-apng">애니메이션 저장</button>
-      <details id="composition-menu" class="management-menu"><summary>조합 관리</summary><div class="menu-actions"><button id="save-project" class="secondary">조합 설정 저장</button><button id="load-project" class="secondary">조합 불러오기</button><button id="save-template" class="secondary">프레임 템플릿 저장</button><button id="load-template" class="secondary">프레임 템플릿 추가</button><button id="new-project" class="secondary">새 조합</button></div></details>
+      <details id="composition-menu" class="management-menu"><summary>조합 관리</summary><div class="menu-actions"><button id="save-project" class="secondary">조합 설정 저장</button><button id="load-project" class="secondary">조합 불러오기</button><button id="save-template" class="secondary">프레임 템플릿 저장</button><button id="load-template" class="secondary">프레임 템플릿 추가</button></div></details>
+      <button id="new-project" class="secondary" title="현재 조합과 저장 해상도·배경 설정을 초기화합니다.">초기화</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden><input id="template-file" type="file" accept=".json,application/json" hidden>
     </section>
     <dialog id="animation-preview" aria-labelledby="animation-preview-title">
