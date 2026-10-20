@@ -8,7 +8,7 @@ let gamePlan=null,gamePresets=null,atlasRegions={},atlasSource=null,animationTim
 let pickerKind='illustration',selectedFrameId=null,selectedMarkId=null;
 let gameLayout=null;
 let animationPreviewURL=null,statusTimer=null;
-const pickerLabels={illustration:'일러스트',frame:'프레임',mark:'마크'};
+const pickerLabels={illustration:'일러스트',frame:'프레임',mark:'추가 장식'};
 function fixedCanvas(project){
   if(!gameLayout)throw Error('게임 로딩 화면 크기를 먼저 불러와 주세요.');
   const sx=gameLayout.width/project.canvas.width,sy=gameLayout.height/project.canvas.height;
@@ -45,6 +45,7 @@ function updateControls(){
   $('layer-fields').disabled=busy||!currentLayer();
   for(const id of ['layer-up','layer-down','duplicate-layer','remove-layer'])$(id).disabled=busy||!currentLayer();
   for(const button of document.querySelectorAll('#image-results button'))button.disabled=busy;
+  for(const input of document.querySelectorAll('.group-visible'))input.disabled=busy;
   for(const card of document.querySelectorAll('.asset-card'))card.setAttribute('aria-pressed',String(card.dataset.kind==='frame'?Number(card.dataset.id)===selectedFrameId:card.dataset.kind==='mark'?Number(card.dataset.id)===selectedMarkId:false));
 }
 function pruneImages(){const used=Core.usedSources(composition.layers);composition.sources=composition.sources.filter(s=>used.has(s.key));for(const [key,value] of images)if(!used.has(key)){value.bitmap.close();images.delete(key);}}
@@ -83,10 +84,24 @@ $('animation-fps').onchange=()=>{renderAnimationTiming();updateControls();};
 $('animation-duration').onchange=renderOutput;$('animation-format').onchange=renderOutput;
 $('match-animation-cycle').onclick=()=>{if(busy)return;const cycle=AnimationLoop.textureCycle(composition,Number($('animation-fps').value));if(cycle!==null){$('animation-duration').value=Number(cycle.toFixed(6));renderAnimationTiming();}};
 function renderLayers(){
-  $('layers').replaceChildren();
+  const opened=new Set([...$('layers').querySelectorAll('details[open]')].map(group=>group.dataset.group));
+  const groups=new Map();
   for(const l of [...composition.layers].reverse()){
-    const button=node('button','layer-row'+(l.id===selectedLayer?' active':''));button.append(node('span','',l.name+(l.visible?'':' (숨김)')+(l.locked?' · 잠금':'')),node('span','layer-type',roles[l.role]));
-    button.onclick=()=>{if(busy)return;selectedLayer=l.id;commit();};$('layers').append(button);
+    const key=l.gameMark?'decoration':l.gameFrame?'frame':l.role==='illustration'?'illustration':'decoration';
+    if(!groups.has(key))groups.set(key,[]);groups.get(key).push(l);
+  }
+  $('layers').replaceChildren();
+  if(!groups.size)$('layers').append(node('p','muted','일러스트와 프레임을 선택하면 여기에 표시됩니다.'));
+  for(const [key,members] of groups){
+    const name={illustration:'일러스트',frame:'프레임',decoration:'추가 장식'}[key],group=node('details','layer-group'),summary=node('summary'),visible=node('input','group-visible');
+    group.dataset.group=key;group.open=opened.has(key);visible.type='checkbox';visible.checked=members.some(l=>l.visible);visible.indeterminate=visible.checked&&!members.every(l=>l.visible);visible.setAttribute('aria-label',name+' 표시');visible.disabled=busy;
+    visible.onclick=e=>e.stopPropagation();visible.onchange=()=>{if(busy)return;for(const l of members)l.visible=visible.checked;commit();};
+    summary.append(node('span','',name),node('small','muted',members.length+'개'),visible);group.append(summary);
+    for(const l of members){
+      const button=node('button','layer-row'+(l.id===selectedLayer?' active':''));button.append(node('span','',l.name+(l.visible?'':' (숨김)')+(l.locked?' · 잠금':'')),node('span','layer-type',roles[l.role]));
+      button.onclick=()=>{if(busy)return;selectedLayer=l.id;$('layer-edit').open=true;commit();};group.append(button);
+    }
+    $('layers').append(group);
   }
 }
 function renderFields(){
@@ -94,7 +109,8 @@ function renderFields(){
   if(atlasSource!==(l?.source||null)){atlasSource=l?.source||null;atlasRegions={};$('atlas-region').replaceChildren(node('option','','전체 이미지'));$('atlas-region').firstChild.value='';}
   $('layer-fields').disabled=busy||!l;if(!l)return;
   $('atlas-region').value=Object.keys(atlasRegions).find(key=>['x','y','width','height'].every(field=>atlasRegions[key][field]===l.crop[field]))||'';
-  for(const key of ['name','role','x','y','width','height'])$('layer-'+key).value=l[key];
+  for(const key of ['name','x','y','width','height'])$('layer-'+key).value=l[key];
+  $('layer-kind').textContent='용도: '+roles[l.role];
   for(const key of ['x','y','width','height'])$('crop-'+key).value=l.crop[key];
   $('layer-opacity').value=l.opacity*100;$('layer-ratio').checked=l.keepRatio;$('layer-visible').checked=l.visible;$('layer-locked').checked=l.locked;
   for(const id of ['layer-x','layer-y','layer-width','layer-height','layer-ratio','crop-x','crop-y','crop-width','crop-height','fit-layer','fill-layer','native-layer','reset-crop'])$(id).disabled=l.locked;
@@ -140,7 +156,7 @@ async function applyGameFrame(mark=false,ident=mark?selectedMarkId:selectedFrame
     playing=composition.layers.some(l=>l.visible&&l.animation);$('play-effects').textContent=playing?'효과 일시 정지':'효과 재생';$('animation-time').value='0';
     if(mark)selectedMarkId=Number(ident);else selectedFrameId=Number(ident);commit();
     const warnings=[...plan.warnings,...(mark&&!plan.mark.placement?['이 던전 로딩 화면에는 별도 마크의 기본 위치가 등록되어 있지 않습니다. 마크 위치는 직접 조정하세요.']:[]),...(mark&&plan.effects.length?['마크 효과는 마크 중심에 연결했습니다. 마크를 이동하거나 크기를 바꾸면 효과도 함께 바뀝니다.']:[])];
-    setMessage('game-frame-status',warnings.length?warnings.join(' '):'썸네일을 누르면 조합에 적용합니다. 프레임과 마크는 따로 고를 수 있습니다.',warnings.length?'warning':'info');
+    setMessage('game-frame-status',warnings.length?warnings.join(' '):'썸네일을 누르면 적용합니다. 추가 장식은 선택 사항입니다.',warnings.length?'warning':'info');
     editorStatus(mark?(plan.mark.placement?'게임 기본 위치에 마크를 적용했습니다.':previousMark?'이전 마크 위치를 유지해 교체했습니다.':'마크를 추가했습니다. 기본 위치가 없어 직접 조정할 수 있습니다.'):'일러스트 테두리에 게임 프레임을 적용했습니다.');
   }catch(e){for(const s of staged)if(!s.reused)s.value.bitmap.close();throw e;}
 }
@@ -325,7 +341,7 @@ $('composition-canvas').onpointermove=event=>{
 };
 const endDrag=()=>{drag=null;};$('composition-canvas').onpointerup=endDrag;$('composition-canvas').onpointercancel=endDrag;$('composition-canvas').onlostpointercapture=endDrag;
 $('composition-canvas').onkeydown=event=>{if(busy||!currentLayer()||currentLayer().locked)return;const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]},move=moves[event.key];if(move){event.preventDefault();changeLayer(l=>{l.x+=move[0]*(event.shiftKey?10:1);l.y+=move[1]*(event.shiftKey?10:1);});}};
-for(const key of ['name','role','x','y','width','height'])$('layer-'+key).onchange=()=>changeLayer(l=>{const value=['name','role'].includes(key)?$('layer-'+key).value:Number($('layer-'+key).value);if(l.keepRatio&&key==='width')l.height*=value/l.width;if(l.keepRatio&&key==='height')l.width*=value/l.height;l[key]=value;});
+for(const key of ['name','x','y','width','height'])$('layer-'+key).onchange=()=>changeLayer(l=>{const value=key==='name'?$('layer-'+key).value:Number($('layer-'+key).value);if(l.keepRatio&&key==='width')l.height*=value/l.width;if(l.keepRatio&&key==='height')l.width*=value/l.height;l[key]=value;});
 for(const key of ['x','y','width','height'])$('crop-'+key).onchange=()=>changeLayer(l=>{l.crop[key]=Number($('crop-'+key).value);});
 $('layer-ratio').onchange=()=>changeLayer(l=>l.keepRatio=$('layer-ratio').checked);
 $('layer-opacity').oninput=()=>changeLayer(l=>l.opacity=Number($('layer-opacity').value)/100);
@@ -350,14 +366,16 @@ $('new-project').onclick=()=>{if(busy)return;selectedFrameId=null;selectedMarkId
 $('image-query').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{pickerPage=1;searchImages();},250);};
 function selectPicker(kind){
   pickerKind=kind;pickerPage=1;$('image-query').value='';clearTimeout(searchTimer);
-  for(const value of Object.keys(pickerLabels)){const tab=$('pick-'+value);tab.setAttribute('aria-selected',String(value===kind));tab.tabIndex=value===kind?0:-1;}
+  for(const value of ['illustration','frame']){const tab=$('pick-'+value);tab.setAttribute('aria-selected',String(value===kind));tab.tabIndex=value===kind||(kind==='mark'&&value==='frame')?0:-1;}
+  $('pick-mark').setAttribute('aria-pressed',String(kind==='mark'));$('extra-assets').open=kind==='mark';
   $('asset-query-label').textContent=pickerLabels[kind]+(kind==='frame'?' 번호 · 이름 검색':' 이름 검색');
-  $('image-results').setAttribute('aria-labelledby','pick-'+kind);searchImages();
+  $('image-results').setAttribute('role',kind==='mark'?'region':'tabpanel');$('image-results').setAttribute('aria-labelledby','pick-'+kind);searchImages();
 }
 for(const kind of Object.keys(pickerLabels)){
   $('pick-'+kind).onclick=()=>selectPicker(kind);
-  $('pick-'+kind).onkeydown=event=>{const kinds=Object.keys(pickerLabels),index=kinds.indexOf(kind);let next;
-    if(event.key==='ArrowRight')next=kinds[(index+1)%kinds.length];if(event.key==='ArrowLeft')next=kinds[(index+kinds.length-1)%kinds.length];if(event.key==='Home')next=kinds[0];if(event.key==='End')next=kinds.at(-1);
+  $('pick-'+kind).onkeydown=event=>{const kinds=Object.keys(pickerLabels);let next;
+    const targets=kind==='mark'?kinds:['illustration','frame'],position=targets.indexOf(kind);
+    if(event.key==='ArrowRight')next=targets[(position+1)%targets.length];if(event.key==='ArrowLeft')next=targets[(position+targets.length-1)%targets.length];if(event.key==='Home')next=targets[0];if(event.key==='End')next=targets.at(-1);
     if(next){event.preventDefault();selectPicker(next);$('pick-'+next).focus();}
   };
 }

@@ -27,3 +27,6 @@
 @keyframes compose-status-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.status-notice[data-state=loading]::after,.status-notice[data-state=working]::after,.asset-loading::before{animation:none}}
 @media(max-width:760px){#editor-status,#editor-toast{top:12px;max-width:calc(100vw - 24px)}}
+.asset-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+#extra-assets{margin-bottom:12px}#extra-assets p{font-size:11px}#extra-assets button{font-size:11px;padding:6px 9px}
+.layer-group{margin:8px 0;border:1px solid var(--line);border-radius:7px;padding:8px}.layer-group>summary{display:flex;align-items:center;gap:8px;cursor:pointer}.layer-group>summary::before{content:'▸'}.layer-group[open]>summary::before{content:'▾'}.layer-group>summary small{margin-left:auto}.group-visible{width:16px;height:16px}.layer-group>.layer-row{margin-top:8px;margin-bottom:0}#layer-edit{margin-top:16px}#layer-edit>summary{cursor:pointer}#layer-edit>p{font-size:11px}

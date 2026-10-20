@@ -31,6 +31,7 @@ try{
   await until(()=>!busy);
   check(composition.canvas.width===450&&composition.canvas.height===640&&$('layout-info').textContent.includes('450 × 640'),'game layout information missing');
   check(!$('canvas-width')&&!$('canvas-height')&&$('custom-output').hidden,'uneditable size inputs still visible');
+  check(document.querySelectorAll('.asset-tabs [role=tab]').length===2&&!$('extra-assets').open&&!$('layer-edit').open&&!$('layer-role'),'advanced controls remain in the basic view');
   check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
   document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
   const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
@@ -39,9 +40,17 @@ try{
   check(document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/frame/1'),'assembled frame thumbnail URL');
   document.querySelector('.asset-card[data-id="2"]').click();await until(()=>!busy&&composition.layers.length===3);
   check(selectedFrameId===2&&document.querySelector('.asset-card[data-id="2"]').getAttribute('aria-pressed')==='true','selected frame state');
+  check(document.querySelectorAll('.layer-group').length===2&&!document.querySelector('.layer-group[data-group=frame]').open,'frame pieces were not grouped');
+  let frameToggle=document.querySelector('.layer-group[data-group=frame] .group-visible');frameToggle.click();
+  check(composition.layers.filter(l=>l.gameFrame).every(l=>!l.visible)&&composition.layers.find(l=>l.gameIllustration).visible,'frame group visibility affected the illustration');
+  document.querySelector('.layer-group[data-group=frame] .group-visible').click();
+  const frameGroup=document.querySelector('.layer-group[data-group=frame]');frameGroup.open=true;frameGroup.querySelector('.layer-row').click();
+  check($('layer-edit').open&&document.querySelector('.layer-group[data-group=frame]').open,'piece editing lost the expanded group');
+  $('layer-edit').open=false;
   document.querySelector('#image-next').click();await until(()=>document.querySelector('.asset-card[data-id="13"]'));check(document.querySelectorAll('.asset-card').length===3,'frame pagination');
   document.querySelector('#image-query').value='FRAME_14';await searchImages();check(document.querySelectorAll('.asset-card').length===1&&document.querySelector('.asset-card').dataset.id==='14','frame name filter and page clamp');
   document.querySelector('#pick-mark').click();await until(()=>document.querySelector('.asset-card[data-kind="mark"]'));
+  check($('extra-assets').open&&$('pick-mark').getAttribute('aria-pressed')==='true'&&$('image-results').getAttribute('role')==='region','extra decoration picker accessibility');
   check(document.querySelector('#picker-summary').textContent.includes('14'),'duplicate mark regions were not merged');
   check(document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/mark/'),'individual mark thumbnail URL');
   document.querySelector('.asset-card[data-id="3"]').click();await until(()=>!busy&&composition.layers.length===4);
