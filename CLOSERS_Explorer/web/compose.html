@@ -41,12 +41,15 @@
             <label class="background-choice"><input type="radio" name="background-mode" value="color" checked><span class="background-sample sample-color" aria-hidden="true"></span><span><strong>단색</strong></span></label>
             <label class="background-choice"><input type="radio" name="background-mode" value="transparent"><span class="background-sample sample-transparent" aria-hidden="true"></span><span><strong>투명</strong></span></label>
           </div>
+          <div class="background-detail-slot">
           <label id="background-team-options" class="background-team-options" hidden>팀<select id="background-team"><option value="1">검은양</option><option value="2">늑대개</option><option value="3">사냥터지기</option><option value="4">시궁쥐</option></select></label>
           <div id="background-color-options" class="background-options">
             <div class="background-swatches" aria-label="추천 배경색">
               <button type="button" data-color="#172033" aria-label="미드나이트" title="미드나이트"></button><button type="button" data-color="#232b30" aria-label="차콜" title="차콜"></button><button type="button" data-color="#eeeae3" aria-label="아이보리" title="아이보리"></button><button type="button" data-color="#cbd9e8" aria-label="미스트 블루" title="미스트 블루"></button><button type="button" data-color="#d9cde3" aria-label="라벤더" title="라벤더"></button>
             </div>
-            <label class="custom-background-color">직접 선택<input id="canvas-color" type="color" value="#172033"><span id="background-hex">#172033</span></label>
+            <label class="custom-background-color"><span class="sr-only">배경색 직접 선택</span><input id="canvas-color" type="color" value="#172033"><span id="background-hex">#172033</span></label>
+          </div>
+          <div id="background-transparent-options" class="background-transparent-preview" aria-label="투명 배경 미리보기" hidden></div>
           </div>
         </fieldset></details>
         <details id="layout-context"><summary>로딩창에서의 크기 · 위치</summary><p id="layout-info" class="muted"></p><canvas id="layout-context-canvas" width="960" height="540" aria-label="전체 로딩창에서 현재 조합 영역의 크기와 위치" hidden></canvas><p id="source-info" class="muted"></p><p class="muted">배치 기준은 게임의 일러스트 표시 영역이며, 저장 해상도와 미리보기 배율은 별개입니다.</p></details>

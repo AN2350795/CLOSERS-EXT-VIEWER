@@ -240,6 +240,7 @@ function renderBackground(){
   const team=c.background?.team||Number($('background-team').value);
   $('background-team').value=String(team);$('background-team-options').hidden=mode!=='game';
   $('background-summary').textContent=mode==='game'?'게임 기본 · '+$('background-team').selectedOptions[0].textContent:mode==='transparent'?'투명':c.color.toUpperCase();
+  $('background-transparent-options').hidden=mode!=='transparent';
   $('background-color-options').hidden=mode!=='color';$('canvas-color').value=c.color;
   $('background-hex').textContent=c.color.toUpperCase();
   document.querySelector('.sample-color').style.background=c.color;
