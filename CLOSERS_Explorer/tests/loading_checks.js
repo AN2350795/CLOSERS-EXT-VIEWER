@@ -52,7 +52,7 @@ try{
   bgRaw.canvas.background={source:'s2',name:'game',crop:{x:0,y:0,width:4,height:4},x:0,y:0,width:4,height:4};
   const bgProject=CompositionCore.validate(bgRaw),bgCanvas=new OffscreenCanvas(8,8);
   CompositionCore.draw(bgCanvas.getContext('2d'),bgProject,images,8,8);
-  check(bgProject.version===6&&bgCanvas.getContext('2d').getImageData(7,7,1,1).data[2]===255,'game background missing from scaled export');
+  check(bgProject.canvas.background.opacity===1&&bgProject.version===6&&bgCanvas.getContext('2d').getImageData(7,7,1,1).data[2]===255,'game background missing from scaled export');
   check(CompositionCore.usedSources([],bgProject.canvas).has('s2'),'background source omitted from persistence');
   const legacyBg=structuredClone(bgRaw);legacyBg.sources[1].name='UI_UNIT_CREATE_BG2_TEAM1.DDS';legacyBg.canvas.background.crop={x:1,y:0,width:2,height:4};
   check(CompositionCore.validate(legacyBg).canvas.background.fit==='cover','legacy background must preserve aspect');
@@ -68,10 +68,18 @@ try{
   check(tall.getContext('2d').getImageData(0,3,1,1).data[0]===0,'full texture edges were cropped');
   const restored=CompositionCore.validate(JSON.parse(JSON.stringify(stretched)));
   check(restored.canvas.background.fit==='stretch'&&restored.canvas.background.color[2]===.188235,'background rendering settings lost on round trip');
+  stretched.canvas.background.opacity=.5;
+  CompositionCore.draw(tall.getContext('2d'),stretched,new Map([['s2',square]]),4,8);
+  const faded=tall.getContext('2d').getImageData(1,3,1,1).data;
+  check(Math.abs(faded[0]-18)<=1&&faded[3]===255,'background opacity did not fade over the canvas color');
+  check(CompositionCore.validate(JSON.parse(JSON.stringify(stretched))).canvas.background.opacity===.5,'background opacity lost on round trip');
+  stretched.canvas.background.opacity=0;
+  CompositionCore.draw(tall.getContext('2d'),stretched,new Map([['s2',square]]),4,8);
+  check(tall.getContext('2d').getImageData(1,3,1,1).data[0]===0,'zero background opacity still draws the image');
   stretched.layers=[{...native.layers[1],x:0,y:0,width:1,height:1,source:'s1'}];
   CompositionCore.draw(tall.getContext('2d'),stretched,new Map([['s1',red],['s2',square]]),4,8);
   check(tall.getContext('2d').getImageData(0,0,1,1).data[0]===255,'background tint leaked into illustration layers');
-  for(const mutate of [p=>p.canvas.background.source='s99',p=>p.canvas.background.width=NaN,p=>p.canvas.background.fit='invalid',p=>p.canvas.background.color=[1,1,1],p=>p.canvas.background.color=[1,1,1,2],p=>p.canvas.transparent=true]){
+  for(const mutate of [p=>p.canvas.background.source='s99',p=>p.canvas.background.width=NaN,p=>p.canvas.background.opacity=1.1,p=>p.canvas.background.opacity=-.1,p=>p.canvas.background.opacity=NaN,p=>p.canvas.background.fit='invalid',p=>p.canvas.background.color=[1,1,1],p=>p.canvas.background.color=[1,1,1,2],p=>p.canvas.transparent=true]){
     const invalid=structuredClone(bgRaw);mutate(invalid);let rejected=false;try{CompositionCore.validate(invalid);}catch{rejected=true;}check(rejected,'invalid background accepted');
   }
   const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render,requireMotion:true});

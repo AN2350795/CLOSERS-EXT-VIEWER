@@ -42,7 +42,7 @@ globalThis.CompositionCore=(()=>{
       const color=b.color??[1,1,1,1];
       if(!Array.isArray(color)||color.length!==4)fail('배경 색상 형식이 올바르지 않습니다.');
       canvas.background={source:s.key,team:integer(b.team??Number(s.name.match(/_TEAM([1-4])\./i)?.[1]||1),'배경 팀',1,4),name:text(b.name,'배경 이름',200),crop,
-        fit,color:color.map(v=>number(v,'배경 색상',0,1)),
+        fit,color:color.map(v=>number(v,'배경 색상',0,1)),opacity:number(b.opacity??1,'배경 불투명도',0,1),
         x:number(b.x,'배경 X',-100000,100000),y:number(b.y,'배경 Y',-100000,100000),
         width:number(b.width,'배경 너비',.01,65536),height:number(b.height,'배경 높이',.01,65536)};
     }
@@ -113,7 +113,7 @@ globalThis.CompositionCore=(()=>{
     if(background){
       let image=images.get(background.source);const c=background.crop;
       if(image){
-        context.save();context.globalAlpha=background.color[3];image=colorImage(image,background.color);
+        context.save();context.globalAlpha=background.color[3]*background.opacity;image=colorImage(image,background.color);
         if(background.fit==='cover'){
           const scale=Math.max(background.width/c.width,background.height/c.height),sw=background.width/scale,sh=background.height/scale;
           context.drawImage(image,c.x+(c.width-sw)/2,c.y+(c.height-sh)/2,sw,sh,background.x,background.y,background.width,background.height);

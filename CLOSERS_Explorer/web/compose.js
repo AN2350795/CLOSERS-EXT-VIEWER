@@ -240,6 +240,10 @@ function renderBackground(){
   const team=c.background?.team||Number($('background-team').value);
   $('background-team').value=String(team);$('background-team-options').hidden=mode!=='game';
   $('background-summary').textContent=mode==='game'?'게임 기본 · '+$('background-team').selectedOptions[0].textContent:mode==='transparent'?'투명':c.color.toUpperCase();
+  $('background-opacity-options').classList.toggle('inactive',mode!=='game');$('background-opacity-options').inert=mode!=='game';
+  $('background-opacity').disabled=mode!=='game';$('background-opacity-reset').disabled=mode!=='game';
+  if(c.background)$('background-opacity').value=String(Math.round(c.background.opacity*100));
+  $('background-opacity-value').textContent=$('background-opacity').value+'%';
   $('background-transparent-options').hidden=mode!=='transparent';
   $('background-color-options').hidden=mode!=='color';$('canvas-color').value=c.color;
   $('background-hex').textContent=c.color.toUpperCase();
@@ -257,7 +261,7 @@ async function changeBackground(mode,team=Number($('background-team').value)){
     try{
       const plan=await api('/api/loading-background?team='+team);loaded=await loadSource(plan.entry_id);
       const next=snapshot();if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});
-      const {entry_id,...background}=plan;next.canvas.transparent=false;next.canvas.background={...background,team,crop:background.crop||{x:0,y:0,width:loaded.value.metadata.width,height:loaded.value.metadata.height},source:loaded.key};
+      const {entry_id,...background}=plan;next.canvas.transparent=false;next.canvas.background={...background,team,opacity:next.canvas.background?.opacity??Number($('background-opacity').value)/100,crop:background.crop||{x:0,y:0,width:loaded.value.metadata.width,height:loaded.value.metadata.height},source:loaded.key};
       const checked=Core.validate(next);if(!loaded.reused)images.set(loaded.key,loaded.value);
       composition=checked;commit();editorStatus('게임 기본 배경을 적용했습니다.');
     }catch(e){if(loaded&&!loaded.reused)loaded.value.bitmap.close();renderBackground();throw e;}
@@ -425,6 +429,12 @@ $('duplicate-layer').onclick=()=>{
   for(const child of children)composition.layers.push({...JSON.parse(JSON.stringify(child)),id:'l'+(++layerSequence),markParent:copy.id});
   selectedLayer=copy.id;commit();
 };
+function changeBackgroundOpacity(){
+  if(busy||!composition.canvas.background)return;
+  composition.canvas.background.opacity=Number($('background-opacity').value)/100;validateCurrent();commit();
+}
+$('background-opacity').oninput=changeBackgroundOpacity;
+$('background-opacity-reset').onclick=()=>{if(busy)return;$('background-opacity').value='100';changeBackgroundOpacity();};
 $('background-team').onchange=()=>changeBackground('game');
 $('canvas-color').oninput=changeCanvas;
 for(const input of document.querySelectorAll('[name="background-mode"]'))input.onchange=()=>changeBackground(input.value);
@@ -435,7 +445,7 @@ for(const id of ['save-project','load-project','save-template','load-template'])
 $('composition-menu').onkeydown=event=>{if(event.key==='Escape'){$('composition-menu').open=false;$('composition-menu').querySelector('summary').focus();}};
 document.addEventListener('click',event=>{if(!$('composition-menu').contains(event.target))$('composition-menu').open=false;});
 for(const [id,append] of [['project-file',false],['template-file',true]])$(id).onchange=()=>{const file=$(id).files[0];$(id).value='';operation(()=>loadFile(file,append));};
-$('new-project').onclick=()=>{if(busy)return;$('background-team').value='1';selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
+$('new-project').onclick=()=>{if(busy)return;$('background-team').value='1';$('background-opacity').value='100';selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
 $('image-query').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{pickerPage=1;searchImages();},250);};
 function selectPicker(kind){
   pickerKind=kind;pickerPage=1;$('image-query').value='';clearTimeout(searchTimer);
