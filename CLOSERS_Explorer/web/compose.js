@@ -336,7 +336,7 @@ async function importProject(raw,append=false){
       const source=next.sources.find(s=>s.key===background.source);
       if(/^UI_UNIT_CREATE_BG2_TEAM[1-4]\.DDS$/i.test(source.name)){
         const plan=await api('/api/loading-background?team='+background.team);
-        Object.assign(background,{crop:plan.crop||{x:0,y:0,width:source.width,height:source.height},fit:'cover',x:plan.x,y:plan.y,width:plan.width,height:plan.height});
+        Object.assign(background,{crop:plan.crop||{x:0,y:0,width:source.width,height:source.height},fit:plan.fit,color:plan.color,x:plan.x,y:plan.y,width:plan.width,height:plan.height});
       }
     }
     const layerMapping=new Map(value.layers.map(l=>[l.id,'l'+(++layerSequence)]));

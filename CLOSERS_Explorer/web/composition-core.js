@@ -16,7 +16,7 @@ globalThis.CompositionCore=(()=>{
     return {x,y,width:right-x,height:bottom-y};
   }
   function validate(value){
-    if(!value||value.schema!=='closers-composition'||![1,2,3,4,5].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
+    if(!value||value.schema!=='closers-composition'||![1,2,3,4,5,6].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
     const c=value.canvas||{},canvas={width:integer(c.width,'출력 너비',1,8192),height:integer(c.height,'출력 높이',1,8192),transparent:bool(c.transparent,true),color:text(c.color,'배경색',7)};
     if(canvas.width*canvas.height>MAX_PIXELS)fail('출력은 16,777,216픽셀까지 지원합니다.');
     if(!/^#[0-9a-f]{6}$/i.test(canvas.color))fail('배경색이 올바르지 않습니다.');
@@ -38,9 +38,11 @@ globalThis.CompositionCore=(()=>{
       if(!s||canvas.transparent)fail('게임 배경의 이미지 연결이 올바르지 않습니다.');
       const crop=gameCrop(b.crop||{},s);
       const fit=b.fit??'cover';
-      if(fit!=='cover')fail('배경 배치 방식이 올바르지 않습니다.');
+      if(!['cover','stretch'].includes(fit))fail('배경 배치 방식이 올바르지 않습니다.');
+      const color=b.color??[1,1,1,1];
+      if(!Array.isArray(color)||color.length!==4)fail('배경 색상 형식이 올바르지 않습니다.');
       canvas.background={source:s.key,team:integer(b.team??Number(s.name.match(/_TEAM([1-4])\./i)?.[1]||1),'배경 팀',1,4),name:text(b.name,'배경 이름',200),crop,
-        fit,
+        fit,color:color.map(v=>number(v,'배경 색상',0,1)),
         x:number(b.x,'배경 X',-100000,100000),y:number(b.y,'배경 Y',-100000,100000),
         width:number(b.width,'배경 너비',.01,65536),height:number(b.height,'배경 높이',.01,65536)};
     }
@@ -73,7 +75,7 @@ globalThis.CompositionCore=(()=>{
     for(const l of layers)if(l.markParent&&!layers.some(p=>p.id===l.markParent&&p.id!==l.id&&p.gameMark&&!p.markParent&&!p.animation))fail('효과를 연결할 마크가 없습니다.');
     const output=value.output===undefined?{mode:'native',width:720}:value.output;
     if(!output||!['native','base','double','custom'].includes(output.mode))fail('저장 해상도 설정이 올바르지 않습니다.');
-    return {schema:'closers-composition',version:canvas.background?5:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
+    return {schema:'closers-composition',version:canvas.background?6:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
       output:{mode:output.mode,width:integer(output.width??720,'저장 너비',1,8192)}};
   }
   function exportSize(project){
@@ -109,10 +111,14 @@ globalThis.CompositionCore=(()=>{
     context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
     const background=project.canvas.background;
     if(background){
-      const image=images.get(background.source),c=background.crop;
+      let image=images.get(background.source);const c=background.crop;
       if(image){
-        const scale=Math.max(background.width/c.width,background.height/c.height),sw=background.width/scale,sh=background.height/scale;
-        context.drawImage(image,c.x+(c.width-sw)/2,c.y+(c.height-sh)/2,sw,sh,background.x,background.y,background.width,background.height);
+        context.save();context.globalAlpha=background.color[3];image=colorImage(image,background.color);
+        if(background.fit==='cover'){
+          const scale=Math.max(background.width/c.width,background.height/c.height),sw=background.width/scale,sh=background.height/scale;
+          context.drawImage(image,c.x+(c.width-sw)/2,c.y+(c.height-sh)/2,sw,sh,background.x,background.y,background.width,background.height);
+        }else context.drawImage(image,c.x,c.y,c.width,c.height,background.x,background.y,background.width,background.height);
+        context.restore();
       }
     }
     for(const l of project.layers){

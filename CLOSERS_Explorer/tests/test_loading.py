@@ -21,12 +21,13 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
-    def test_background_team_selection_uses_available_uv_and_aspect_preserving_placement(self):
+    def test_background_team_selection_uses_available_uv_card_rectangle_and_color(self):
         from contextlib import nullcontext
         data = LoadingData(Mock())
         data.session = nullcontext
         data.table = Mock(return_value={'DIALOG': {'CONTROL': {1: {
-            'm_Name': 'SLOT_1_BG', 'm_Pos': {1:21, 2:22}, 'm_vecPicData': {1: {
+            'm_Name': 'SLOT_1_BG', 'm_Pos': {1:21, 2:22},
+            'm_BGColor': {1:.137255, 2:.168627, 3:.188235, 4:1}, 'm_vecPicData': {1: {
                 'm_fWidth': 454, 'm_fHeight': 724, 'UVKey': 'BG_LOADING'}}}}}})
         data.layout = Mock(return_value={'area': dict(x=23,y=24)})
         data.image_id = Mock(return_value=7)
@@ -38,7 +39,8 @@ class LoadingTests(unittest.TestCase):
             data.image_id.assert_called_with(f'UI_UNIT_CREATE_BG2_TEAM{team}.DDS')
             self.assertEqual((plan['team'], plan['crop'], plan['x'], plan['y'],
                               plan['width'], plan['height']), (team, crop if team==1 else None, -2, -2, 454, 724))
-            self.assertEqual(plan['fit'], 'cover')
+            self.assertEqual(plan['fit'], 'stretch')
+            self.assertEqual(plan['color'], [.137255, .168627, .188235, 1])
         data.atlas.assert_called_once_with('UI_UNIT_CREATE_BG2_TEAM1.DDS')
         with self.assertRaises(ValueError):
             data.background(5)

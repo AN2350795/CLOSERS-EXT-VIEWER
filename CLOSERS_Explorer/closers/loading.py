@@ -131,7 +131,7 @@ class LoadingData:
         return self.cached(('illustration-registry',), self._illustration_registry)
 
     def background(self, team=1):
-        """Use the team's UV when present, preserving aspect inside the card."""
+        """Map the team's UV (or full texture) to the loading card rectangle."""
         names = {1: '검은양', 2: '늑대개', 3: '사냥터지기', 4: '시궁쥐'}
         if team not in names:
             raise ValueError('배경 팀은 1~4 중에서 선택해 주세요.')
@@ -145,7 +145,9 @@ class LoadingData:
             crop = self.atlas(filename).get(picture['UVKey']) if self.rows(tet) else None
             card_pos, picture_pos = slot.get('m_Pos', {}), picture.get('m_Pos', {})
             return dict(entry_id=self.image_id(filename), name='게임 기본 · '+names[team], team=team,
-                crop=crop, fit='cover',
+                crop=crop, fit='stretch',
+                # RGB modulation follows the control color; final game shader behavior is unverified.
+                color=[slot.get('m_BGColor', {}).get(i, 1) for i in range(1, 5)],
                 x=card_pos.get(1, 0)+picture_pos.get(1, 0)-layout['area']['x'],
                 y=card_pos.get(2, 0)+picture_pos.get(2, 0)-layout['area']['y'],
                 width=picture['m_fWidth'], height=picture['m_fHeight'])

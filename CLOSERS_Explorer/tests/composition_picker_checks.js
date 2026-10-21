@@ -9,7 +9,7 @@ try{
   const particle={seed:123,life:2,maxParticles:1,rate:0,instant:1,emitterLife:10,deaths:0,radius:[0,0,0],radiusMin:0,gravity:[0,0,0],scale:[1,1],basis:[4,4],drawCount:1,dual:false,dualDrawCount:1,clamp:true,blend:['SRCALPHA','INVSRCALPHA'],mask_entry_id:1,tracks:[{property:'size',mode:'initial',value:[4,4,1],start:0,end:null},{property:'color',mode:'initial',value:[1,1,1,1],start:0,end:null},{property:'color',mode:'final',value:[1,1,1,0],start:0,end:null}]};
   window.fetch=async(path,options)=>{
     const url=new URL(path,location.origin);requests.push(url.pathname+url.search);
-    if(url.pathname==='/api/loading-background')return Response.json({team:Number(url.searchParams.get('team')||1),entry_id:7+Number(url.searchParams.get('team')||1),name:'게임 기본',crop:{x:0,y:0,width:4,height:4},x:-2,y:-2,width:454,height:724});
+    if(url.pathname==='/api/loading-background')return Response.json({team:Number(url.searchParams.get('team')||1),entry_id:7+Number(url.searchParams.get('team')||1),name:'게임 기본',fit:'stretch',color:[.137255,.168627,.188235,1],crop:{x:0,y:0,width:4,height:4},x:-2,y:-2,width:454,height:724});
     if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640,screen:{width:1920,height:1080},card:{x:21,y:22,width:454,height:724},area:{x:23,y:24,width:450,height:640}});
     if(url.pathname==='/api/loading-illustration/9')return Response.json({width:450,height:640,layers:[{entry_id:9,name:'테스트 로딩',role:'illustration',gameIllustration:true,x:0,y:0,width:450,height:640,crop:{x:0,y:0,width:4,height:4}}]});
     if(url.pathname==='/api/loading-presets')return Response.json({items:presets});
@@ -100,11 +100,11 @@ try{
   check(composition.canvas.color==='#eeeae3'&&!$('background-color-options').hidden,'color swatch did not apply');
   document.querySelector('[name="background-mode"][value=game]').click();await until(()=>!busy);
   checkBackgroundLayout();
-  check(composition.canvas.background&&composition.version===5&&$('background-color-options').hidden,'game background not applied');
+  check(composition.canvas.background&&composition.version===6&&$('background-color-options').hidden,'game background not applied');
   $('background-team').value='3';$('background-team').dispatchEvent(new Event('change'));await until(()=>!busy);
   check(composition.canvas.background.team===3&&!$('background-team-options').hidden,'team background was not selected');
   const bgSaved=projectForSave(),bgPixels=makeExportCanvas().toDataURL();
-  check(bgSaved.sources.length===1&&bgSaved.canvas.background.x===-2,'game background source pruned or placement lost');
+  check(bgSaved.sources.length===1&&bgSaved.canvas.background.x===-2&&bgSaved.canvas.background.fit==='stretch'&&bgSaved.canvas.background.color[0]===.137255,'game background source pruned or placement lost');
   await importProject(bgSaved);
   check(makeExportCanvas().toDataURL()===bgPixels&&$('background-team').value==='3','game background changed after restore');
   await addImage(9);await applyGameFrame(false,2);playing=false;
