@@ -112,15 +112,26 @@ class LoadingData:
             slot = next(v for v in dialog['CONTROL'].values() if v.get('m_Name')=='SLOT_1_INFO')
             pictures = list(slot['m_vecPicData'].values())
             illustration = next(p for p in pictures if p.get('UVKey')=='LOADING_DUNGEON')
+            card = next(v for v in dialog['CONTROL'].values() if v.get('m_Name')=='SLOT_1_BG')
+            def rect(value):
+                pos = value.get('m_Pos', {})
+                return dict(x=pos.get(1, 0), y=pos.get(2, 0), width=value['m_fWidth'], height=value['m_fHeight'])
+            card_rect = rect(card)
+            area = rect(illustration)
+            area['x'] += slot.get('m_Pos', {}).get(1, 0)
+            area['y'] += slot.get('m_Pos', {}).get(2, 0)
             return dict(width=illustration['m_fWidth'],height=illustration['m_fHeight'],
                 uv=illustration['UVKey'],origin=illustration['m_Pos'],pictures=pictures,
+                screen=dict(width=dialog['m_fWidth'],height=dialog['m_fHeight']),
+                card=card_rect,area=area,cards=[rect(v) for v in dialog['CONTROL'].values()
+                    if re.fullmatch(r'SLOT_\d+_BG', v.get('m_Name', ''))],
                 source='DLG_LOADING_DUNGEON_START_V2.LUA',control=slot['m_Name'])
 
     def illustration_registry(self):
         return self.cached(('illustration-registry',), self._illustration_registry)
 
     def background(self, team=1):
-        """Keep the whole team emblem when placing the card's background."""
+        """Use the team's UV when present, preserving aspect inside the card."""
         names = {1: '검은양', 2: '늑대개', 3: '사냥터지기', 4: '시궁쥐'}
         if team not in names:
             raise ValueError('배경 팀은 1~4 중에서 선택해 주세요.')
@@ -130,9 +141,13 @@ class LoadingData:
             picture = slot['m_vecPicData'][1]
             layout = self.layout()
             filename = f'UI_UNIT_CREATE_BG2_TEAM{team}.DDS'
+            tet = str(Path(filename).with_suffix('.TET'))
+            crop = self.atlas(filename).get(picture['UVKey']) if self.rows(tet) else None
+            card_pos, picture_pos = slot.get('m_Pos', {}), picture.get('m_Pos', {})
             return dict(entry_id=self.image_id(filename), name='게임 기본 · '+names[team], team=team,
-                crop=None,
-                x=-layout['origin'][1], y=-layout['origin'][2],
+                crop=crop, fit='cover',
+                x=card_pos.get(1, 0)+picture_pos.get(1, 0)-layout['area']['x'],
+                y=card_pos.get(2, 0)+picture_pos.get(2, 0)-layout['area']['y'],
                 width=picture['m_fWidth'], height=picture['m_fHeight'])
 
     def _illustration_registry(self):

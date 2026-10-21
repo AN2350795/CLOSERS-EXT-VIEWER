@@ -21,21 +21,25 @@ def literal_chunk(opcodes, constants):
 
 
 class LoadingTests(unittest.TestCase):
-    def test_background_team_selection_preserves_full_emblem_and_card_placement(self):
+    def test_background_team_selection_uses_available_uv_and_aspect_preserving_placement(self):
         from contextlib import nullcontext
         data = LoadingData(Mock())
         data.session = nullcontext
         data.table = Mock(return_value={'DIALOG': {'CONTROL': {1: {
-            'm_Name': 'SLOT_1_BG', 'm_vecPicData': {1: {
+            'm_Name': 'SLOT_1_BG', 'm_Pos': {1:21, 2:22}, 'm_vecPicData': {1: {
                 'm_fWidth': 454, 'm_fHeight': 724, 'UVKey': 'BG_LOADING'}}}}}})
-        data.layout = Mock(return_value={'origin': {1: 2, 2: 2}})
+        data.layout = Mock(return_value={'area': dict(x=23,y=24)})
         data.image_id = Mock(return_value=7)
-        data.atlas = Mock(side_effect=AssertionError('Do not crop team emblems'))
+        data.rows = Mock(side_effect=lambda name: [{}] if name=='UI_UNIT_CREATE_BG2_TEAM1.TET' else [])
+        crop = dict(x=200,y=0,width=640,height=1024)
+        data.atlas = Mock(return_value={'BG_LOADING': crop})
         for team in range(1, 5):
             plan = data.background(team)
             data.image_id.assert_called_with(f'UI_UNIT_CREATE_BG2_TEAM{team}.DDS')
             self.assertEqual((plan['team'], plan['crop'], plan['x'], plan['y'],
-                              plan['width'], plan['height']), (team, None, -2, -2, 454, 724))
+                              plan['width'], plan['height']), (team, crop if team==1 else None, -2, -2, 454, 724))
+            self.assertEqual(plan['fit'], 'cover')
+        data.atlas.assert_called_once_with('UI_UNIT_CREATE_BG2_TEAM1.DDS')
         with self.assertRaises(ValueError):
             data.background(5)
 
@@ -262,9 +266,13 @@ class LoadingTests(unittest.TestCase):
             BOT=dict(x=0,y=172,width=450,height=84), SUMMER=dict(x=322,y=0,width=161,height=161))
         def pic(uv,x,y,w,h):
             return dict(UVKey=uv,m_Pos={1:x,2:y},m_fWidth=w,m_fHeight=h)
-        dialog = dict(DIALOG=dict(CONTROL={1:dict(m_Name='SLOT_1_INFO',m_vecPicData={
+        dialog = dict(DIALOG=dict(m_fWidth=1920,m_fHeight=1080,CONTROL={2:dict(m_Name='SLOT_1_BG',m_Pos={1:21,2:22},m_fWidth=454,m_fHeight=724),1:dict(m_Name='SLOT_1_INFO',m_Pos={1:21,2:22},m_vecPicData={
             1:pic('LOADING_DUNGEON',2,2,450,640),2:pic('TOP',2,2,450,170),3:pic('BOT',2,558,450,84)})}))
         with patch('closers.loading.tables', return_value=dialog), patch.object(data, 'body', return_value=b''):
+            layout = data.layout()
+            self.assertEqual(layout['screen'],dict(width=1920,height=1080))
+            self.assertEqual(layout['area'],dict(x=23,y=24,width=450,height=640))
+            self.assertEqual(layout['card'],dict(x=21,y=22,width=454,height=724))
             result = data.plan(67)
             with patch.object(data,'effects',side_effect=AssertionError('unrelated frame effects')):
                 mark = data.plan(67,mark_only=True)

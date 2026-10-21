@@ -173,11 +173,33 @@ function renderCanvas(){
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
   const editing=$('layer-edit').open,selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
   canvas.tabIndex=editing?0:-1;canvas.setAttribute('aria-label',editing?'선택한 조각을 드래그하거나 방향키로 이동하는 편집 화면':'이미지 조합 미리보기. 조각을 수정하려면 구성 요소에서 세부 편집을 여세요.');
-  $('layout-info').textContent=`배치 기준 ${c.width} × ${c.height}px`;renderBackground();
+  $('layout-info').textContent=gameLayout?.screen?`전체 로딩창 ${gameLayout.screen.width} × ${gameLayout.screen.height} · 카드 ${gameLayout.card.width} × ${gameLayout.card.height} · 현재 조합 ${c.width} × ${c.height}px`: `배치 기준 ${c.width} × ${c.height}px`;renderBackground();renderLayoutContext();
   const pixels=[...images.values()].reduce((n,v)=>n+v.bitmap.width*v.bitmap.height,0);
   $('canvas-summary').textContent=`미리보기 ${(scale*100).toFixed(0)}%`;
   $('source-info').textContent=`레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M`;
 }
+function renderLayoutContext(){
+  const target=$('layout-context-canvas'),layout=gameLayout;
+  target.hidden=!layout?.screen;
+  if(!layout?.screen||!$('layout-context').open)return;
+  const scale=Math.min(1,Math.max(1,$('layout-context').clientWidth)/layout.screen.width);
+  target.width=Math.round(layout.screen.width*scale);target.height=Math.round(layout.screen.height*scale);
+  const ctx=target.getContext('2d');ctx.fillStyle='#101823';ctx.fillRect(0,0,target.width,target.height);
+  ctx.save();ctx.scale(scale,scale);
+  for(const card of layout.cards||[layout.card]){
+    ctx.fillStyle='#232b30';ctx.fillRect(card.x,card.y,card.width,card.height);
+    ctx.strokeStyle='#536374';ctx.lineWidth=2;ctx.strokeRect(card.x,card.y,card.width,card.height);
+  }
+  ctx.restore();
+  const area=layout.area,preview=document.createElement('canvas');preview.width=Math.round(area.width*scale);preview.height=Math.round(area.height*scale);
+  if(preview.width&&preview.height){
+    Core.draw(preview.getContext('2d'),composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),preview.width,preview.height,animationTime);
+    ctx.drawImage(preview,area.x*scale,area.y*scale);
+  }
+  ctx.strokeStyle='#83dfc5';ctx.lineWidth=2;ctx.strokeRect(area.x*scale,area.y*scale,area.width*scale,area.height*scale);
+  preview.width=preview.height=1;
+}
+$('layout-context').ontoggle=renderLayoutContext;
 async function loadSource(id,expected=null,staged=[]){
   const metadata=await api('/api/composition-source/'+id);
   if(expected&&['archive','ordinal','name','source_sha256','image_sha256','width','height'].some(key=>metadata[key]!==expected[key]))throw Error('조합 원본이 변경되었습니다: '+expected.name+' · 현재 조합을 유지합니다.');
@@ -308,7 +330,14 @@ async function importProject(raw,append=false){
     const next=append?snapshot():{...value,sources:[],layers:[]};
     if(append){const scale=Math.min(next.canvas.width/value.canvas.width,next.canvas.height/value.canvas.height),dx=(next.canvas.width-value.canvas.width*scale)/2,dy=(next.canvas.height-value.canvas.height*scale)/2;for(const l of value.layers)if(!l.markParent){l.x=l.x*scale+dx;l.y=l.y*scale+dy;l.width*=scale;l.height*=scale;}}
     for(const s of staged)if(!next.sources.some(source=>source.key===s.key))next.sources.push({...s.value.metadata,key:s.key});
-    if(!append&&next.canvas.background)next.canvas.background.source=mapping.get(next.canvas.background.source);
+    if(!append&&next.canvas.background){
+      const background=next.canvas.background; background.source=mapping.get(background.source);
+      const source=next.sources.find(s=>s.key===background.source);
+      if(/^UI_UNIT_CREATE_BG2_TEAM[1-4]\.DDS$/i.test(source.name)){
+        const plan=await api('/api/loading-background?team='+background.team);
+        Object.assign(background,{crop:plan.crop||{x:0,y:0,width:source.width,height:source.height},fit:'cover',x:plan.x,y:plan.y,width:plan.width,height:plan.height});
+      }
+    }
     const layerMapping=new Map(value.layers.map(l=>[l.id,'l'+(++layerSequence)]));
     for(const l of value.layers)next.layers.push({...l,id:layerMapping.get(l.id),...(l.markParent?{markParent:layerMapping.get(l.markParent)}:{}),source:mapping.get(l.source),...(l.animation?{animation:{...l.animation,frames:l.animation.frames.map(f=>({...f,source:mapping.get(f.source)})),...(l.animation.particle?{particle:{...l.animation.particle,...(l.animation.particle.mask?{mask:mapping.get(l.animation.particle.mask)}:{})}}:{})}}:{})});
     const checked=Core.validate(fixedCanvas(next));

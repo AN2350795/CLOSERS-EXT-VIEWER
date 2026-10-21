@@ -10,7 +10,7 @@ try{
   window.fetch=async(path,options)=>{
     const url=new URL(path,location.origin);requests.push(url.pathname+url.search);
     if(url.pathname==='/api/loading-background')return Response.json({team:Number(url.searchParams.get('team')||1),entry_id:7+Number(url.searchParams.get('team')||1),name:'게임 기본',crop:{x:0,y:0,width:4,height:4},x:-2,y:-2,width:454,height:724});
-    if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640});
+    if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640,screen:{width:1920,height:1080},card:{x:21,y:22,width:454,height:724},area:{x:23,y:24,width:450,height:640}});
     if(url.pathname==='/api/loading-illustration/9')return Response.json({width:450,height:640,layers:[{entry_id:9,name:'테스트 로딩',role:'illustration',gameIllustration:true,x:0,y:0,width:450,height:640,crop:{x:0,y:0,width:4,height:4}}]});
     if(url.pathname==='/api/loading-presets')return Response.json({items:presets});
     if(url.pathname==='/api/composition-resolve')return Response.json({ids:JSON.parse(options.body).sources.map(s=>s.ordinal)});
@@ -39,6 +39,11 @@ try{
   check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
   document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
   const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
+  $('layout-context').open=true;renderLayoutContext();
+  const contextCanvas=$('layout-context-canvas'),contextScale=contextCanvas.width/1920;
+  check(Math.abs(contextCanvas.width/contextCanvas.height-1920/1080)<.01,'loading screen overview has the wrong aspect ratio');
+  check(contextCanvas.getContext('2d').getImageData(Math.round(248*contextScale),Math.round(344*contextScale),1,1).data[0]>200,'composition was not placed at the game illustration coordinates');
+  $('layout-context').open=false;
   check(!document.querySelector('#game-frame')&&!document.querySelector('#find-all'),'old dropdown/search controls remain');
   document.querySelector('#pick-frame').click();await until(()=>document.querySelectorAll('.asset-card').length===12);
   check(document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/frame/1'),'assembled frame thumbnail URL');
@@ -91,7 +96,7 @@ try{
   check(getComputedStyle(document.querySelector('[data-color="#eeeae3"]')).backgroundColor==='rgb(238, 234, 227)','recommended color swatch is not visible');
   check(composition.canvas.color==='#eeeae3'&&!$('background-color-options').hidden,'color swatch did not apply');
   document.querySelector('[name="background-mode"][value=game]').click();await until(()=>!busy);
-  check(composition.canvas.background&&composition.version===4&&$('background-color-options').hidden,'game background not applied');
+  check(composition.canvas.background&&composition.version===5&&$('background-color-options').hidden,'game background not applied');
   $('background-team').value='3';$('background-team').dispatchEvent(new Event('change'));await until(()=>!busy);
   check(composition.canvas.background.team===3&&!$('background-team-options').hidden,'team background was not selected');
   const bgSaved=projectForSave(),bgPixels=makeExportCanvas().toDataURL();

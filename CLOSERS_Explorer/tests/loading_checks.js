@@ -52,10 +52,14 @@ try{
   bgRaw.canvas.background={source:'s2',name:'game',crop:{x:0,y:0,width:4,height:4},x:0,y:0,width:4,height:4};
   const bgProject=CompositionCore.validate(bgRaw),bgCanvas=new OffscreenCanvas(8,8);
   CompositionCore.draw(bgCanvas.getContext('2d'),bgProject,images,8,8);
-  check(bgProject.version===4&&bgCanvas.getContext('2d').getImageData(7,7,1,1).data[2]===255,'game background missing from scaled export');
+  check(bgProject.version===5&&bgCanvas.getContext('2d').getImageData(7,7,1,1).data[2]===255,'game background missing from scaled export');
   check(CompositionCore.usedSources([],bgProject.canvas).has('s2'),'background source omitted from persistence');
   const legacyBg=structuredClone(bgRaw);legacyBg.sources[1].name='UI_UNIT_CREATE_BG2_TEAM1.DDS';legacyBg.canvas.background.crop={x:1,y:0,width:2,height:4};
-  check(CompositionCore.validate(legacyBg).canvas.background.crop.width===4,'legacy enlarged game background was not migrated');
+  check(CompositionCore.validate(legacyBg).canvas.background.fit==='cover','legacy background must preserve aspect');
+  const square=new OffscreenCanvas(4,4),squareCtx=square.getContext('2d');squareCtx.fillStyle='black';squareCtx.fillRect(0,0,4,4);squareCtx.fillStyle='red';squareCtx.fillRect(1,1,2,2);
+  const aspect=structuredClone(bgRaw);aspect.canvas.height=8;aspect.canvas.background.height=8;
+  const tall=new OffscreenCanvas(4,8);CompositionCore.draw(tall.getContext('2d'),CompositionCore.validate(aspect),new Map([['s2',square]]),4,8);
+  check(tall.getContext('2d').getImageData(0,3,1,1).data[0]>150&&tall.getContext('2d').getImageData(3,3,1,1).data[0]>150,'square emblem was horizontally compressed into a narrow card');
   for(const mutate of [p=>p.canvas.background.source='s99',p=>p.canvas.background.width=NaN,p=>p.canvas.transparent=true]){
     const invalid=structuredClone(bgRaw);mutate(invalid);let rejected=false;try{CompositionCore.validate(invalid);}catch{rejected=true;}check(rejected,'invalid background accepted');
   }
