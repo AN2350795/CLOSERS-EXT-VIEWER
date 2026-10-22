@@ -1,4 +1,5 @@
 import {setupPicker} from '/model-picker.js';
+import {replacePart} from '/avatar-navigation.js';
 import {pickerMemory} from '/model-memory.js';
 import {setupPreviews} from '/model-preview.js';
 import {buildModel} from '/model-core.js';
@@ -20,7 +21,10 @@ async function api(url){
 }
 const picker=setupPicker({state,api,element,operation:async fn=>{if(!state.busy)await fn();},loadModel:async ids=>{loaded=ids;}});
 try{
- await picker.search();
+ const worn=[{entry_id:1,model_group:{kind:'avatar',character:'STRIKER',part:'UPBODY'}},{entry_id:2,model_group:{kind:'avatar',character:'STRIKER',part:'LOWBODY'}},{entry_id:3,model_group:{kind:'avatar',character:'STRIKER',part:'HAIR'}}];
+ check(replacePart(worn,{id:4,character:'STRIKER',part:'ONE_PIECE'},[5]).join(',')==='3,4,5','one piece replaces both body parts and keeps hair with its supplements');
+ check(replacePart([{entry_id:4,model_group:{kind:'avatar',character:'STRIKER',part:'ONE_PIECE'}}],{id:1,character:'STRIKER',part:'UPBODY'}).join(',')==='1','upper body replaces one piece');
+ await picker.search();check(calls.length===0,'initial visit makes no model requests');$('model-character').value='STRIKER';await picker.search();
  check($('model-results').children.length===40,'40 results by default');
  const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
  check(first.querySelector('.model-open').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
@@ -89,7 +93,7 @@ try{
  localStorage.setItem('closers.model-picker.v1','{"favorites":[null,{},1],"recent":"invalid"}');
  check(pickerMemory().data.favorites.length===0&&pickerMemory().data.recent.length===0,'invalid storage tolerated');
  localStorage.setItem('closers.model-picker.v1',saved);
- const remembered=pickerMemory().data.settings;check(remembered.limit==='60'&&remembered.q==='file 1','search settings saved');
+ const remembered=pickerMemory().data.settings;check(remembered.limit==='60'&&remembered.q==='file 1','search settings saved '+JSON.stringify(remembered));
  $('model-search').value='';setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
  check($('model-search').value==='file 1'&&$('model-limit').value==='60','search settings restored');
  const scene={frames:[],meshes:[{name:'preview-triangle',frame:-1,vertices:[-1,0,0,1,0,0,0,2,0],indices:[0,2,1],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,0,0,1],image:null}]}]};

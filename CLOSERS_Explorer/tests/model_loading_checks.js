@@ -13,7 +13,7 @@ window.fetch=async (url,options)=>{
   return originalFetch(url,options);
 };
 try{
-  await import('/model.js');
+  await import('/model.js');document.querySelector('#model-character').value='CASTER';document.querySelector('#model-character').dispatchEvent(new Event('change'));await until(()=>document.querySelector('#model-results button'));
   const status=document.getElementById('model-status'),viewport=document.getElementById('viewport');
   let pending=modelViewer.loadModel([1]);await until(()=>requested);
   check(!modelViewer.state.model&&status.classList.contains('is-loading')&&status.textContent.includes('모델 여는 중'),'opening appears before model response');

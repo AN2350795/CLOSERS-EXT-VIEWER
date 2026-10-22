@@ -13,7 +13,7 @@ localStorage.clear();
 const picker=setupPicker({state,element,operation:async fn=>fn(),loadModel:async()=>{},applyEye:async(item,face,texture)=>{applied={key:item.key,face,texture};state.data={eye_avatar:{key:item.key},sources:[]};document.dispatchEvent(new Event('model-selection'));},
  api:async url=>{requests.push(url);return {items:url.startsWith('/api/model-eyes')?items:[],total:url.startsWith('/api/model-eyes')?items.length:0,facets:Object.fromEntries(['character','kind','part','family','variant'].map(k=>[k,k==='character'?[{value:'STRIKER',label:'이세하',count:4}]:[]]))};}});
 try{
- await picker.search();$('model-saved').value='existing';document.querySelector('[data-mode=eyes]').click();await until(()=>$('model-results').children.length===4);
+ await picker.search();$('model-character').value='STRIKER';await picker.search();$('model-saved').value='existing';document.querySelector('[data-mode=eyes]').click();await until(()=>$('model-results').children.length===4);
  check($('model-saved').value===''&&requests.at(-1).startsWith('/api/model-eyes?'),'eye tab includes unextracted items and uses item API');
  const rows=[...$('model-results').children];check(rows[0].textContent.includes('기본 눈동자')&&rows[1].textContent.includes('붉은 눈동자')&&rows[2].textContent.includes('푸른 눈동자'),'shared face keeps separate eye names');
  rows[1].querySelector('.model-open').click();await until(()=>applied?.key==='STRIKER:10');check(applied.face===1&&applied.texture===2&&rows[1].classList.contains('is-selected'),'selected eye uses its texture and marks its row');

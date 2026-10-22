@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose,restorePose} from './model-core.js';
+import {slots} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
 import {setupPreviews} from './model-preview.js';
 
@@ -51,8 +52,8 @@ async function showTextures(){
   return failed;
 }
 function showParts(){
-  $('model-parts').replaceChildren();
-  state.data.sources.forEach(source=>{const row=element('div');row.className='model-part';const title=element('span',source.display_name||source.name);title.title=(source.game_names||[]).join('\n');row.append(title);if(source.display_name)row.append(element('p',source.name));row.append(element('p',source.archive+' · #'+source.ordinal));if(source.saved_exists){const a=element('a','원본 파일 저장');a.href='/api/download/'+source.entry_id+'?token='+encodeURIComponent(token);row.append(a);}else row.append(element('p','원본 저장은 라이브러리에서 이 항목을 추출하세요.'));if(state.ids.length>1){const remove=element('button','부위 제외');remove.onclick=()=>operation(()=>loadModel(state.ids.filter(id=>id!==source.entry_id),state.skeleton));row.append(remove);}$('model-parts').append(row);});
+  $('model-parts').replaceChildren();const places=new Map();for(const [part,label] of Object.entries({...slots,FACE:'?? ? ???'})){const box=element('section');box.className='equipped-slot';box.append(element('h3',label),element('small','???'));places.set(part,box);$('model-parts').append(box);}const extras=element('details');extras.append(element('summary','???? ? ?? ??'));$('model-parts').append(extras);
+  state.data.sources.forEach(source=>{const row=element('div');row.className='model-part';const title=element('span',source.display_name||source.name);title.title=(source.game_names||[]).join('\n');row.append(title);if(source.display_name)row.append(element('p',source.name));row.append(element('p',source.archive+' · #'+source.ordinal));if(source.saved_exists){const a=element('a','원본 파일 저장');a.href='/api/download/'+source.entry_id+'?token='+encodeURIComponent(token);row.append(a);}else row.append(element('p','원본 저장은 라이브러리에서 이 항목을 추출하세요.'));if(state.ids.length>1){const remove=element('button','부위 제외');remove.onclick=()=>operation(()=>loadModel(state.ids.filter(id=>id!==source.entry_id),state.skeleton));row.append(remove);}const metadata=element('details');metadata.append(element('summary','?? ??'));for(const child of [...row.children])if(child!==title&&child.tagName!=='BUTTON')metadata.append(child);row.append(metadata);const box=places.get(source.model_group?.part);if(box){box.querySelector('small')?.remove();box.append(row);}else extras.append(row);});
   $('motion-choice').replaceChildren();const motion=state.data.motion;if(motion?.candidates.length){$('motion-choice').append(element('h3','캐릭터 공용 뼈'));for(const candidate of motion.candidates){const button=element('button',candidate.name+' 연결');button.title=candidate.archive;button.onclick=()=>operation(()=>loadModel(state.ids,candidate.id));$('motion-choice').append(button);}}
   $('motion-choice').append(element('p','현재 뼈: '+state.data.skeleton_source.name));
 }

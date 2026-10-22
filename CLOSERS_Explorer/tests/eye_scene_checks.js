@@ -18,7 +18,7 @@ window.fetch=async(url,options)=>{
  return originalFetch(url,options);
 };
 try{
- await import('/model.js');await modelViewer.loadModel([2,1]);
+ await import('/model.js');await modelViewer.loadModel([2,1]);document.querySelector('#model-character').value='STRIKER';
  document.querySelector('[data-mode=eyes]').click();await until(()=>document.querySelectorAll('[data-eye]').length===3);
  document.querySelector('[data-eye="STRIKER:10"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:10');
  check(modelViewer.state.ids.join(',')==='2,1'&&requests.at(-1).searchParams.get('eye_texture')==='10','eye change preserves hair and sends texture selection');
