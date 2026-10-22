@@ -335,7 +335,11 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
                 elif url.path == '/api/model-scene':
                     ids = [int(v) for v in query.get('entries','').split(',') if v]
-                    self.respond(models.scene(ids,int(query['skeleton']) if query.get('skeleton') else None))
+                    self.respond(models.scene(ids,int(query['skeleton']) if query.get('skeleton') else None,
+                                              query.get('eye'),int(query['eye_face']) if query.get('eye_face') else None,
+                                              int(query['eye_texture']) if query.get('eye_texture') else None))
+                elif url.path == '/api/model-eyes':
+                    self.respond(models.eyes.browse(query))
                 elif url.path == '/api/model-facets':
                     self.respond(models.groups.facets(query))
                 elif url.path == '/api/model-browser':

@@ -14,6 +14,8 @@ class Models:
         self.catalog = catalog
         self.gate = threading.BoundedSemaphore(1)
         self.groups = ModelGroups(catalog)
+        from .model_eyes import EyeAvatars
+        self.eyes = EyeAvatars(catalog)
 
     def read(self,entry_id,fmt):
         row = self.catalog.get(int(entry_id))
@@ -60,15 +62,30 @@ class Models:
         return dict(name=name,candidates=values[:100],selected=preferred[0]['id'] if len(preferred)==1 else None,
                     truncated=len(values)>100)
 
-    def scene(self,entry_ids,skeleton_id=None):
+    def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None):
         if not 1<=len(entry_ids)<=16 or len(set(entry_ids))!=len(entry_ids):
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
         with self.gate:
+            eye=None
+            if eye_key is not None:
+                if eye_face not in entry_ids:raise ValueError('눈동자를 적용할 얼굴을 함께 선택하세요.')
+                eye=self.eyes.resolve(eye_key,eye_face,eye_texture)
             parts,sources,rows = [],[],[]
             vertices = 0
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
                 part = parse_x(body)
+                if eye and entry_id==eye_face:
+                    source['display_name']=eye['label']
+                    if not eye['basic']:
+                        from .model_eyes import eye_material
+                        count=0
+                        texture_row=self.catalog.get_resource(eye_texture)
+                        for mesh in part['meshes']:
+                            for mat in mesh['materials']:
+                                if eye_material(mat) or eye['geometry'] and Path(mat['texture'].replace('\\','/')).stem.upper() in eye['texture_targets']:
+                                    mat['texture']=texture_row['name'];mat['eye_texture_id']=eye_texture;count+=1
+                        if not count:raise ValueError('이 얼굴에서 눈동자 텍스처를 찾지 못했습니다.')
                 vertices += sum(len(mesh['vertices'])//3 for mesh in part['meshes'])
                 if vertices > 250_000:
                     raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
@@ -76,6 +93,14 @@ class Models:
             characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar'}
             if len(characters)>1:
                 raise ValueError('서로 다른 캐릭터의 아바타·얼굴은 함께 연결할 수 없습니다.')
+            if eye and eye['geometry']:
+                from .model_eyes import eye_material
+                if not any(classify(r['name'])['part']=='FACE' for r in rows):raise ValueError('눈동자와 기본 얼굴을 함께 선택하세요.')
+                for part,row in zip(parts,rows):
+                    if classify(row['name'])['part']!='FACE':continue
+                    for mesh in part['meshes']:
+                        if 'EYEBROW' in mesh['name'].upper():continue
+                        mesh['groups']=[g for g in mesh['groups'] if not eye_material(mesh['materials'][g[2]])]
             from .model_visibility import apply_visibility
             self.catalog.game_names.refresh()
             deferred=[]
@@ -134,6 +159,7 @@ class Models:
                         if mat['texture']:
                             name = Path(mat['texture'].replace('\\','/')).name
                             mat['image'] = self.candidates(name,row)
+                            if 'eye_texture_id' in mat:mat['image']['selected']=mat['eye_texture_id']
                     # Helper/collision geometry remains available as a toggle.
                     mesh['helper'] = any(s in mesh['name'].upper() for s in ('COLLISION','ATTACK_SPHERE','ATTACK_LINE','SHADOW_'))
                     scene['meshes'].append(mesh)
@@ -142,6 +168,7 @@ class Models:
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
             for source,row in zip(sources,rows):source['model_group']=dict(classify(row['name']))
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
+                         eye_avatar=dict(key=eye['key'],label=eye['label'],character=eye['character'],face_id=eye_face,texture_id=eye_texture,geometry=eye['geometry']) if eye else None,
                          equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))
             return scene
 

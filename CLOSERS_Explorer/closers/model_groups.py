@@ -14,7 +14,7 @@ CHARACTERS = dict(zip(
     '이세하 이슬비 서유리 제이 미스틸테인 윤리아 나타 레비아 하피 티나 바이올렛 트리스 볼프강 루나 소마 파이 세트 모아 김철수 미래 은하 루시 애리'.split()))
 LABELS = {
     'kind':dict(avatar='캐릭터 아바타',motion='공용 뼈·동작',npc='NPC',monster='몬스터',background='배경·오브젝트',effect='효과',unknown='미분류'),
-    'part':dict(HAIR='머리',FACE='얼굴',UPBODY='상의',LOWBODY='하의',FOOT='신발',HAND='장갑',ONE_PIECE='한 벌',WEAPON='무기',
+    'part':dict(HAIR='머리',FACE='얼굴',EYES='눈동자',UPBODY='상의',LOWBODY='하의',FOOT='신발',HAND='장갑',ONE_PIECE='한 벌',WEAPON='무기',
                 ACC_HEAD_HAIR='헤어 액세서리',ACC_HEAD_EAR='귀 액세서리',ACC_HEAD_EYE='눈 액세서리',ACC_HEAD_MOUTH='입 액세서리',
                 ACC_BODY_CHEST='가슴 액세서리',ACC_BODY_WING='등·날개 액세서리',ACC_BODY_WAIST='허리 액세서리',
                 ACC_LEG='다리 액세서리',ACC_RING_RIGHT='오른손 반지',ACC_RING_LEFT='왼손 반지',unknown='기타 부위'),

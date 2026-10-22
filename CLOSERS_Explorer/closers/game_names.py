@@ -109,6 +109,10 @@ class GameNames:
             row['game_names']=list(labels[:100])
             row['game_name_count']=len(labels)
             row['display_name']=labels[0]+(f' 외 {len(labels)-1}개' if len(labels)>1 else '')
+        from .model_groups import classify,CHARACTERS
+        group=classify(filename)
+        if filename.endswith('.X') and group['part']=='FACE' and group['set_name']=='BASIC':
+            row['display_name']=CHARACTERS.get(group['character'],group['character'])+' 기본 얼굴'
         return row
 
 

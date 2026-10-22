@@ -8,6 +8,11 @@ export function setupPreviews({api}){
   const queue=[],cache=new Map();
   const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);queue.push(entry.target);pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
   async function render(item,mode,saved){
+    if(item.preview_entry){
+      const token=document.querySelector('meta[name="explorer-token"]').content;
+      const src='/api/media/'+item.preview_entry+'?'+new URLSearchParams({token});
+      try{const image=new Image();image.src=src;await image.decode();return src;}catch{return null;}
+    }
     if(item.item_icon?.sha256){
       const token=document.querySelector('meta[name="explorer-token"]').content;
       const src='/api/model-icon/'+encodeURIComponent(item.item_icon.sha256)+'?'+new URLSearchParams({token});
@@ -67,7 +72,7 @@ export function setupPreviews({api}){
       try{
         let src=cache.get(key);if(!cache.has(key)){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
         if(!src){if(target.isConnected){target.textContent='아이콘 없음';target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
-        if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon);if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
+        if(target.isConnected){const icon=src.startsWith('/api/model-icon/'),img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
       }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
     }}finally{running=false;}
   }
