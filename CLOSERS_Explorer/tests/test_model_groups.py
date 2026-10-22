@@ -14,6 +14,20 @@ def avatar(character='STRIKER',costume='CLOTH_212_A',part='UPBODY',number=1):
 
 
 class ModelGroupTests(unittest.TestCase):
+    def test_character_scope_excludes_unrelated_files_before_saved_checks(self):
+        from unittest.mock import patch
+        self.add([avatar(),avatar(character='CASTER'),avatar(costume='A',part='ACC_BODY_WING'),
+                  '1499002201_GUST_INVALID_NA_EP_AVATAR_ACC_HEAD_EYE.X'])
+        checked=[]
+        def saved(row):checked.append(row['name']);return True
+        with patch.object(self.groups,'saved',side_effect=saved):
+            result=self.groups.browse(dict(character='STRIKER',mode='sets',saved='existing'))
+        self.assertEqual(result['total'],1)
+        self.assertTrue(all('STRIKER' in name and 'ACC_' not in name for name in checked))
+        accessories=self.groups.browse(dict(character='STRIKER',mode='accessories'))
+        self.assertEqual(accessories['total'],2)
+        self.assertEqual(sum(r['shared'] for r in accessories['items']),1)
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name);self.catalog=Catalog(self.root/'work')
@@ -64,7 +78,7 @@ class ModelGroupTests(unittest.TestCase):
         self.assertEqual(sum(r['count'] for r in f['kind']),2)
         combined=self.groups.browse({'character':'STRIKER','saved':'existing'})
         self.assertEqual(combined['total'],1)
-        self.assertIn('CASTER',{r['value'] for r in combined['facets']['character']})
+        self.assertEqual({'STRIKER'},{r['value'] for r in combined['facets']['character']})
         self.assertEqual(self.groups.browse({'character':'STRIKER','mode':'sets'})['total'],2)
 
     def test_filters_apply_to_catalog_and_extraction_scope(self):

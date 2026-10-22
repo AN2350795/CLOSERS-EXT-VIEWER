@@ -77,15 +77,15 @@ class EyeAvatars:
             appearances[key]['item_ids'].append(row['item_id'])
         return list(appearances.values())
 
-    def resources(self):
-        definitions=self.definitions()
+    def resources(self,character=''):
+        definitions=[r for r in self.definitions() if not character or r['character']==character]
         by_name=defaultdict(list)
         wanted={v[k] for v in definitions for k in ('face_name','texture_name','icon_name') if v[k]}
         with self.catalog.connect() as db:
             faces=[dict(r) for r in db.execute('''SELECT e.id,e.name,e.output,e.flag,a.path archive,e.ordinal,a.mtime/1000000 updated_at
                 FROM entries e JOIN archives a ON a.id=e.archive_id
                 WHERE e.format='x' AND e.name LIKE '%EP_AVATAR%FACE.X' AND e.flag!=2 ORDER BY e.id''')
-                   if classify(r['name'])['part']=='FACE']
+                   if classify(r['name'])['part']=='FACE' and (not character or classify(r['name'])['character']==character)]
             for row in faces:by_name[row['name'].upper()].append(row)
             image_names=sorted(wanted-{r['name'].upper() for r in faces})
             for offset in range(0,len(image_names),400):
@@ -119,7 +119,7 @@ class EyeAvatars:
         return result
 
     def browse(self,filters):
-        rows=self.resources()
+        rows=self.resources(filters.get('character',''))
         if filters.get('saved')=='existing':rows=[r for r in rows if r['saved_exists']]
         elif filters.get('saved')=='missing':rows=[r for r in rows if not r['saved_exists']]
         if filters.get('q'):
@@ -132,7 +132,7 @@ class EyeAvatars:
         return result
 
     def resolve(self,key,face_id,texture_id=None):
-        resources=self.resources()
+        resources=self.resources(key.split(':')[0])
         option=next((r for r in resources if r['key']==key),None)
         if not option:raise ValueError('눈동자 아이템을 찾을 수 없습니다.')
         if face_id not in [r['id'] for r in option['face_candidates']]:raise ValueError('눈동자의 얼굴 출처가 다릅니다.')

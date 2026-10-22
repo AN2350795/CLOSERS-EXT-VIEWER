@@ -26,6 +26,10 @@ CORE = {'HAIR','UPBODY','LOWBODY','FOOT','HAND','ONE_PIECE','FACE'}
 @lru_cache(maxsize=65536)
 def classify(name):
     stem = Path(name.replace('\\','/')).stem.upper()
+    if '_GUST_INVALID_' in stem and '_EP_AVATAR_ACC_' in stem:
+        result=dict(classify(stem.replace('_GUST_INVALID_','_GUST_USER_SHARED_')+'.X'))
+        result.update(character='',family='ACCESSORY',set_key='',set_name='')
+        return result
     value = dict(character='',kind='unknown',family='unknown',part='unknown',variant='BASE',set_key='',set_name='',item_code='',raw_part='')
     match = re.search(r'(?:^|_)GUST_USER_([A-Z]+)_(.+?)_EP_AVATAR(?:_(.*))?$',stem)
     if match:
@@ -64,28 +68,39 @@ def field(name,key):
 
 class ModelGroups:
     def __init__(self,catalog):
-        self.catalog=catalog;self.lock=threading.RLock();self.version=None;self.rows=[]
+        self.catalog=catalog;self.lock=threading.RLock();self.version=None;self.rows=[];self.scopes={}
 
-    def snapshot(self,refresh=False):
+    def snapshot(self,refresh=False,character='',mode=''):
         with self.lock, self.catalog.connect() as db:
             db.execute('BEGIN')
             revision=db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
             version=(revision,self.catalog.game_names.version)
-            if refresh or version!=self.version:
+            if refresh or version!=self.version:self.scopes.clear()
+            scope=(character,mode)
+            if scope not in self.scopes:
+                where="e.category='models'";args=[]
+                if character:
+                    where+=" AND (model_field(e.name,'character')=?"
+                    args.append(character)
+                    if mode=='accessories':where+=" OR e.name LIKE '%GUST_INVALID%EP_AVATAR_ACC_%'"
+                    where+=')'
+                if mode in ('sets','parts'):
+                    where+=" AND model_field(e.name,'kind')='avatar' AND model_field(e.name,'part') IN ('WEAPON','HAIR','UPBODY','LOWBODY','HAND','FOOT','ONE_PIECE','FACE')"
+                elif mode=='accessories':where+=" AND model_field(e.name,'part') LIKE 'ACC_%'"
                 rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive,a.mtime/1000000 updated_at
-                    FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.category='models' ORDER BY e.id''').fetchall()
-                self.rows=[self.catalog.game_names.decorate(dict(r,**classify(r['name']))) for r in rows]
+                    FROM entries e JOIN archives a ON a.id=e.archive_id WHERE '''+where+' ORDER BY e.id',args).fetchall()
+                self.scopes[scope]=[self.catalog.game_names.decorate(dict(r,**classify(r['name']))) for r in rows]
                 self.version=version
-            return self.rows.copy()
+            return self.scopes[scope].copy()
 
     @staticmethod
     def saved(row):
         return bool(row['output'] and Path(row['output']).is_file())
 
     def filtered(self,filters,exclude=None):
-        rows=self.snapshot(filters.get('refresh')=='1')
+        rows=self.snapshot(filters.get('refresh')=='1',filters.get('character',''),filters.get('mode',''))
         for key in ('character','kind','part','family','variant','format'):
-            if key!=exclude and filters.get(key):rows=[r for r in rows if r[key]==filters[key]]
+            if key!=exclude and filters.get(key):rows=[r for r in rows if r[key]==filters[key] or key=='character' and filters.get('mode')=='accessories' and not r[key]]
         saved=filters.get('saved','')
         if saved=='existing':rows=[r for r in rows if self.saved(r)]
         elif saved=='missing':rows=[r for r in rows if not self.saved(r)]
@@ -158,10 +173,11 @@ class ModelGroups:
     def browse(self,filters):
         keys=('character','kind','family','part','variant')
         # One existence pass for both the page and all facet counts.
-        base=self.filtered({k:v for k,v in filters.items() if k not in keys})
+        base=self.filtered({k:v for k,v in filters.items() if k not in keys or k=='character'})
         if filters.get('mode')=='sets':base=[r for r in base if r['set_key']]
-        elif filters.get('mode')=='accessories':base=[r for r in base if r['family']=='ACCESSORY']
-        rows=[r for r in base if all(not filters.get(k) or r[k]==filters[k] for k in keys)]
+        elif filters.get('mode')=='accessories':base=[dict(r,shared=not bool(r['character']),character=r['character'] or filters.get('character','')) for r in base if r['part'].startswith('ACC_')]
+        elif filters.get('mode')=='parts':base=[r for r in base if r['part']!='FACE']
+        rows=[r for r in base if all(not filters.get(k) or r[k]==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
         if filters.get('mode')=='sets':result=self.set_rows(rows,filters)
         else:
             result=self.paginate(rows,filters)

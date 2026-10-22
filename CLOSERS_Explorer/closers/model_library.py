@@ -90,7 +90,7 @@ class Models:
                 if vertices > 250_000:
                     raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
                 parts.append(part); sources.append(source); rows.append(row)
-            characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar'}
+            characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar' and classify(row['name'])['character']}
             if len(characters)>1:
                 raise ValueError('서로 다른 캐릭터의 아바타·얼굴은 함께 연결할 수 없습니다.')
             if eye and eye['geometry']:
