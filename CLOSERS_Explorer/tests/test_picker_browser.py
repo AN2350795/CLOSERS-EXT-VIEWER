@@ -105,9 +105,16 @@ if(value.status==='passed'&&process.argv[2]==='responsive'){
   if(layout.overflow||!ordered||layout.menu.x<0||layout.menu.right>width+1){value={status:'failed',errors:'Responsive layout '+JSON.stringify(layout)};break;}
  }
 }
+if(value.status==='passed'&&process.argv[2]==='picker-layout'){
+ for(const [width,height] of [[1512,1000],[1024,900],[390,844],[320,800]]){
+  await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
+  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return await checkPickerLayout();})()',awaitPromise:true,returnByValue:true});
+  if(result.exceptionDetails){value={status:'failed',errors:JSON.stringify(result.exceptionDetails)};break;}
+ }
+}
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
-''',port,'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
+''',port,'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
                     self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
                 finally:
                     if process.poll() is None:
