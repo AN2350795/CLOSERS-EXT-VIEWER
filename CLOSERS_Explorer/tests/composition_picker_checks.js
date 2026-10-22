@@ -35,6 +35,21 @@ try{
   await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/compose.js';s.onload=resolve;s.onerror=reject;document.head.append(s);});
   await until(()=>document.querySelector('#image-results[aria-busy=false]'));
   await until(()=>!busy);
+  check(inspectorView===(compactWorkspace.matches?'assets':'design'),'workspace starts on the wrong tab');
+  check(!document.querySelector('.canvas-panel #background-panel')&&!document.querySelector('.canvas-panel #card-info-panel')&&$('editor-inspector').contains($('background-panel')),'settings still push the preview down');
+  selectInspector('design');
+  const stageRect=$('canvas-stage').getBoundingClientRect();
+  $('background-panel').open=true;$('card-info-panel').open=true;$('layout-context').open=true;
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  check(Math.abs($('canvas-stage').getBoundingClientRect().top-stageRect.top)<1&&Math.abs($('canvas-stage').getBoundingClientRect().height-stageRect.height)<1,'opening options changes preview position or size');
+  $('inspector-body').scrollTop=24;const inspectorOffset=$('inspector-body').scrollTop;selectInspector('export');selectInspector('design');
+  check(Math.abs($('inspector-body').scrollTop-inspectorOffset)<1,'inspector scroll position lost after tab switch');
+  $('background-panel').open=false;$('card-info-panel').open=false;$('layout-context').open=false;
+  $('tab-design').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+  check(inspectorView==='layers'&&document.activeElement===$('tab-layers')&&!$('inspector-layers').hidden&&$('inspector-design').hidden,'inspector keyboard tabs are inaccessible');
+  $('tab-layers').dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true}));check(inspectorView==='export','inspector End navigation failed');
+  $('preview-output-settings').click();check(inspectorView==='export'&&document.activeElement===$('tab-export'),'preview output shortcut did not open export settings');
+  selectInspector('design');
   check(composition.canvas.width===450&&composition.canvas.height===640&&$('layout-info').textContent.includes('450 × 640'),'game layout information missing');
   check(!$('canvas-width')&&!$('canvas-height')&&$('custom-output').hidden,'uneditable size inputs still visible');
   check(document.querySelectorAll('.asset-tabs [role=tab]').length===2&&!$('extra-assets').open&&!$('layer-edit').open&&!$('layer-role'),'advanced controls remain in the basic view');
@@ -44,6 +59,10 @@ try{
   check(document.querySelector('.asset-name').textContent==='테스트 로딩'&&document.querySelector('.asset-card img').src.includes('/api/loading-thumbnail/illustration/9'),'registered loading label and cropped preview');
   document.querySelector('.asset-card').click();await until(()=>!busy&&composition.layers.length===1);
   const exported=makeExportCanvas();check(exported.getContext('2d').getImageData(225,320,1,1).data[0]===255,'illustration atlas crop was not applied');
+  $('expand-preview').click();await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  check($('composition-preview').open&&$('inspection-canvas').height>$('composition-canvas').height,'expanded preview is not larger');
+  const inspection=$('inspection-canvas');check(inspection.getContext('2d').getImageData(Math.floor(inspection.width/2),Math.floor(inspection.height/2),1,1).data[0]===255,'expanded preview differs from the composition');
+  $('close-composition-preview').click();check(!$('composition-preview').open,'expanded preview did not close');
   $('layout-context').open=true;renderLayoutContext();
   const contextCanvas=$('layout-context-canvas'),contextScale=contextCanvas.width/1920;
   check(Math.abs(contextCanvas.width/contextCanvas.height-1920/1080)<.01,'loading screen overview has the wrong aspect ratio');
@@ -78,6 +97,7 @@ try{
   check(requests.some(p=>p==='/api/loading-plan/3?mark=1'),'mark request unnecessarily loads frame effects');
   document.querySelector('.asset-card[data-id="4"]').click();await until(()=>!busy&&selectedMarkId===4);
   check(composition.layers.length===4&&composition.layers.filter(l=>l.gameMark).length===1&&selectedFrameId===2,'switching marks did not replace only the previous mark');
+  if(compactWorkspace.matches)selectInspector('assets');
   document.querySelector('#pick-mark').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}));await until(()=>document.querySelector('.asset-card[data-kind="frame"]'));
   check(document.activeElement.id==='pick-frame','keyboard tab navigation');
   document.querySelector('#pick-illustration').click();await until(()=>document.querySelector('#image-results[aria-busy=false]'));
@@ -87,6 +107,7 @@ try{
   const legacy=projectForSave();legacy.canvas.width*=2;legacy.canvas.height*=2;for(const l of legacy.layers){l.x*=2;l.y*=2;l.width*=2;l.height*=2;}
   await importProject(legacy);check(composition.canvas.width===450&&composition.canvas.height===640&&composition.layers.find(l=>l.gameIllustration).width===450,'old settings were not adapted to the fixed game layout');
   document.querySelector('#new-project').click();check(composition.canvas.width===450&&composition.canvas.height===640,'new project lost game dimensions');
+  selectInspector('design');
   check(!$('background-panel').open&&!$('background-description')&&!document.querySelector('.background-choice small'),'background controls should start compact and collapsed');
   $('background-panel').open=true;
   check($('background-settings').getBoundingClientRect().height<125,'background controls take too much space');

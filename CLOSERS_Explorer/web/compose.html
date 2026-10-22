@@ -1,11 +1,10 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="explorer-token" content="__TOKEN__"><title>이미지 조합 · CLOSERS Explorer</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/compose.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content"><meta name="explorer-token" content="__TOKEN__"><title>이미지 조합 · CLOSERS Explorer</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/compose.css"></head>
 <body class="composer-page">
   <main class="editor-root">
     <header><div><h1>일러스트 · 프레임 조합</h1><p class="muted">일러스트와 프레임을 골라 이미지나 애니메이션으로 저장하세요.</p></div><a href="/" class="button secondary">라이브러리</a></header>
     <section class="editor-toolbar" aria-label="조합 저장">
-      <button id="export-png">이미지 저장 · PNG</button><button id="export-apng">애니메이션 저장</button>
       <details id="composition-menu" class="management-menu"><summary>조합 관리</summary><div class="menu-actions"><button id="save-project" class="secondary">조합 설정 저장</button><button id="load-project" class="secondary">조합 불러오기</button><button id="save-template" class="secondary">프레임 템플릿 저장</button><button id="load-template" class="secondary">프레임 템플릿 추가</button></div></details>
       <button id="new-project" class="secondary" title="현재 조합과 저장 해상도·배경 설정을 초기화합니다.">초기화</button>
       <input id="project-file" type="file" accept=".json,application/json" hidden><input id="template-file" type="file" accept=".json,application/json" hidden>
@@ -17,8 +16,13 @@
       <p class="muted">다운로드한 파일과 같은 이미지를 재생합니다. 외부 뷰어의 재생 결과가 다르면 이 미리보기에서도 확인할 수 있습니다.</p>
       <button id="close-animation-preview" class="secondary" type="button">닫기</button>
     </dialog>
+    <dialog id="composition-preview" aria-labelledby="composition-preview-title">
+      <div class="inspection-heading"><h2 id="composition-preview-title">미리보기 크게 보기</h2><button id="close-composition-preview" class="secondary" type="button">닫기</button></div>
+      <div id="inspection-stage"><canvas id="inspection-canvas" aria-label="현재 조합 확대 미리보기"></canvas></div>
+    </dialog>
     <div class="editor-layout">
-      <section class="image-picker panel" aria-label="이미지 선택">
+      <div id="asset-dock">
+      <section class="image-picker panel" id="image-picker" aria-label="이미지 선택">
         <div class="picker-heading"><h2>에셋 선택</h2><button id="refresh-picker" class="secondary" aria-label="선택 목록 새로고침">새로고침</button></div>
         <div class="asset-tabs" role="tablist" aria-label="에셋 종류">
           <button id="pick-illustration" role="tab" aria-selected="true" aria-controls="image-results">일러스트</button>
@@ -31,9 +35,23 @@
         <div class="picker-pagination"><button id="image-prev" class="secondary">이전</button><span id="image-page"></span><button id="image-next" class="secondary">다음</button></div>
         <p id="game-frame-status" class="muted" data-state="info" role="status" aria-live="polite" aria-atomic="true">썸네일을 누르면 적용합니다. 추가 장식은 선택 사항입니다.</p>
       </section>
-      <section class="canvas-panel panel" aria-label="합성 화면">
-        <div class="canvas-controls"><label>저장 해상도<select id="output-mode"><option value="native">원본 해상도 유지</option><option value="base">기준 크기 · 1배</option><option value="double">기준 크기 · 2배</option><option value="custom">사용자 지정</option></select></label><strong id="output-size" aria-live="polite"></strong><label id="custom-output" hidden>저장 너비<input id="output-width" type="number" min="1" max="8192" step="1" value="720">높이는 비율에 맞춰 자동 계산</label></div>
-        <p id="output-info" class="muted" role="status" hidden></p>
+      </div>
+      <section class="canvas-panel panel" aria-labelledby="preview-title">
+        <div class="preview-heading"><h2 id="preview-title">미리보기</h2><div class="preview-heading-actions"><span id="canvas-summary" class="muted"></span><button id="expand-preview" type="button" class="secondary" aria-haspopup="dialog" aria-controls="composition-preview">크게 보기</button></div></div>
+        <div id="canvas-stage"><canvas id="composition-canvas" width="700" height="700" tabindex="0" aria-label="이미지 조합 화면. 선택한 레이어를 드래그해 이동하고 오른쪽 아래 손잡이로 크기를 바꿀 수 있습니다."></canvas></div>
+        <div class="canvas-controls"><button id="play-effects" class="secondary">효과 재생</button><label>시점 (초)<input id="animation-time" type="number" min="0" max="60" step="0.01" value="0"></label></div>
+        <div class="preview-export"><button id="preview-output-settings" type="button" class="preview-output" title="저장 해상도 설정 열기" aria-controls="inspector-export">저장 <strong id="output-size" aria-live="polite"></strong></button><div class="preview-export-actions"><button id="export-png">이미지 저장 · PNG</button><button id="export-apng">애니메이션 저장</button></div></div>
+      </section>
+      <aside class="editor-inspector panel" id="editor-inspector" aria-label="조합 설정">
+        <div class="inspector-tabs" role="tablist" aria-label="편집 영역">
+          <button id="tab-assets" type="button" role="tab" aria-selected="false" aria-controls="inspector-assets" tabindex="-1" hidden>에셋</button>
+          <button id="tab-design" type="button" role="tab" aria-selected="true" aria-controls="inspector-design">꾸미기</button>
+          <button id="tab-layers" type="button" role="tab" aria-selected="false" aria-controls="inspector-layers" tabindex="-1">구성 요소</button>
+          <button id="tab-export" type="button" role="tab" aria-selected="false" aria-controls="inspector-export" tabindex="-1">저장 설정</button>
+        </div>
+        <div class="inspector-body" id="inspector-body">
+          <div id="inspector-assets" role="tabpanel" aria-labelledby="tab-assets" tabindex="0" hidden></div>
+          <section id="inspector-design" role="tabpanel" aria-labelledby="tab-design" tabindex="0"><h2>꾸미기</h2>
         <details class="background-panel" id="background-panel"><summary>배경 스타일<span id="background-summary">단색</span></summary>
         <fieldset id="background-settings"><legend class="sr-only">배경 스타일 선택</legend>
           <div class="background-modes">
@@ -69,17 +87,8 @@
           </fieldset>
         </details>
         <details id="layout-context"><summary>로딩창에서의 크기 · 위치</summary><p id="layout-info" class="muted"></p><canvas id="layout-context-canvas" width="960" height="540" aria-label="전체 로딩창에서 현재 조합 영역의 크기와 위치" hidden></canvas><p id="source-info" class="muted"></p><p class="muted">배치 기준은 게임의 일러스트 표시 영역이며, 저장 해상도와 미리보기 배율은 별개입니다.</p></details>
-        <div id="canvas-stage"><canvas id="composition-canvas" width="700" height="700" tabindex="0" aria-label="이미지 조합 화면. 선택한 레이어를 드래그해 이동하고 오른쪽 아래 손잡이로 크기를 바꿀 수 있습니다."></canvas></div>
-        <p id="canvas-summary" class="muted"></p>
-        <div class="canvas-controls"><button id="play-effects" class="secondary">효과 재생</button><label>시점 (초)<input id="animation-time" type="number" min="0" max="60" step="0.01" value="0"></label></div>
-        <details id="animation-settings"><summary>애니메이션 저장 설정</summary>
-        <div class="canvas-controls"><label>저장 형식<select id="animation-format"><option value="webp">WebP · 무손실 (권장)</option><option value="apng">APNG · 무손실</option></select></label><label>저장 길이 (초)<input id="animation-duration" type="number" min="0.1" max="10" step="any" value="3"></label><label>저장 FPS<input id="animation-fps" type="number" min="1" max="60" value="25"></label></div>
-        <div class="canvas-controls"><label><input id="animation-loop" type="checkbox" checked> 자연스러운 순환</label><button id="match-animation-cycle" class="secondary" type="button">텍스처 주기 길이 적용</button></div>
-        <p id="animation-loop-info" class="muted">초기 지연 구간을 제외하고 마지막 구간을 시작 장면에 부드럽게 연결합니다. 게임 효과의 원래 속도는 유지합니다.</p>
-        <details><summary>게임 효과 시간 정보</summary><p class="muted">각 효과의 시간입니다. 원본에 긴 정지 구간이 있는 경우 그 시간도 유지합니다. 여러 효과의 주기가 다르거나 무작위 입자가 포함되면 프레임 전체의 고정 순환 시간은 없습니다.</p><ul id="animation-timings" class="muted"></ul></details>
-        </details>
-      </section>
-      <section class="layer-panel panel" aria-label="레이어 편집"><h2>구성 요소</h2><p class="muted">표시 여부를 바꾸거나 펼쳐서 조각을 선택하세요.</p><div id="layers"></div>
+          </section>
+      <section class="layer-panel" id="inspector-layers" role="tabpanel" aria-labelledby="tab-layers" tabindex="0" hidden><h2>구성 요소</h2><p class="muted">표시 여부를 바꾸거나 펼쳐서 조각을 선택하세요.</p><div id="layers"></div>
         <details id="layer-edit"><summary>세부 편집</summary><p class="muted">선택한 조각의 위치·크기·자르기 영역을 편집합니다. 앞쪽 레이어는 목록 위에 표시됩니다.</p>
         <div class="layer-actions"><button id="layer-up" class="secondary">앞으로</button><button id="layer-down" class="secondary">뒤로</button><button id="duplicate-layer" class="secondary">조각 복제</button><button id="remove-layer" class="secondary">삭제</button></div>
         <fieldset id="layer-fields" disabled><legend>선택 레이어</legend>
@@ -95,8 +104,21 @@
         </fieldset>
         </details>
       </section>
+          <section id="inspector-export" role="tabpanel" aria-labelledby="tab-export" tabindex="0" hidden><h2>저장 설정</h2>
+        <div class="canvas-controls"><label>저장 해상도<select id="output-mode"><option value="native">원본 해상도 유지</option><option value="base">기준 크기 · 1배</option><option value="double">기준 크기 · 2배</option><option value="custom">사용자 지정</option></select></label><label id="custom-output" hidden>저장 너비<input id="output-width" type="number" min="1" max="8192" step="1" value="720">높이는 비율에 맞춰 자동 계산</label></div>
+        <p id="output-info" class="muted" role="status" hidden></p>
+        <details id="animation-settings"><summary>애니메이션 저장 설정</summary>
+        <div class="canvas-controls"><label>저장 형식<select id="animation-format"><option value="webp">WebP · 무손실 (권장)</option><option value="apng">APNG · 무손실</option></select></label><label>저장 길이 (초)<input id="animation-duration" type="number" min="0.1" max="10" step="any" value="3"></label><label>저장 FPS<input id="animation-fps" type="number" min="1" max="60" value="25"></label></div>
+        <div class="canvas-controls"><label><input id="animation-loop" type="checkbox" checked> 자연스러운 순환</label><button id="match-animation-cycle" class="secondary" type="button">텍스처 주기 길이 적용</button></div>
+        <p id="animation-loop-info" class="muted">초기 지연 구간을 제외하고 마지막 구간을 시작 장면에 부드럽게 연결합니다. 게임 효과의 원래 속도는 유지합니다.</p>
+        <details><summary>게임 효과 시간 정보</summary><p class="muted">각 효과의 시간입니다. 원본에 긴 정지 구간이 있는 경우 그 시간도 유지합니다. 여러 효과의 주기가 다르거나 무작위 입자가 포함되면 프레임 전체의 고정 순환 시간은 없습니다.</p><ul id="animation-timings" class="muted"></ul></details>
+        </details>
+    <details class="usage-help"><summary>사용 방법과 상세 정보</summary><p>꾸미기·구성 요소·저장 설정 탭에서 옵션을 편집합니다. 작은 화면에서는 에셋 탭으로 선택 목록을 열고, 크게 보기로 결과를 확대할 수 있습니다.</p><p>일러스트와 프레임 탭에서 썸네일을 선택하세요. 추가 장식에서 별도 마크를 추가할 수 있으며 위치는 직접 조정합니다. 애니메이션 효과는 자동 재생되고, 재생을 멈추거나 시점을 지정해 정지 이미지를 저장할 수 있습니다.</p><p>구성 요소를 펼쳐 조각을 선택하면 세부 편집이 열립니다. 잠금을 해제한 뒤 드래그로 이동하고 오른쪽 아래 손잡이로 크기를 조절합니다. 방향키는 배치 기준 1px, Shift와 함께 누르면 10px 이동합니다. 체크 무늬와 선택 테두리는 저장되지 않습니다.</p><p>PNG·무손실 WebP/APNG는 선택한 저장 해상도에서 원본을 직접 합성합니다. 미리보기 크기는 저장 해상도와 별개입니다. 조합 관리에서 설정을 저장·복원하거나 프레임 템플릿을 재사용할 수 있습니다.</p><details><summary>원본 데이터와 제한</summary><p>게임 정의 복원에는 원본 CMF·CW.EXE·pycryptodome, 썸네일과 DDS/TGA 변환 및 WebP 저장에는 Pillow가 필요합니다. 입자 효과에는 WebGL이 필요하며 고정 난수 시드로 재생하므로 실제 게임의 무작위 배치와는 차이가 있습니다.</p><p>애니메이션은 최대 250프레임·128 MiB, 입력 이미지는 16,777,216픽셀·64 MiB, 불러온 원본 합계는 134,217,728픽셀·256개, 레이어는 20개까지입니다. 원본 파일은 유지하며 복원 시 출처와 해시를 확인합니다.</p></details></details>
+          </section>
+        </div>
+      </aside>
     </div>
-    <details class="usage-help"><summary>사용 방법과 상세 정보</summary><p>일러스트와 프레임 탭에서 썸네일을 선택하세요. 추가 장식에서 별도 마크를 추가할 수 있으며 위치는 직접 조정합니다. 애니메이션 효과는 자동 재생되고, 재생을 멈추거나 시점을 지정해 정지 이미지를 저장할 수 있습니다.</p><p>구성 요소를 펼쳐 조각을 선택하면 세부 편집이 열립니다. 잠금을 해제한 뒤 드래그로 이동하고 오른쪽 아래 손잡이로 크기를 조절합니다. 방향키는 배치 기준 1px, Shift와 함께 누르면 10px 이동합니다. 체크 무늬와 선택 테두리는 저장되지 않습니다.</p><p>PNG·무손실 WebP/APNG는 선택한 저장 해상도에서 원본을 직접 합성합니다. 미리보기 크기는 저장 해상도와 별개입니다. 조합 관리에서 설정을 저장·복원하거나 프레임 템플릿을 재사용할 수 있습니다.</p><details><summary>원본 데이터와 제한</summary><p>게임 정의 복원에는 원본 CMF·CW.EXE·pycryptodome, 썸네일과 DDS/TGA 변환 및 WebP 저장에는 Pillow가 필요합니다. 입자 효과에는 WebGL이 필요하며 고정 난수 시드로 재생하므로 실제 게임의 무작위 배치와는 차이가 있습니다.</p><p>애니메이션은 최대 250프레임·128 MiB, 입력 이미지는 16,777,216픽셀·64 MiB, 불러온 원본 합계는 134,217,728픽셀·256개, 레이어는 20개까지입니다. 원본 파일은 유지하며 복원 시 출처와 해시를 확인합니다.</p></details></details>
+
   </main><div id="editor-status" class="status-notice" role="status" aria-live="polite" aria-atomic="true" hidden></div><div id="editor-toast" role="alert" hidden></div>
   <script src="/particle-effects.js"></script><script src="/composition-core.js"></script><script src="/animation-png.js"></script><script src="/animation-loop.js"></script><script src="/compose.js"></script>
 </body></html>

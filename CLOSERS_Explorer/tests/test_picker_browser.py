@@ -100,8 +100,8 @@ if(value.status==='passed'&&process.argv[2]==='responsive'){
  if(setup.exceptionDetails)value={status:'failed',errors:JSON.stringify(setup.exceptionDetails)};
  for(const [width,height] of [[1512,1000],[1024,900],[390,844],[320,800]]){
   await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
-  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));$("composition-menu").open=true;const rect=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom};};return {width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth+1,picker:rect(".image-picker"),canvas:rect(".canvas-panel"),layers:rect(".layer-panel"),menu:rect(".menu-actions")};})()',awaitPromise:true,returnByValue:true});
-  const layout=result.result.value,ordered=width<760?layout.picker.y<layout.canvas.y&&layout.canvas.y<layout.layers.y:width>1300?layout.picker.x<layout.canvas.x&&layout.canvas.x<layout.layers.x:layout.layers.y>layout.canvas.y;
+  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));selectInspector(innerWidth<=1180?"assets":"design");$("composition-menu").open=true;const rect=s=>{const b=document.querySelector(s).getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom};};return {width:innerWidth,overflow:document.documentElement.scrollWidth>innerWidth+1,picker:rect(".image-picker"),canvas:rect(".canvas-panel"),inspector:rect(".editor-inspector"),stage:rect("#canvas-stage"),menu:rect(".menu-actions")};})()',awaitPromise:true,returnByValue:true});
+  const layout=result.result.value,ordered=width<=760?layout.canvas.y<layout.inspector.y:width>1180?layout.picker.x<layout.canvas.x&&layout.canvas.x<layout.inspector.x:layout.canvas.x<layout.inspector.x&&layout.picker.x>=layout.inspector.x;
   if(layout.overflow||!ordered||layout.menu.x<0||layout.menu.right>width+1){value={status:'failed',errors:'Responsive layout '+JSON.stringify(layout)};break;}
  }
 }

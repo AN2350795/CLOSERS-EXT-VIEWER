@@ -7,6 +7,9 @@ const roles={illustration:'일러스트',frame:'프레임',fragment:'조각'};
 let gamePlan=null,gamePresets=null,atlasRegions={},atlasSource=null,animationTime=0,playing=false,lastTick=0;
 let pickerKind='illustration',selectedFrameId=null,selectedMarkId=null;
 let gameLayout=null;
+const compactWorkspace=matchMedia('(max-width:1180px)');
+let inspectorView=compactWorkspace.matches?'assets':'design';
+const inspectorScroll=new Map();
 let cardInfoPlan=null;
 const cardFonts=new Map(),cardInfoKeys=['level','character','name','progress'];
 let animationPreviewURL=null,statusTimer=null;
@@ -108,7 +111,7 @@ function renderLayers(){
     summary.append(node('span','',name),node('small','muted',members.length+'개'),visible);group.append(summary);
     for(const l of members){
       const button=node('button','layer-row'+(l.id===selectedLayer?' active':''));button.append(node('span','',l.name+(l.visible?'':' (숨김)')+(l.locked?' · 잠금':'')),node('span','layer-type',roles[l.role]));
-      button.onclick=()=>{if(busy)return;selectedLayer=l.id;$('layer-edit').open=true;commit();};group.append(button);
+      button.onclick=()=>{if(busy)return;selectedLayer=l.id;selectInspector('layers');$('layer-edit').open=true;commit();};group.append(button);
     }
     $('layers').append(group);
   }
@@ -172,15 +175,15 @@ async function applyGameFrame(mark=false,ident=mark?selectedMarkId:selectedFrame
 $('load-atlas').onclick=()=>operation(async()=>{const l=currentLayer(),s=images.get(l.source).metadata;const result=await api('/api/loading-atlas/'+s.entry_id);atlasRegions=result.regions;$('atlas-region').replaceChildren(node('option','','전체 이미지'));$('atlas-region').firstChild.value='';for(const key of Object.keys(atlasRegions)){const option=node('option','',key);option.value=key;$('atlas-region').append(option);}});
 $('atlas-region').onchange=()=>{const l=currentLayer();if(!l||l.locked||l.animation)return;const s=composition.sources.find(s=>s.key===l.source),crop=atlasRegions[$('atlas-region').value]||{x:0,y:0,width:s.width,height:s.height};changeLayer(l=>{l.crop={...crop};l.width=crop.width;l.height=crop.height;});};
 function renderCanvas(){
-  const canvas=$('composition-canvas'),c=Core.canvasSize(composition),available=Math.max(100,$('canvas-stage').clientWidth-4),scale=Math.min(1,available/c.width,650/c.height);
+  const canvas=$('composition-canvas'),c=Core.canvasSize(composition),stage=$('canvas-stage'),available=Math.max(60,stage.clientWidth-24),availableHeight=Math.max(60,stage.clientHeight-24),scale=Math.min(1,available/c.width,availableHeight/c.height);
   canvas.width=Math.max(1,Math.round(c.width*scale));canvas.height=Math.max(1,Math.round(c.height*scale));
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
-  const editing=$('layer-edit').open,selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
+  const editing=isLayerEditing(),selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
   canvas.tabIndex=editing?0:-1;canvas.setAttribute('aria-label',editing?'선택한 조각을 드래그하거나 방향키로 이동하는 편집 화면':'이미지 조합 미리보기. 조각을 수정하려면 구성 요소에서 세부 편집을 여세요.');
   $('layout-info').textContent=gameLayout?.screen?`전체 로딩창 ${gameLayout.screen.width} × ${gameLayout.screen.height} · 카드 ${gameLayout.card.width} × ${gameLayout.card.height} · 현재 조합 ${c.width} × ${c.height}px`: `배치 기준 ${c.width} × ${c.height}px`;renderBackground();renderLayoutContext();
   const pixels=[...images.values()].reduce((n,v)=>n+v.bitmap.width*v.bitmap.height,0);
   $('canvas-summary').textContent=`미리보기 ${(scale*100).toFixed(0)}%`;
-  $('source-info').textContent=`레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M`;
+  $('source-info').textContent=`레이어 ${composition.layers.length}/20 · 원본 픽셀 ${(pixels/1000000).toFixed(1)}M / 134.2M`;renderInspection();
 }
 function renderLayoutContext(){
   const target=$('layout-context-canvas'),layout=gameLayout;
@@ -463,17 +466,17 @@ async function searchImages(){
 }
 function pointerPosition(event){const rect=$('composition-canvas').getBoundingClientRect();return {x:(event.clientX-rect.left)*composition.canvas.width/rect.width,y:(event.clientY-rect.top)*Core.canvasSize(composition).height/rect.height};}
 $('composition-canvas').onpointerdown=event=>{
-  if(busy||!$('layer-edit').open||event.button!==0)return;const p=pointerPosition(event),selected=currentLayer(),rect=$('composition-canvas').getBoundingClientRect(),tolerance=12*composition.canvas.width/rect.width;
+  if(busy||!isLayerEditing()||event.button!==0)return;const p=pointerPosition(event),selected=currentLayer(),rect=$('composition-canvas').getBoundingClientRect(),tolerance=12*composition.canvas.width/rect.width;
   const resizing=selected&&selected.visible&&!selected.locked&&Math.abs(p.x-selected.x-selected.width)<tolerance&&Math.abs(p.y-selected.y-selected.height)<tolerance;
   const l=resizing?selected:[...composition.layers].reverse().find(l=>l.visible&&!l.locked&&p.x>=l.x&&p.y>=l.y&&p.x<=l.x+l.width&&p.y<=l.y+l.height);
   if(!l)return;selectedLayer=l.id;drag={id:event.pointerId,x:p.x,y:p.y,layer:JSON.parse(JSON.stringify(l)),resize:resizing};$('composition-canvas').setPointerCapture(event.pointerId);$('composition-canvas').focus();commit();event.preventDefault();
 };
 $('composition-canvas').onpointermove=event=>{
-  if(!drag||busy||!$('layer-edit').open||event.pointerId!==drag.id)return;const p=pointerPosition(event),original=drag.layer;
+  if(!drag||busy||!isLayerEditing()||event.pointerId!==drag.id)return;const p=pointerPosition(event),original=drag.layer;
   changeLayer(l=>{if(drag.resize){l.width=Math.max(.01,Math.min(65536,original.width+p.x-drag.x));l.height=l.keepRatio?l.width*original.height/original.width:Math.max(.01,Math.min(65536,original.height+p.y-drag.y));}else{l.x=Math.max(-100000,Math.min(100000,original.x+p.x-drag.x));l.y=Math.max(-100000,Math.min(100000,original.y+p.y-drag.y));}});
 };
 const endDrag=()=>{drag=null;};$('composition-canvas').onpointerup=endDrag;$('composition-canvas').onpointercancel=endDrag;$('composition-canvas').onlostpointercapture=endDrag;
-$('composition-canvas').onkeydown=event=>{if(busy||!$('layer-edit').open||!currentLayer()||currentLayer().locked)return;const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]},move=moves[event.key];if(move){event.preventDefault();changeLayer(l=>{l.x+=move[0]*(event.shiftKey?10:1);l.y+=move[1]*(event.shiftKey?10:1);});}};
+$('composition-canvas').onkeydown=event=>{if(busy||!isLayerEditing()||!currentLayer()||currentLayer().locked)return;const moves={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]},move=moves[event.key];if(move){event.preventDefault();changeLayer(l=>{l.x+=move[0]*(event.shiftKey?10:1);l.y+=move[1]*(event.shiftKey?10:1);});}};
 $('layer-edit').ontoggle=()=>{drag=null;renderCanvas();};
 for(const key of ['name','x','y','width','height'])$('layer-'+key).onchange=()=>changeLayer(l=>{const value=key==='name'?$('layer-'+key).value:Number($('layer-'+key).value);if(l.keepRatio&&key==='width')l.height*=value/l.width;if(l.keepRatio&&key==='height')l.width*=value/l.height;l[key]=value;});
 for(const key of ['x','y','width','height'])$('crop-'+key).onchange=()=>changeLayer(l=>{l.crop[key]=Number($('crop-'+key).value);});
@@ -527,6 +530,49 @@ for(const kind of Object.keys(pickerLabels)){
 }
 $('refresh-picker').onclick=()=>{gamePresets=null;pickerPage=1;searchImages();};
 $('image-prev').onclick=()=>{pickerPage--;searchImages();};$('image-next').onclick=()=>{pickerPage++;searchImages();};
+function renderInspection(){
+  if(!$('composition-preview').open)return;
+  const stage=$('inspection-stage'),canvas=$('inspection-canvas'),size=Core.canvasSize(composition),scale=Math.min(3,Math.max(1,stage.clientWidth-16)/size.width,Math.max(1,stage.clientHeight-16)/size.height);
+  canvas.width=Math.max(1,Math.round(size.width*scale));canvas.height=Math.max(1,Math.round(size.height*scale));
+  Core.draw(canvas.getContext('2d'),composition,new Map([...images].map(([key,value])=>[key,value.bitmap])),canvas.width,canvas.height,animationTime);
+}
+$('expand-preview').onclick=()=>{$('composition-preview').showModal();renderInspection();};
+$('close-composition-preview').onclick=()=>$('composition-preview').close();
+$('composition-preview').onclose=()=>{$('inspection-canvas').width=$('inspection-canvas').height=1;};
+$('preview-output-settings').onclick=()=>selectInspector('export',true);
+new ResizeObserver(renderInspection).observe($('inspection-stage'));
+function isLayerEditing(){return inspectorView==='layers'&&$('layer-edit').open;}
+function selectInspector(view,focus=false){
+  if(view==='assets'&&!compactWorkspace.matches)view='design';
+  if(!['assets','design','layers','export'].includes(view))return;
+  const changed=view!==inspectorView;
+  if(changed){inspectorScroll.set(inspectorView,$('inspector-body').scrollTop);$('inspector-body').scrollTop=0;}
+  inspectorView=view;
+  for(const name of ['assets','design','layers','export']){
+    const tab=$('tab-'+name),selected=name===view;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;$('inspector-'+name).hidden=!selected;
+  }
+  if(changed)$('inspector-body').scrollTop=inspectorScroll.get(view)||0;
+  if(focus)$('tab-'+view).focus();renderCanvas();
+}
+function syncWorkspace(){
+  const compact=compactWorkspace.matches;
+  $('tab-assets').hidden=!compact;
+  (compact?$('inspector-assets'):$('asset-dock')).append($('image-picker'));
+  selectInspector(inspectorView);
+}
+for(const view of ['assets','design','layers','export']){
+  $('tab-'+view).onclick=()=>selectInspector(view);
+  $('tab-'+view).onkeydown=event=>{
+    const views=compactWorkspace.matches?['assets','design','layers','export']:['design','layers','export'],index=views.indexOf(view);let next;
+    if(event.key==='ArrowRight')next=views[(index+1)%views.length];if(event.key==='ArrowLeft')next=views[(index+views.length-1)%views.length];if(event.key==='Home')next=views[0];if(event.key==='End')next=views.at(-1);
+    if(next){event.preventDefault();selectInspector(next,true);}
+  };
+}
+compactWorkspace.addEventListener('change',syncWorkspace);
+function resizeWorkspace(){document.documentElement.style.setProperty('--workspace-height',(window.visualViewport?.height||innerHeight)+'px');renderCanvas();}
+window.visualViewport?.addEventListener('resize',resizeWorkspace);
+window.addEventListener('resize',resizeWorkspace);
+syncWorkspace();resizeWorkspace();
 new ResizeObserver(()=>renderCanvas()).observe($('canvas-stage'));
 commit();
 const initialIds=new URLSearchParams(location.search).get('entries');
