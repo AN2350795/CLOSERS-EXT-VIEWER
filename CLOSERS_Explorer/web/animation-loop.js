@@ -3,7 +3,9 @@ globalThis.AnimationLoop=(()=>{
   const maximum=v=>Array.isArray(v)?Math.max(...v):v;
   const minimum=v=>Array.isArray(v)?Math.min(...v):v;
   function timings(project){
-    return project.layers.filter(l=>l.visible&&l.animation&&(!l.markParent||project.layers.find(p=>p.id===l.markParent)?.visible)).map(l=>{
+    const emblem=project.canvas?.info?.enabled?project.canvas.info.emblem:null;
+    const layers=emblem?.frames.length>1?[...project.layers,{name:'요원 등급 · '+emblem.name,visible:true,animation:emblem}]:project.layers;
+    return layers.filter(l=>l.visible&&l.animation&&(!l.markParent||project.layers.find(p=>p.id===l.markParent)?.visible)).map(l=>{
       const a=l.animation,p=a.particle;
       return {name:l.name,texture:a.frames.length>1?a.frames.reduce((n,f)=>n+f.duration,0):null,frames:a.frames.length,
         shortest:Math.min(...a.frames.map(f=>f.duration)),longest:Math.max(...a.frames.map(f=>f.duration)),delay:a.delay,life:p?p.life:null};

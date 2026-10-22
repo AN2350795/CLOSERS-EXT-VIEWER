@@ -82,6 +82,34 @@ try{
   for(const mutate of [p=>p.canvas.background.source='s99',p=>p.canvas.background.width=NaN,p=>p.canvas.background.opacity=1.1,p=>p.canvas.background.opacity=-.1,p=>p.canvas.background.opacity=NaN,p=>p.canvas.background.fit='invalid',p=>p.canvas.background.color=[1,1,1],p=>p.canvas.background.color=[1,1,1,2],p=>p.canvas.transparent=true]){
     const invalid=structuredClone(bgRaw);mutate(invalid);let rejected=false;try{CompositionCore.validate(invalid);}catch{rejected=true;}check(rejected,'invalid background accepted');
   }
+  const infoRaw=structuredClone(bgRaw);infoRaw.canvas.width=450;infoRaw.canvas.height=640;
+  infoRaw.canvas.info={enabled:true,height:80,fonts:[{name:'NanumGothicExtraBold.ttf',sha256:'a'.repeat(64)},{name:'NanumGothicBold.ttf',sha256:'b'.repeat(64)}],
+    fields:['level','character','name','progress'].map((key,n)=>({key,text:'',font:n===3?'NanumGothicBold.ttf':'NanumGothicExtraBold.ttf',size:n===3?24:13,x:[92,140,92,442][n],y:[672,672,692,682][n],align:n===3?'right':'left',baseline:'middle',outline:1,outlineFactor:.3,boldRate:4.5,color:[1,1,1,1]})),
+    pictures:[{source:'s2',crop:{x:0,y:0,width:4,height:4},x:0,y:640,width:450,height:80}],
+    emblem:{id:8,name:'X',x:8,y:647,width:64,height:64,frames:[{source:'s1',duration:.1},{source:'s2',duration:.1}],color:[1,1,1,1],delay:0,blend:'source-over'}};
+  const infoProject=CompositionCore.validate(infoRaw),infoCanvas=new OffscreenCanvas(450,720);
+  check(infoProject.version===7&&CompositionCore.exportSize(infoProject).height===720,'footer not included in export dimensions');
+  CompositionCore.draw(infoCanvas.getContext('2d'),infoProject,images,450,720,0);
+  check(infoCanvas.getContext('2d').getImageData(10,650,1,1).data[0]===255,'emblem missing at game position');
+  check(infoCanvas.getContext('2d').getImageData(449,719,1,1).data[2]===255,'footer asset missing at bottom edge');
+  CompositionCore.draw(infoCanvas.getContext('2d'),infoProject,images,450,720,.1);
+  check(infoCanvas.getContext('2d').getImageData(10,650,1,1).data[2]===255,'emblem frame timing not rendered');
+  check(AnimationLoop.timings(infoProject).length===1&&AnimationLoop.textureCycle(infoProject,25)===.2,'emblem animation omitted from playback controls');
+  check(CompositionCore.usedSources([],infoProject.canvas).size===2,'footer sources pruned');
+  const infoRestored=CompositionCore.validate(JSON.parse(JSON.stringify(infoProject)));
+  check(infoRestored.canvas.info.emblem.frames[1].source==='s2'&&infoRestored.canvas.info.fields[3].size===24,'footer settings lost on round trip');
+  infoProject.canvas.info.pictures[0].gauge=true;infoProject.canvas.info.fields[3].text='25%';
+  CompositionCore.draw(infoCanvas.getContext('2d'),infoProject,images,450,720,.1);
+  check(infoCanvas.getContext('2d').getImageData(10,719,1,1).data[2]===255&&infoCanvas.getContext('2d').getImageData(400,719,1,1).data[2]===0,'progress gauge ignores edited percentage');
+  infoProject.canvas.info.fields[3].text='';CompositionCore.draw(infoCanvas.getContext('2d'),infoProject,images,450,720,.1);
+  check(infoCanvas.getContext('2d').getImageData(10,719,1,1).data[2]===0,'empty progress still draws the gauge');
+  infoProject.canvas.info.enabled=false;
+  check(CompositionCore.exportSize(infoProject).height===640&&AnimationLoop.timings(infoProject).length===0,'disabled footer affects output or animation');
+  infoProject.canvas.info.enabled=true;infoProject.output={mode:'double',width:720};
+  check(CompositionCore.exportSize(infoProject).height===1440,'footer export scale differs from illustration');
+  for(const mutate of [p=>p.canvas.info.fields[0].font='other.ttf',p=>p.canvas.info.fonts[0].sha256='invalid',p=>p.canvas.info.height=-1,p=>p.canvas.info.emblem.frames[0].source='s99',p=>p.canvas.info.pictures[0].source='s99',p=>p.kind='frame-template']){
+    const invalid=structuredClone(infoRaw);mutate(invalid);let rejected=false;try{CompositionCore.validate(invalid);}catch{rejected=true;}check(rejected,'invalid footer configuration accepted');
+  }
   const blob=await AnimationPNG.encode({width:4,height:4,count:4,fps:10,render,requireMotion:true});
   const decoder=new ImageDecoder({data:await blob.arrayBuffer(),type:'image/png'});await decoder.tracks.ready;check(decoder.tracks.selectedTrack.frameCount===4,'APNG frame count');
   for(let i=0;i<4;i++){const {image}=await decoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);const actual=[...ctx.getImageData(0,0,1,1).data];check(JSON.stringify(actual)===JSON.stringify(pixel(i/10)),'APNG decoded pixels '+i);check(Math.abs(image.duration-100000)<1,'APNG timing');image.close();}decoder.close();
@@ -114,6 +142,13 @@ try{
   const drawMotion=time=>{const c=document.createElement('canvas');c.width=4;c.height=4;CompositionCore.draw(c.getContext('2d'),motion,images,4,4,time);return c;};
   const motionPixel=t=>[...drawMotion(t).getContext('2d').getImageData(1,1,1,1).data];
   check(motionPixel(0)[0]>250&&motionPixel(.1)[2]>250,'WebGL texture animation rendering');
+  const particleFooter=structuredClone(motion);particleFooter.canvas.info=structuredClone(infoRaw.canvas.info);particleFooter.canvas.info.height=4;particleFooter.canvas.info.pictures=[];delete particleFooter.canvas.info.emblem;
+  Object.assign(particleFooter.layers[0],{x:1,y:2,width:1,height:1});
+  const particleFooterProject=CompositionCore.validate(particleFooter),particleFooterCanvas=new OffscreenCanvas(4,8);
+  CompositionCore.draw(particleFooterCanvas.getContext('2d'),particleFooterProject,images,4,8,0);
+  const pfc=particleFooterCanvas.getContext('2d');
+  check(pfc.getImageData(1,2,1,1).data[0]>250&&pfc.getImageData(1,3,1,1).data[3]===0,'footer changed the original particle size or position');
+
   const motionBlob=await AnimationPNG.encode({width:4,height:4,count:3,fps:10,render:drawMotion,requireMotion:true});
   const particleDecoder=new ImageDecoder({data:await motionBlob.arrayBuffer(),type:'image/png'});await particleDecoder.tracks.ready;
   for(let i=0;i<3;i++){const {image}=await particleDecoder.decode({frameIndex:i});const c=new OffscreenCanvas(4,4),ctx=c.getContext('2d');ctx.drawImage(image,0,0);check(JSON.stringify([...ctx.getImageData(1,1,1,1).data])===JSON.stringify(motionPixel(i/10)),'particle APNG matches preview '+i);image.close();}particleDecoder.close();

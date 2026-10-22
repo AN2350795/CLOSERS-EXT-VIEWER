@@ -55,6 +55,19 @@
             <label for="background-opacity">불투명도</label><input id="background-opacity" type="range" min="0" max="100" step="1" value="100"><output id="background-opacity-value" for="background-opacity">100%</output><button id="background-opacity-reset" type="button" class="secondary" title="현재 기본 불투명도로 복원">기본</button>
           </div>
         </fieldset></details>
+        <details class="card-info-panel" id="card-info-panel"><summary>캐릭터 정보<span id="card-info-summary">사용 안 함</span></summary>
+          <label class="card-info-toggle"><input id="card-info-enabled" type="checkbox"> 이미지에 하단 정보 포함</label>
+          <fieldset id="card-info-fields" disabled><legend class="sr-only">로딩 카드 정보 편집</legend>
+            <div class="card-info-texts">
+              <label>레벨 표기<input id="card-info-level" type="text" maxlength="80" value="LV 90" placeholder="LV 90"></label>
+              <label>캐릭터명 · 직함<input id="card-info-character" type="text" maxlength="80" value="결사대원" placeholder="결사대원"></label>
+              <label>닉네임<input id="card-info-name" type="text" maxlength="80" value="닉네임" placeholder="닉네임"></label>
+              <label>로딩 진행률<input id="card-info-progress" type="text" maxlength="80" value="31%" placeholder="31%"></label>
+            </div>
+            <div class="card-emblem-heading">요원 등급 엠블럼<button type="button" id="card-emblem-none" class="secondary" aria-pressed="true">없음</button></div>
+            <div id="card-emblem-options" class="card-emblem-options" role="group" aria-label="게임 요원 등급 엠블럼"></div>
+          </fieldset>
+        </details>
         <details id="layout-context"><summary>로딩창에서의 크기 · 위치</summary><p id="layout-info" class="muted"></p><canvas id="layout-context-canvas" width="960" height="540" aria-label="전체 로딩창에서 현재 조합 영역의 크기와 위치" hidden></canvas><p id="source-info" class="muted"></p><p class="muted">배치 기준은 게임의 일러스트 표시 영역이며, 저장 해상도와 미리보기 배율은 별개입니다.</p></details>
         <div id="canvas-stage"><canvas id="composition-canvas" width="700" height="700" tabindex="0" aria-label="이미지 조합 화면. 선택한 레이어를 드래그해 이동하고 오른쪽 아래 손잡이로 크기를 바꿀 수 있습니다."></canvas></div>
         <p id="canvas-summary" class="muted"></p>

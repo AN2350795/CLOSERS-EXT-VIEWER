@@ -2,6 +2,8 @@
 globalThis.CompositionCore=(()=>{
   const MAX_PIXELS=16777216,MAX_TOTAL_PIXELS=134217728,MAX_LAYERS=20,MAX_SOURCES=256;
   const tinted=new WeakMap();
+  const INFO_KEYS=['level','character','name','progress'];
+  const FONT_FAMILIES={'NanumGothicExtraBold.ttf':'ClosersGameExtraBold','NanumGothicBold.ttf':'ClosersGameBold'};
   const fail=message=>{throw Error(message);};
   const number=(v,label,min,max)=>typeof v==='number'&&Number.isFinite(v)&&v>=min&&v<=max?v:fail(label+' 범위가 올바르지 않습니다.');
   const integer=(v,label,min,max)=>Number.isInteger(v)?number(v,label,min,max):fail(label+'는 정수여야 합니다.');
@@ -16,7 +18,7 @@ globalThis.CompositionCore=(()=>{
     return {x,y,width:right-x,height:bottom-y};
   }
   function validate(value){
-    if(!value||value.schema!=='closers-composition'||![1,2,3,4,5,6].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
+    if(!value||value.schema!=='closers-composition'||![1,2,3,4,5,6,7].includes(value.version)||!['composition','frame-template'].includes(value.kind))fail('지원하는 조합 설정 파일이 아닙니다.');
     const c=value.canvas||{},canvas={width:integer(c.width,'출력 너비',1,8192),height:integer(c.height,'출력 높이',1,8192),transparent:bool(c.transparent,true),color:text(c.color,'배경색',7)};
     if(canvas.width*canvas.height>MAX_PIXELS)fail('출력은 16,777,216픽셀까지 지원합니다.');
     if(!/^#[0-9a-f]{6}$/i.test(canvas.color))fail('배경색이 올바르지 않습니다.');
@@ -33,6 +35,25 @@ globalThis.CompositionCore=(()=>{
     });
     if(sources.reduce((n,s)=>n+s.width*s.height,0)>MAX_TOTAL_PIXELS)fail('불러올 원본 이미지의 합계는 134,217,728픽셀까지 지원합니다.');
     const sourceMap=new Map(sources.map(s=>[s.key,s])),ids=new Set();
+    if(c.info!==undefined){
+      const i=c.info;
+      if(!i||!Array.isArray(i.fields)||i.fields.length!==4||!Array.isArray(i.pictures)||i.pictures.length>8||!Array.isArray(i.fonts)||i.fonts.length!==2)fail('캐릭터 정보 설정이 올바르지 않습니다.');
+      if(new Set(i.fonts.map(f=>f?.name)).size!==2)fail('게임 글꼴이 중복되었습니다.');
+      const rgba=color=>{if(!Array.isArray(color)||color.length!==4)fail('정보 색상이 올바르지 않습니다.');return color.map(v=>number(v,'정보 색상',0,1));};
+      const rect=p=>({x:number(p.x,'정보 X',-65536,65536),y:number(p.y,'정보 Y',-65536,65536),width:number(p.width,'정보 너비',.01,65536),height:number(p.height,'정보 높이',.01,65536)});
+      const frames=items=>{if(!Array.isArray(items)||!items.length||items.length>120)fail('엠블럼 프레임이 올바르지 않습니다.');return items.map(f=>{if(!sourceMap.has(f.source))fail('엠블럼 원본이 없습니다.');return {source:f.source,duration:number(f.duration,'엠블럼 재생 시간',.001,60)};});};
+      canvas.info={enabled:bool(i.enabled,false),height:integer(i.height,'정보 영역 높이',1,1024),
+        fonts:i.fonts.map(f=>{if(!FONT_FAMILIES[f.name]||!/^[0-9a-f]{64}$/.test(f.sha256))fail('게임 글꼴 정보가 올바르지 않습니다.');return {name:f.name,sha256:f.sha256};}),
+        fields:i.fields.map((f,n)=>{
+          if(f.key!==INFO_KEYS[n]||!FONT_FAMILIES[f.font]||!['left','center','right'].includes(f.align)||!['top','middle','bottom'].includes(f.baseline))fail('정보 글자 설정이 올바르지 않습니다.');
+          return {key:f.key,text:text(f.text,'정보 내용',80),font:f.font,size:number(f.size,'글자 크기',1,128),
+            x:number(f.x,'글자 X',-65536,65536),y:number(f.y,'글자 Y',-65536,65536),align:f.align,baseline:f.baseline,
+            outline:number(f.outline,'글자 외곽선',0,8),outlineFactor:number(f.outlineFactor,'외곽선 색상',0,1),boldRate:number(f.boldRate,'글자 굵기',0,16),color:rgba(f.color)};
+        }),pictures:i.pictures.map(p=>{const s=sourceMap.get(p.source);if(!s)fail('정보 배경 원본이 없습니다.');return {...rect(p),source:p.source,crop:gameCrop(p.crop||{},s),gauge:bool(p.gauge,false)};})};
+      if(i.emblem!==undefined){const e=i.emblem;if(!e||!['source-over','lighter'].includes(e.blend))fail('엠블럼 설정이 올바르지 않습니다.');canvas.info.emblem={...rect(e),id:integer(e.id,'요원 등급',1,8),name:text(e.name,'엠블럼 이름',80),frames:frames(e.frames),color:rgba(e.color),delay:number(e.delay,'엠블럼 지연',0,60),blend:e.blend};}
+      if(value.kind==='frame-template')fail('프레임 템플릿에는 캐릭터 정보를 넣을 수 없습니다.');
+      if(canvas.width*(canvas.height+canvas.info.height)>MAX_PIXELS)fail('정보 영역을 포함한 이미지가 너무 큽니다.');
+    }
     if(c.background!==undefined){
       const b=c.background,s=sourceMap.get(b?.source);
       if(!s||canvas.transparent)fail('게임 배경의 이미지 연결이 올바르지 않습니다.');
@@ -75,7 +96,7 @@ globalThis.CompositionCore=(()=>{
     for(const l of layers)if(l.markParent&&!layers.some(p=>p.id===l.markParent&&p.id!==l.id&&p.gameMark&&!p.markParent&&!p.animation))fail('효과를 연결할 마크가 없습니다.');
     const output=value.output===undefined?{mode:'native',width:720}:value.output;
     if(!output||!['native','base','double','custom'].includes(output.mode))fail('저장 해상도 설정이 올바르지 않습니다.');
-    return {schema:'closers-composition',version:canvas.background?6:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
+    return {schema:'closers-composition',version:canvas.info?7:canvas.background?6:layers.some(l=>l.animation?.particle)?3:layers.some(l=>l.animation)?2:value.version,kind:value.kind,canvas,sources,layers,
       output:{mode:output.mode,width:integer(output.width??720,'저장 너비',1,8192)}};
   }
   function exportSize(project){
@@ -87,7 +108,7 @@ globalThis.CompositionCore=(()=>{
     // Keep one uniform scale for illustration, frame and particle placement.
     if(output.mode==='double')scale=2;
     if(output.mode==='custom')scale=output.width/canvas.width;
-    const width=Math.max(1,Math.round(canvas.width*scale)),height=Math.max(1,Math.round(canvas.height*scale));
+    const width=Math.max(1,Math.round(canvas.width*scale)),height=Math.max(1,Math.round(canvasSize(project).height*scale));
     if(width>8192||height>8192||width*height>MAX_PIXELS)fail('저장 이미지는 한 변 8,192픽셀·합계 16,777,216픽셀까지입니다. 저장 크기를 줄여 주세요.');
     return {width,height};
   }
@@ -103,11 +124,29 @@ globalThis.CompositionCore=(()=>{
     const canvas=new OffscreenCanvas(image.width,image.height),ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);
     const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);for(let i=0;i<pixels.data.length;i+=4)for(let j=0;j<3;j++)pixels.data[i+j]=Math.round(pixels.data[i+j]*color[j]);ctx.putImageData(pixels,0,0);cache.set(key,canvas);return canvas;
   }
-  function draw(context,project,images,width=project.canvas.width,height=project.canvas.height,time=0){
+  function canvasSize(project){return {width:project.canvas.width,height:project.canvas.height+(project.canvas.info?.enabled?project.canvas.info.height:0)};}
+  function drawInfo(ctx,info,images,time,width){
+    const progress=info.fields[3].text.trim(),amount=/^\d+(?:\.\d+)?\s*%?$/.test(progress)?Math.min(100,Number(progress.replace('%','').trim()))/100:0;
+    for(const p of info.pictures){const image=images.get(p.source),c=p.crop,w=p.width*(p.gauge?amount:1);if(image&&w>0)ctx.drawImage(image,c.x,c.y,c.width,c.height,p.x,p.y,w,p.height);}
+    const e=info.emblem,f=e?frameAt(e,time):null;
+    if(f){const image=images.get(f.source);if(image){ctx.save();ctx.globalAlpha=e.color[3];ctx.globalCompositeOperation=e.blend;ctx.drawImage(colorImage(image,e.color),e.x,e.y,e.width,e.height);ctx.restore();}}
+    for(const f of info.fields){
+      if(!f.text)continue;
+      ctx.save();const left=f.align==='right'?Math.max(0,f.x-80):f.x;
+      const right=f.key==='level'?info.fields[1].x-6:f.key==='progress'?f.x:info.fields[3].x-80;
+      ctx.beginPath();ctx.rect(left,f.y-f.size-4,Math.max(0,Math.min(width,right)-left),f.size*2+8);ctx.clip();
+      ctx.font=`${f.size}px "${FONT_FAMILIES[f.font]}"`;ctx.textAlign=f.align;ctx.textBaseline=f.baseline;ctx.lineJoin='round';
+      ctx.fillStyle=`rgba(${f.color.slice(0,3).map(v=>Math.round(v*255)).join(',')},${f.color[3]})`;
+      ctx.strokeStyle=`rgba(${f.color.slice(0,3).map(v=>Math.round(v*255*f.outlineFactor)).join(',')},${f.color[3]})`;
+      if(f.outline){ctx.lineWidth=f.outline*2;ctx.strokeText(f.text,f.x,f.y);}ctx.fillText(f.text,f.x,f.y);ctx.restore();
+    }
+  }
+  function draw(context,project,images,width=canvasSize(project).width,height=canvasSize(project).height,time=0){
     globalThis.ParticleEffects?.prune(images);
     context.setTransform(1,0,0,1,0,0);context.clearRect(0,0,width,height);
-    context.save();context.scale(width/project.canvas.width,height/project.canvas.height);
-    if(!project.canvas.transparent){context.fillStyle=project.canvas.color;context.fillRect(0,0,project.canvas.width,project.canvas.height);}
+    const size=canvasSize(project);
+    context.save();context.scale(width/size.width,height/size.height);
+    if(!project.canvas.transparent){context.fillStyle=project.canvas.color;context.fillRect(0,0,size.width,size.height);}
     context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';
     const background=project.canvas.background;
     if(background){
@@ -121,6 +160,7 @@ globalThis.CompositionCore=(()=>{
         context.restore();
       }
     }
+    context.save();context.beginPath();context.rect(0,0,project.canvas.width,project.canvas.height);context.clip();
     for(const l of project.layers){
       if(l.visible&&l.animation?.particle){
         const placed=placement(l,project.layers);if(placed)ParticleEffects.draw(context,placed,l.animation,images,project,time);continue;
@@ -131,6 +171,9 @@ globalThis.CompositionCore=(()=>{
       context.drawImage(image,c.x,c.y,c.width,c.height,l.x,l.y,l.width,l.height);
     }
     context.restore();
+    context.globalAlpha=1;context.globalCompositeOperation='source-over';
+    if(project.canvas.info?.enabled)drawInfo(context,project.canvas.info,images,time,size.width);
+    context.restore();
   }
   function placement(l,layers){
     if(!l.markParent)return l;
@@ -138,6 +181,6 @@ globalThis.CompositionCore=(()=>{
     const sx=parent.width/parent.crop.width,sy=parent.height/parent.crop.height;
     return {...l,x:parent.x+parent.width/2+l.x*sx,y:parent.y+parent.height/2+l.y*sy,width:l.width*sx,height:l.height*sy,opacity:l.opacity*parent.opacity};
   }
-  function usedSources(layers,canvas){return new Set([...(canvas?.background?[canvas.background.source]:[]),...layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])])]);}
-  return Object.freeze({validate,exportSize,draw,frameAt,usedSources,placement,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
+  function usedSources(layers,canvas){return new Set([...(canvas?.background?[canvas.background.source]:[]),...(canvas?.info?.pictures.map(p=>p.source)||[]),...(canvas?.info?.emblem?.frames.map(f=>f.source)||[]),...layers.flatMap(l=>[l.source,...(l.animation?.frames.map(f=>f.source)||[]),...(l.animation?.particle?.mask?[l.animation.particle.mask]:[])])]);}
+  return Object.freeze({validate,exportSize,canvasSize,draw,frameAt,usedSources,placement,FONT_FAMILIES,MAX_PIXELS,MAX_TOTAL_PIXELS,MAX_LAYERS,MAX_SOURCES});
 })();

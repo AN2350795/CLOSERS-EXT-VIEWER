@@ -369,6 +369,16 @@ def create_server(catalog, port=0):
                     self.respond(loading.layout())
                 elif url.path == '/api/loading-background':
                     self.respond(loading.background(int(query.get('team', 1))))
+                elif url.path == '/api/loading-card-info':
+                    self.respond(loading.card_info())
+                elif url.path.startswith('/api/loading-card-emblem/'):
+                    body = loading.card_emblem_thumbnail(int(url.path.rsplit('/',1)[1]), composition)
+                    self.respond(body, 'image/png', cache_control='private, no-cache',
+                                 etag='"'+hashlib.sha256(body).hexdigest()+'"')
+                elif url.path.startswith('/api/loading-font/'):
+                    body = loading.card_font(url.path.rsplit('/',1)[1])
+                    self.respond(body, 'font/ttf', cache_control='private, no-cache',
+                                 etag='"'+hashlib.sha256(body).hexdigest()+'"')
                 elif url.path.startswith('/api/loading-illustration/'):
                     self.respond(loading.illustration_plan(int(url.path.rsplit('/',1)[1])))
                 elif url.path == '/api/loading-illustrations':

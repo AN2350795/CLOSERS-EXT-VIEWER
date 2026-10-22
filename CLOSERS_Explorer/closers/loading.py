@@ -152,6 +152,22 @@ class LoadingData:
                 y=card_pos.get(2, 0)+picture_pos.get(2, 0)-layout['area']['y'],
                 width=picture['m_fWidth'], height=picture['m_fHeight'])
 
+    def card_info(self):
+        from .loading_card import info_plan
+        return self.cached(('card-info',), lambda: info_plan(self))
+
+    def card_font(self, name):
+        from .loading_card import font_data
+        with self.lock, self.session():
+            return font_data(self, name)
+
+    def card_emblem_thumbnail(self, ident, composition):
+        emblem = next((e for e in self.card_info()['emblems'] if e['id']==ident), None)
+        if emblem is None:
+            raise ValueError('지원하지 않는 요원 등급입니다.')
+        return self.render_thumbnail(dict(width=emblem['width'],height=emblem['height'],
+            layers=[{**emblem, 'x':0, 'y':0}],effects=[]), 'emblem', composition)
+
     def _illustration_registry(self):
         skin_body, convert_body = self.body('ILLUST_TEMPLET.NTF'), self.body('ILLUST_CONVERT_DATA.NTF')
         digest = hashlib.sha256(skin_body+convert_body).digest()

@@ -7,6 +7,8 @@ const roles={illustration:'일러스트',frame:'프레임',fragment:'조각'};
 let gamePlan=null,gamePresets=null,atlasRegions={},atlasSource=null,animationTime=0,playing=false,lastTick=0;
 let pickerKind='illustration',selectedFrameId=null,selectedMarkId=null;
 let gameLayout=null;
+let cardInfoPlan=null;
+const cardFonts=new Map(),cardInfoKeys=['level','character','name','progress'];
 let animationPreviewURL=null,statusTimer=null;
 const pickerLabels={illustration:'일러스트',frame:'프레임',mark:'추가 장식'};
 function fixedCanvas(project){
@@ -40,11 +42,13 @@ function validateCurrent(){composition=Core.validate(gameLayout?fixedCanvas(comp
 function updateControls(){
   for(const id of ['export-png','save-project','load-project','save-template','load-template','new-project','canvas-color','refresh-picker','export-apng','play-effects','animation-time','animation-format','animation-duration','animation-fps','animation-loop'])$(id).disabled=busy;
   $('background-settings').disabled=busy;
+  $('card-info-enabled').disabled=busy;$('card-info-fields').disabled=busy||!composition.canvas.info?.enabled;
   $('match-animation-cycle').disabled=busy||AnimationLoop.textureCycle(composition,Number($('animation-fps').value))===null;
   $('output-mode').disabled=busy;$('output-width').disabled=busy||composition.output?.mode!=='custom';
-  const hasAnimation=composition.layers.some(l=>l.visible&&l.animation&&(!l.markParent||composition.layers.find(p=>p.id===l.markParent)?.visible));
+  const hasAnimation=AnimationLoop.timings(composition).length>0;
+  if(!hasAnimation&&playing){playing=false;lastTick=0;$('play-effects').textContent='효과 재생';}
   $('export-png').disabled=busy||!gameLayout;$('export-apng').disabled=busy||!gameLayout||!hasAnimation;
-  $('export-apng').title=hasAnimation?'현재 저장 설정으로 애니메이션을 저장합니다.':'움직이는 효과가 있는 프레임이나 추가 장식을 선택하세요.';
+  $('export-apng').title=hasAnimation?'현재 저장 설정으로 애니메이션을 저장합니다.':'움직이는 효과가 있는 프레임·추가 장식·요원 등급 엠블럼을 선택하세요.';
   $('play-effects').disabled=busy||!hasAnimation;$('animation-time').disabled=busy||!hasAnimation;
   $('save-template').disabled=busy||!composition.layers.some(l=>l.role!=='illustration');
   $('layer-fields').disabled=busy||!currentLayer();
@@ -54,7 +58,7 @@ function updateControls(){
   for(const card of document.querySelectorAll('.asset-card'))card.setAttribute('aria-pressed',String(card.dataset.kind==='frame'?Number(card.dataset.id)===selectedFrameId:card.dataset.kind==='mark'?Number(card.dataset.id)===selectedMarkId:false));
 }
 function pruneImages(){const used=Core.usedSources(composition.layers,composition.canvas);composition.sources=composition.sources.filter(s=>used.has(s.key));for(const [key,value] of images)if(!used.has(key)){value.bitmap.close();images.delete(key);}}
-function commit(){pruneImages();renderLayers();renderFields();renderCanvas();renderAnimationTiming();updateControls();}
+function commit(){pruneImages();renderLayers();renderFields();renderCardInfo();renderCanvas();renderAnimationTiming();updateControls();}
 function renderOutput(){
   const output=composition.output||{mode:'native',width:720};$('output-mode').value=output.mode;
   $('custom-output').hidden=output.mode!=='custom';
@@ -168,7 +172,7 @@ async function applyGameFrame(mark=false,ident=mark?selectedMarkId:selectedFrame
 $('load-atlas').onclick=()=>operation(async()=>{const l=currentLayer(),s=images.get(l.source).metadata;const result=await api('/api/loading-atlas/'+s.entry_id);atlasRegions=result.regions;$('atlas-region').replaceChildren(node('option','','전체 이미지'));$('atlas-region').firstChild.value='';for(const key of Object.keys(atlasRegions)){const option=node('option','',key);option.value=key;$('atlas-region').append(option);}});
 $('atlas-region').onchange=()=>{const l=currentLayer();if(!l||l.locked||l.animation)return;const s=composition.sources.find(s=>s.key===l.source),crop=atlasRegions[$('atlas-region').value]||{x:0,y:0,width:s.width,height:s.height};changeLayer(l=>{l.crop={...crop};l.width=crop.width;l.height=crop.height;});};
 function renderCanvas(){
-  const canvas=$('composition-canvas'),c=composition.canvas,available=Math.max(100,$('canvas-stage').clientWidth-4),scale=Math.min(1,available/c.width,650/c.height);
+  const canvas=$('composition-canvas'),c=Core.canvasSize(composition),available=Math.max(100,$('canvas-stage').clientWidth-4),scale=Math.min(1,available/c.width,650/c.height);
   canvas.width=Math.max(1,Math.round(c.width*scale));canvas.height=Math.max(1,Math.round(c.height*scale));
   const context=canvas.getContext('2d');Core.draw(context,composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),canvas.width,canvas.height,animationTime);
   const editing=$('layer-edit').open,selected=currentLayer(),l=selected?Core.placement(selected,composition.layers):null;if(editing&&l&&l.visible){const sx=canvas.width/c.width,sy=canvas.height/c.height;context.save();context.strokeStyle=l.locked?'#b3bdcf':'#83dfc5';context.lineWidth=1.5;context.setLineDash([5,3]);context.strokeRect(l.x*sx,l.y*sy,l.width*sx,l.height*sy);if(!l.locked){context.setLineDash([]);context.fillStyle='#83dfc5';context.fillRect((l.x+l.width)*sx-5,(l.y+l.height)*sy-5,10,10);}context.restore();}
@@ -191,12 +195,12 @@ function renderLayoutContext(){
     ctx.strokeStyle='#536374';ctx.lineWidth=2;ctx.strokeRect(card.x,card.y,card.width,card.height);
   }
   ctx.restore();
-  const area=layout.area,preview=document.createElement('canvas');preview.width=Math.round(area.width*scale);preview.height=Math.round(area.height*scale);
+  const area=layout.area,full=Core.canvasSize(composition),preview=document.createElement('canvas');preview.width=Math.round(full.width*scale);preview.height=Math.round(full.height*scale);
   if(preview.width&&preview.height){
     Core.draw(preview.getContext('2d'),composition,new Map([...images].map(([key,v])=>[key,v.bitmap])),preview.width,preview.height,animationTime);
     ctx.drawImage(preview,area.x*scale,area.y*scale);
   }
-  ctx.strokeStyle='#83dfc5';ctx.lineWidth=2;ctx.strokeRect(area.x*scale,area.y*scale,area.width*scale,area.height*scale);
+  ctx.strokeStyle='#83dfc5';ctx.lineWidth=2;ctx.strokeRect(area.x*scale,area.y*scale,full.width*scale,full.height*scale);
   preview.width=preview.height=1;
 }
 $('layout-context').ontoggle=renderLayoutContext;
@@ -268,6 +272,59 @@ async function changeBackground(mode,team=Number($('background-team').value)){
   });
 }
 function changeCanvas(){if(busy)return;const previous=snapshot();try{composition.canvas.color=$('canvas-color').value;validateCurrent();commit();}catch(e){composition=previous;commit();toast(e.message);}}
+async function ensureCardFonts(fonts){
+  for(const f of fonts){
+    const key=f.name+':'+f.sha256;if(cardFonts.has(key))continue;
+    const response=await fetch('/api/loading-font/'+encodeURIComponent(f.name),{headers:{'X-Explorer-Token':token}});
+    if(!response.ok)throw Error('게임 글꼴을 불러오지 못했습니다: '+f.name);
+    const bytes=await response.arrayBuffer();if(bytes.byteLength>16*1024*1024)throw Error('게임 글꼴이 너무 큽니다.');
+    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(v=>v.toString(16).padStart(2,'0')).join('');
+    if(hash!==f.sha256)throw Error('게임 글꼴이 변경되었습니다: '+f.name);
+    const font=new FontFace(Core.FONT_FAMILIES[f.name],bytes);await font.load();document.fonts.add(font);cardFonts.set(key,font);
+  }
+}
+function renderCardInfo(){
+  const info=composition.canvas.info;
+  $('card-info-enabled').checked=Boolean(info?.enabled);$('card-info-summary').textContent=info?.enabled?'사용 중':'사용 안 함';
+  if(info)for(const field of info.fields)$('card-info-'+field.key).value=field.text;
+  const selected=info?.emblem?.id||0;$('card-emblem-none').setAttribute('aria-pressed',String(selected===0));
+  if(cardInfoPlan&&!$('card-emblem-options').children.length)for(const emblem of cardInfoPlan.emblems){
+    const button=node('button');button.type='button';button.dataset.emblem=emblem.id;button.title=emblem.name+' 등급'+(emblem.frames.length>1?' · 애니메이션':'');
+    const img=node('img');img.src='/api/loading-card-emblem/'+emblem.id+'?token='+encodeURIComponent(token);img.alt='';img.loading='lazy';button.append(img,node('span','',emblem.name));
+    button.setAttribute('aria-label',button.title);button.onclick=()=>operation(()=>applyCardInfo(true,emblem.id));$('card-emblem-options').append(button);
+  }
+  for(const button of $('card-emblem-options').children)button.setAttribute('aria-pressed',String(Number(button.dataset.emblem)===selected));
+}
+async function applyCardInfo(enabled,emblemId=null){
+  if(!enabled){if(composition.canvas.info)composition.canvas.info.enabled=false;validateCurrent();commit();return;}
+  const staged=[];
+  try{
+    await ensureLayout();if(!cardInfoPlan)cardInfoPlan=await api('/api/loading-card-info');await ensureCardFonts(cardInfoPlan.fonts);
+    const next=snapshot(),old=next.canvas.info;
+    const load=async id=>{
+      const loaded=await loadSource(id,null,staged);
+      if(!staged.some(s=>s.key===loaded.key))staged.push(loaded);
+      if(!next.sources.some(s=>s.key===loaded.key))next.sources.push({...loaded.value.metadata,key:loaded.key});return loaded;
+    };
+    const pictures=[];
+    for(const p of cardInfoPlan.pictures){const loaded=await load(p.entry_id),{entry_id,...picture}=p;pictures.push({...picture,source:loaded.key,crop:p.crop||{x:0,y:0,width:loaded.value.metadata.width,height:loaded.value.metadata.height}});}
+    const info={enabled:true,height:cardInfoPlan.height,fonts:cardInfoPlan.fonts,pictures,
+      fields:cardInfoPlan.fields.map(f=>({...f,text:old?.fields.find(v=>v.key===f.key)?.text??$('card-info-'+f.key).value}))};
+    const selected=emblemId??old?.emblem?.id??0;
+    if(selected){
+      const definition=cardInfoPlan.emblems.find(e=>e.id===selected);if(!definition)throw Error('요원 등급을 찾을 수 없습니다.');
+      const frames=[];for(const f of definition.frames){const loaded=await load(f.entry_id);frames.push({source:loaded.key,duration:f.duration});}
+      info.emblem={...definition,frames};
+    }
+    next.canvas.info=info;const checked=Core.validate(next);
+    for(const s of staged)if(!s.reused)images.set(s.key,s.value);
+    composition=checked;if(info.emblem?.frames.length>1){playing=true;lastTick=0;$('play-effects').textContent='효과 일시 정지';}commit();
+    editorStatus('로딩 카드 정보를 적용했습니다.');
+  }catch(error){for(const s of staged)if(!s.reused)s.value.bitmap.close();renderCardInfo();throw error;}
+}
+$('card-info-enabled').onchange=()=>operation(()=>applyCardInfo($('card-info-enabled').checked));
+$('card-emblem-none').onclick=()=>operation(()=>applyCardInfo(true,0));
+for(const key of cardInfoKeys)$('card-info-'+key).oninput=()=>{if(busy||!composition.canvas.info?.enabled)return;composition.canvas.info.fields.find(f=>f.key===key).text=$('card-info-'+key).value;validateCurrent();commit();};
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob),link=node('a');link.href=url;link.download=name;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 function clearAnimationPreview(){
   $('animation-preview-image').removeAttribute('src');
@@ -317,13 +374,14 @@ function animateEffects(now){
 requestAnimationFrame(animateEffects);
 function projectForSave(template=false){
   const value=snapshot();value.kind=template?'frame-template':'composition';
-  if(template){delete value.canvas.background;value.layers=value.layers.filter(l=>l.role!=='illustration');const used=Core.usedSources(value.layers,value.canvas);value.sources=value.sources.filter(s=>used.has(s.key));if(!value.layers.length)throw Error('저장할 프레임·조각 레이어가 없습니다.');}
+  if(template){delete value.canvas.background;delete value.canvas.info;value.layers=value.layers.filter(l=>l.role!=='illustration');const used=Core.usedSources(value.layers,value.canvas);value.sources=value.sources.filter(s=>used.has(s.key));if(!value.layers.length)throw Error('저장할 프레임·조각 레이어가 없습니다.');}
   return Core.validate(value);
 }
 function saveProject(template){const value=projectForSave(template);downloadBlob(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}),template?'closers-frame-template.json':'closers-composition.json');editorStatus(template?'프레임 템플릿 저장 요청 완료':'조합 설정 저장 요청 완료');}
 async function importProject(raw,append=false){
   await ensureLayout();
   const value=Core.validate(raw);
+  if(!append&&value.canvas.info)await ensureCardFonts(value.canvas.info.fonts);
   if(append&&value.kind!=='frame-template')throw Error('프레임 템플릿 파일을 선택해 주세요.');
   if(append&&composition.layers.length+value.layers.length>Core.MAX_LAYERS)throw Error('추가 후 레이어가 20개를 초과합니다.');
   editorStatus('설정에 기록된 원본 출처와 해시를 확인하고 있습니다…','working');
@@ -342,6 +400,11 @@ async function importProject(raw,append=false){
         const plan=await api('/api/loading-background?team='+background.team);
         Object.assign(background,{crop:plan.crop||{x:0,y:0,width:source.width,height:source.height},fit:plan.fit,color:plan.color,x:plan.x,y:plan.y,width:plan.width,height:plan.height});
       }
+    }
+    if(!append&&next.canvas.info){
+      for(const picture of next.canvas.info.pictures)picture.source=mapping.get(picture.source);
+      if(next.canvas.info.emblem)for(const frame of next.canvas.info.emblem.frames)frame.source=mapping.get(frame.source);
+      if(!cardInfoPlan)cardInfoPlan=await api('/api/loading-card-info');
     }
     const layerMapping=new Map(value.layers.map(l=>[l.id,'l'+(++layerSequence)]));
     for(const l of value.layers)next.layers.push({...l,id:layerMapping.get(l.id),...(l.markParent?{markParent:layerMapping.get(l.markParent)}:{}),source:mapping.get(l.source),...(l.animation?{animation:{...l.animation,frames:l.animation.frames.map(f=>({...f,source:mapping.get(f.source)})),...(l.animation.particle?{particle:{...l.animation.particle,...(l.animation.particle.mask?{mask:mapping.get(l.animation.particle.mask)}:{})}}:{})}}:{})});
@@ -398,7 +461,7 @@ async function searchImages(){
   }catch(e){if(seq===pickerGeneration){$('image-results').replaceChildren(node('p','picker-error',e.message));setMessage('picker-summary','목록을 불러오지 못했습니다. 새로고침으로 다시 시도하세요.','error');$('image-page').textContent='';}}
   finally{if(seq===pickerGeneration)$('image-results').setAttribute('aria-busy','false');}
 }
-function pointerPosition(event){const rect=$('composition-canvas').getBoundingClientRect();return {x:(event.clientX-rect.left)*composition.canvas.width/rect.width,y:(event.clientY-rect.top)*composition.canvas.height/rect.height};}
+function pointerPosition(event){const rect=$('composition-canvas').getBoundingClientRect();return {x:(event.clientX-rect.left)*composition.canvas.width/rect.width,y:(event.clientY-rect.top)*Core.canvasSize(composition).height/rect.height};}
 $('composition-canvas').onpointerdown=event=>{
   if(busy||!$('layer-edit').open||event.button!==0)return;const p=pointerPosition(event),selected=currentLayer(),rect=$('composition-canvas').getBoundingClientRect(),tolerance=12*composition.canvas.width/rect.width;
   const resizing=selected&&selected.visible&&!selected.locked&&Math.abs(p.x-selected.x-selected.width)<tolerance&&Math.abs(p.y-selected.y-selected.height)<tolerance;
@@ -445,7 +508,7 @@ for(const id of ['save-project','load-project','save-template','load-template'])
 $('composition-menu').onkeydown=event=>{if(event.key==='Escape'){$('composition-menu').open=false;$('composition-menu').querySelector('summary').focus();}};
 document.addEventListener('click',event=>{if(!$('composition-menu').contains(event.target))$('composition-menu').open=false;});
 for(const [id,append] of [['project-file',false],['template-file',true]])$(id).onchange=()=>{const file=$(id).files[0];$(id).value='';operation(()=>loadFile(file,append));};
-$('new-project').onclick=()=>{if(busy)return;$('background-team').value='1';$('background-opacity').value='100';selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
+$('new-project').onclick=()=>{if(busy)return;$('background-team').value='1';$('background-opacity').value='100';for(const [key,value] of Object.entries({level:'LV 90',character:'결사대원',name:'닉네임',progress:'31%'}))$('card-info-'+key).value=value;selectedFrameId=null;selectedMarkId=null;playing=false;animationTime=0;lastTick=0;$('animation-time').value='0';$('play-effects').textContent='효과 재생';for(const value of images.values())value.bitmap.close();images.clear();composition={schema:'closers-composition',version:1,kind:'composition',canvas:{width:1,height:1,transparent:false,color:'#172033'},sources:[],layers:[]};selectedLayer=null;canvasExplicit=false;if(gameLayout)composition=fixedCanvas(composition);commit();editorStatus('조합을 초기화했습니다.','info');};
 $('image-query').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{pickerPage=1;searchImages();},250);};
 function selectPicker(kind){
   pickerKind=kind;pickerPage=1;$('image-query').value='';clearTimeout(searchTimer);

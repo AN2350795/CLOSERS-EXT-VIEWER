@@ -139,9 +139,10 @@ globalThis.ParticleEffects=(()=>{
     if(r.canvas.width!==context.canvas.width)r.canvas.width=context.canvas.width;
     if(r.canvas.height!==context.canvas.height)r.canvas.height=context.canvas.height;
     gl.viewport(0,0,r.canvas.width,r.canvas.height);
-    gl.uniform2f(uniforms.viewport,project.canvas.width,project.canvas.height);gl.uniform1i(uniforms.image,0);gl.uniform1i(uniforms.mask,1);
+    const width=project.canvas.width,height=project.canvas.height+(project.canvas.info?.enabled?project.canvas.info.height:0);
+    gl.uniform2f(uniforms.viewport,width,height);gl.uniform1i(uniforms.image,0);gl.uniform1i(uniforms.mask,1);
     gl.activeTexture(gl.TEXTURE0);r.upload(r.background,context.canvas,true);gl.disable(gl.BLEND);
-    r.quad([project.canvas.width,0,0,0,project.canvas.height,0,project.canvas.width/2,project.canvas.height/2,1],[1,1,1,1],[0,0],true,false);
+    r.quad([width,0,0,0,height,0,width/2,height/2,1],[1,1,1,1],[0,0],true,false);
     gl.enable(gl.BLEND);gl.blendEquation(gl.FUNC_ADD);
     if(p.mask){gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,r.texture(images.get(p.mask)));}
     const total=animation.frames.reduce((n,f)=>n+f.duration,0),sx=layer.width/p.basis[0]*p.scale[0],sy=layer.height/p.basis[1]*p.scale[1],draws=[];

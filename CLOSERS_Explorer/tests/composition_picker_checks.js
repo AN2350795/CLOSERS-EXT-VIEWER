@@ -9,6 +9,11 @@ try{
   const particle={seed:123,life:2,maxParticles:1,rate:0,instant:1,emitterLife:10,deaths:0,radius:[0,0,0],radiusMin:0,gravity:[0,0,0],scale:[1,1],basis:[4,4],drawCount:1,dual:false,dualDrawCount:1,clamp:true,blend:['SRCALPHA','INVSRCALPHA'],mask_entry_id:1,tracks:[{property:'size',mode:'initial',value:[4,4,1],start:0,end:null},{property:'color',mode:'initial',value:[1,1,1,1],start:0,end:null},{property:'color',mode:'final',value:[1,1,1,0],start:0,end:null}]};
   window.fetch=async(path,options)=>{
     const url=new URL(path,location.origin);requests.push(url.pathname+url.search);
+    if(url.pathname==='/api/loading-card-info')return Response.json({height:80,fonts:[{name:'NanumGothicExtraBold.ttf',sha256:'a'.repeat(64)},{name:'NanumGothicBold.ttf',sha256:'b'.repeat(64)}],
+      fields:['level','character','name','progress'].map((key,n)=>({key,font:n===3?'NanumGothicBold.ttf':'NanumGothicExtraBold.ttf',size:n===3?24:13,x:[92,140,92,442][n],y:[672,672,692,682][n],align:n===3?'right':'left',baseline:'middle',outline:1,outlineFactor:.3,boldRate:4.5,color:[1,1,1,1]})),
+      pictures:[{entry_id:11,crop:{x:0,y:0,width:8,height:4},x:0,y:640,width:450,height:80}],
+      emblems:[{id:1,name:'D',x:8,y:647,width:64,height:64,frames:[{entry_id:12,duration:1}],color:[1,1,1,1],delay:0,blend:'source-over'},
+        {id:8,name:'X',x:-24,y:615,width:128,height:128,frames:[{entry_id:13,duration:.1},{entry_id:14,duration:.1}],color:[1,1,1,1],delay:0,blend:'source-over'}]});
     if(url.pathname==='/api/loading-background')return Response.json({team:Number(url.searchParams.get('team')||1),entry_id:7+Number(url.searchParams.get('team')||1),name:'게임 기본',fit:'stretch',color:[.137255,.168627,.188235,1],crop:{x:0,y:0,width:4,height:4},x:-2,y:-2,width:454,height:724});
     if(url.pathname==='/api/loading-layout')return Response.json({width:450,height:640,screen:{width:1920,height:1080},card:{x:21,y:22,width:454,height:724},area:{x:23,y:24,width:450,height:640}});
     if(url.pathname==='/api/loading-illustration/9')return Response.json({width:450,height:640,layers:[{entry_id:9,name:'테스트 로딩',role:'illustration',gameIllustration:true,x:0,y:0,width:450,height:640,crop:{x:0,y:0,width:4,height:4}}]});
@@ -118,6 +123,34 @@ try{
   document.querySelector('[name="background-mode"][value=transparent]').click();
   check(!composition.canvas.background&&!composition.sources.some(s=>s.ordinal===10),'unused background source leaked');
   document.querySelector('#new-project').click();check($('background-team').value==='1'&&$('background-opacity').value==='100','reset retained the previous team or opacity');await changeBackground('transparent');
+  check(!$('card-info-panel').open&&!$('card-info-enabled').checked&&$('card-info-fields').disabled,'character info must be optional and collapsed');
+  const nativeEnsureCardFonts=ensureCardFonts;let fontChecks=0;
+  ensureCardFonts=async fonts=>{check(fonts.length===2&&fonts[0].name==='NanumGothicExtraBold.ttf','game fonts missing from footer');fontChecks++;};
+  $('card-info-panel').open=true;$('card-info-enabled').click();await until(()=>!busy);
+  check(composition.canvas.info?.enabled&&composition.version===7&&makeExportCanvas().height===720,'footer was not enabled or export height is wrong');
+  check(!$('card-info-fields').disabled&&$('card-emblem-options').children.length===2,'footer editor or emblem picker missing');
+  check([...$('card-emblem-options').querySelectorAll('img')].every(img=>new URL(img.src).searchParams.get('token')===token),'emblem thumbnail requests lack authentication');
+  $('card-info-name').value='내 캐릭터';$('card-info-name').dispatchEvent(new Event('input'));
+  check(composition.canvas.info.fields.find(f=>f.key==='name').text==='내 캐릭터','character text edit ignored');
+  $('card-emblem-options').querySelector('[data-emblem="8"]').click();await until(()=>!busy);playing=false;
+  check(composition.canvas.info.emblem.id===8&&!$('export-apng').disabled,'animated emblem not selectable');
+  const footerSaved=projectForSave(),footerPixels=makeExportCanvas(.1).toDataURL();
+  check(footerSaved.sources.length===3&&footerSaved.canvas.info.emblem.frames.length===2,'footer sources were pruned');
+  await importProject(footerSaved);playing=false;
+  check(makeExportCanvas(.1).toDataURL()===footerPixels&&$('card-info-name').value==='내 캐릭터','footer changed after restore');
+  await applyGameFrame(false,2);playing=false;check(!projectForSave(true).canvas.info,'frame template includes footer');
+  const beforeFontFailure=JSON.stringify(projectForSave());ensureCardFonts=async()=>{throw Error('font unavailable');};
+  let footerFailed=false;try{await applyCardInfo(true,1);}catch{footerFailed=true;}
+  check(footerFailed&&JSON.stringify(projectForSave())===beforeFontFailure,'font failure damaged current composition');
+  ensureCardFonts=async()=>{fontChecks++;};
+  $('card-info-enabled').click();await until(()=>!busy);
+  check(!composition.canvas.info.enabled&&makeExportCanvas().height===640&&$('card-info-fields').disabled,'disabled footer still appears');
+  $('card-info-enabled').click();await until(()=>!busy);playing=false;
+  check(composition.canvas.info.emblem.id===8&&$('card-info-name').value==='내 캐릭터'&&fontChecks>=3,'footer settings lost across toggle');
+  $('card-emblem-none').click();await until(()=>!busy);playing=false;
+  check(!composition.canvas.info.emblem,'clear emblem did not remove the emblem');
+  $('new-project').click();check(!composition.canvas.info&&!$('card-info-enabled').checked&&$('card-info-name').value==='닉네임','reset retained character info');
+  $('card-info-panel').open=false;ensureCardFonts=nativeEnsureCardFonts;await changeBackground('transparent');
   includeParticles=true;await applyGameFrame(true,5);playing=false;
   check(composition.version===3&&composition.layers.length===2,'mark particle plan not loaded');
   const mark=composition.layers.find(l=>!l.markParent),effect=composition.layers.find(l=>l.markParent);
