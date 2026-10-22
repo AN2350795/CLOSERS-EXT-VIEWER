@@ -71,9 +71,9 @@ async function applyEye(item,face,texture,baseFace){
   ids.push(face);
   await loadModel(ids,state.skeleton,{key:item.key,face_id:face,texture_id:texture});
 }
-async function loadModel(ids,skeleton=null,eye=state.eye){
+async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntries((state.data?.sources||[]).filter(s=>ids.includes(s.entry_id)&&s.appearance_key).map(s=>[s.entry_id,s.appearance_key]))){
   if(eye&&!ids.includes(eye.face_id))eye=null;
-  const parameters=new URLSearchParams({entries:ids.join(',')});if(skeleton)parameters.set('skeleton',skeleton);if(eye){parameters.set('eye',eye.key);parameters.set('eye_face',eye.face_id);if(eye.texture_id)parameters.set('eye_texture',eye.texture_id);}
+  const parameters=new URLSearchParams({entries:ids.join(',')});if(Object.keys(items).length)parameters.set('items',JSON.stringify(items));if(skeleton)parameters.set('skeleton',skeleton);if(eye){parameters.set('eye',eye.key);parameters.set('eye_face',eye.face_id);if(eye.texture_id)parameters.set('eye_texture',eye.texture_id);}
   $('model-status').classList.add('is-loading');$('viewport').setAttribute('aria-busy','true');
   try{
   status(`모델 여는 중… · ${ids.length}개 파일의 데이터를 불러오고 있습니다.`);const data=await api('/api/model-scene?'+parameters);const model=buildModel(data);disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();status('모델 여는 중… · 텍스처를 적용하고 있습니다.');const failed=await showTextures();resetCamera();
@@ -105,4 +105,4 @@ $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{renderer?.setAnimationLoop(null);disposeModel();renderer?.dispose();});
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.
 window.modelViewer={state,loadModel:(ids,skeleton)=>operation(()=>loadModel(ids,skeleton)),chooseClip:index=>operation(()=>chooseClip(index)),THREE};
-try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null);});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
+try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{});});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
