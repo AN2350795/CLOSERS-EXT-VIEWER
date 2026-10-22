@@ -396,10 +396,11 @@ class Catalog:
         where, values = self.where(filters)
         page = max(1, int(filters.get('page', 1)))
         limit = min(200, max(1, int(filters.get('limit', 60))))
+        order = {'newest':'a.mtime DESC,e.id','oldest':'a.mtime IS NULL,a.mtime,e.id'}.get(filters.get('sort'),'e.id')
         with self.connect() as db:
             total = db.execute(f'SELECT COUNT(*) FROM entries e JOIN archives a ON a.id=e.archive_id WHERE {where}', values).fetchone()[0]
-            rows = db.execute(f'''SELECT e.*, a.path AS archive, a.version,a.status archive_status FROM entries e
-                                  JOIN archives a ON a.id=e.archive_id WHERE {where} ORDER BY e.id LIMIT ? OFFSET ?''',
+            rows = db.execute(f'''SELECT e.*, a.path AS archive, a.mtime/1000000 AS updated_at,a.version,a.status archive_status FROM entries e
+                                  JOIN archives a ON a.id=e.archive_id WHERE {where} ORDER BY {order} LIMIT ? OFFSET ?''',
                               values + [limit, (page - 1) * limit]).fetchall()
             items = [self.decorate(dict(row), db) for row in rows]
         return dict(total=total, page=page, limit=limit, items=items)
@@ -425,14 +426,15 @@ class Catalog:
         page = max(1, int(filters.get('page', 1)))
         limit = min(100, max(1, int(filters.get('limit', 30))))
         minimum = min(10000, max(1, int(filters.get('minimum', 1))))
-        grouped = f'''SELECT {expr} value,COUNT(*) count,SUM(e.size) bytes,MIN(e.id) representative
+        grouped = f'''SELECT {expr} value,COUNT(*) count,SUM(e.size) bytes,MIN(e.id) representative,MAX(a.mtime)/1000000 updated_at
                       FROM entries e JOIN archives a ON a.id=e.archive_id WHERE {where}
                       GROUP BY {expr} HAVING COUNT(*)>=?'''
+        order = {'newest':'g.updated_at DESC,g.value','oldest':'g.updated_at IS NULL,g.updated_at,g.value'}.get(filters.get('sort'),'g.count DESC,g.value')
         with self.connect() as db:
             total = db.execute('SELECT COUNT(*) FROM (' + grouped + ')', values + [minimum]).fetchone()[0]
             rows = db.execute(f'''WITH grouped AS ({grouped})
                                   SELECT g.*,n.label,n.tags FROM grouped g LEFT JOIN group_notes n ON n.axis=? AND n.value=g.value
-                                  ORDER BY g.count DESC,g.value LIMIT ? OFFSET ?''',
+                                  ORDER BY {order} LIMIT ? OFFSET ?''',
                               values + [minimum, axis, limit, (page-1)*limit]).fetchall()
         return dict(axis=axis,total=total,page=page,limit=limit,items=[dict(r) for r in rows],
                     evidence='파일명 코드 후보; 퀘스트명·화자·대사·순서·분기 미확정' if axis=='quest_candidate' else '파일명·경로 기반 가상 그룹')

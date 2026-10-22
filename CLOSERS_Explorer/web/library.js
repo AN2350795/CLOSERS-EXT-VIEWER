@@ -2,7 +2,7 @@
 let activeResource = null;
 
 function sourceLine(item){
-  const line=node('div','subline source-path',(item.display_name?item.name+' · ':'')+item.archive);line.title=item.name+'\n'+item.archive;return line;
+  const line=node('div','subline source-path',(item.display_name?item.name+' · ':'')+item.archive);line.title=item.name+'\n'+item.archive;const wrap=node('div');wrap.append(line,node('div','subline',ResourceDates.label(item.updated_at)));return wrap;
 }
 
 function describeFilters(f={}){
@@ -95,6 +95,7 @@ function resourceFields(item){
     '같은 이름':fmt(item.same_name_count)+'항목 · 내용이 같다는 뜻은 아님',
     '같은 내용':item.sha256?fmt(item.same_content_count)+'항목 · 기록된 SHA-256 기준':'미확인 · 정상 추출 후 SHA-256 계산',
     ...(item.metadata||{}),
+    '원본 CMF 수정일':ResourceDates.label(item.archive_mtime==null?null:Math.floor(item.archive_mtime/1000000)),
     '원본 CMF':item.archive,'CMF 버전':item.version,'원래 이름':item.name,
     '실제 파일 형식':item.format.toUpperCase(),'크기':`${bytes(item.size)} (CMF 저장 ${bytes(item.stored)})`,
     '추출 경로':item.output||'없음','SHA-256':item.sha256||'미기록',

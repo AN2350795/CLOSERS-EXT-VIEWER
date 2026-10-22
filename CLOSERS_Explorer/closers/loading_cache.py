@@ -10,7 +10,7 @@ import uuid
 
 
 # Bump when thumbnail rendering or the cached menu schema changes.
-VERSION = 2
+VERSION = 3
 MAX_BYTES = 256 * 1024 * 1024
 
 

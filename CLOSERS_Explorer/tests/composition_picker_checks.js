@@ -4,7 +4,7 @@ try{
   const until=async condition=>{for(let i=0;i<200;i++){if(condition())return;await new Promise(r=>setTimeout(r,10));}throw Error('Timed out');};
   const sheet=document.createElement('canvas');sheet.width=8;sheet.height=4;const ctx=sheet.getContext('2d');ctx.fillStyle='red';ctx.fillRect(0,0,4,4);ctx.fillStyle='blue';ctx.fillRect(4,0,4,4);
   const blob=await new Promise(r=>sheet.toBlob(r));const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');
-  const presets=Array.from({length:15},(_,i)=>({id:i+1,name:'frame '+(i+1),image:'FRAME_'+(i+1)+'.PNG',effects:'',mark:'marks.png',mark_key:i<2?'COMMON':'MARK_'+(i+1),mark_effects:''}));
+  const presets=Array.from({length:15},(_,i)=>({id:i+1,name:'frame '+(i+1),image:'FRAME_'+(i+1)+'.PNG',effects:'',mark:'marks.png',mark_key:i<2?'COMMON':'MARK_'+(i+1),mark_effects:'',updated_at:1700000000000+i*86400000,mark_updated_at:1700000000000+i*86400000}));
   const requests=[],nativeFetch=window.fetch;let staleResolve,includeParticles=false;
   const particle={seed:123,life:2,maxParticles:1,rate:0,instant:1,emitterLife:10,deaths:0,radius:[0,0,0],radiusMin:0,gravity:[0,0,0],scale:[1,1],basis:[4,4],drawCount:1,dual:false,dualDrawCount:1,clamp:true,blend:['SRCALPHA','INVSRCALPHA'],mask_entry_id:1,tracks:[{property:'size',mode:'initial',value:[4,4,1],start:0,end:null},{property:'color',mode:'initial',value:[1,1,1,1],start:0,end:null},{property:'color',mode:'final',value:[1,1,1,0],start:0,end:null}]};
   window.fetch=async(path,options)=>{
@@ -35,6 +35,14 @@ try{
   await new Promise((resolve,reject)=>{const s=document.createElement('script');s.src='/compose.js';s.onload=resolve;s.onerror=reject;document.head.append(s);});
   await until(()=>document.querySelector('#image-results[aria-busy=false]'));
   await until(()=>!busy);
+  $('image-sort').value='newest';$('image-sort').dispatchEvent(new Event('change'));
+  await until(()=>requests.some(p=>p.startsWith('/api/loading-illustrations?')&&p.includes('sort=newest')));
+  await until(()=>$('image-results').getAttribute('aria-busy')==='false');
+  $('pick-frame').click();await until(()=>document.querySelector('#image-results button')?.dataset.id==='15');
+  check(document.querySelector('#image-results .asset-caption').textContent.startsWith('원본 수정일 2023-'),'frame source date visible');
+  $('image-sort').value='oldest';$('image-sort').dispatchEvent(new Event('change'));await until(()=>document.querySelector('#image-results button')?.dataset.id==='1');
+  $('image-sort').value='';$('image-sort').dispatchEvent(new Event('change'));
+  $('pick-illustration').click();await until(()=>document.querySelector('#image-results button')?.dataset.kind==='illustration');
   check(inspectorView===(compactWorkspace.matches?'assets':'design'),'workspace starts on the wrong tab');
   check(!document.querySelector('.canvas-panel #background-panel')&&!document.querySelector('.canvas-panel #card-info-panel')&&$('editor-inspector').contains($('background-panel')),'settings still push the preview down');
   selectInspector('design');

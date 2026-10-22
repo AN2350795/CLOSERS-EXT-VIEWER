@@ -423,10 +423,10 @@ async function searchImages(){
   $('image-results').setAttribute('aria-busy','true');$('image-prev').disabled=true;$('image-next').disabled=true;
   try{
     let result;
-    if(kind==='illustration')result=await api('/api/loading-illustrations?'+new URLSearchParams({q:query,page:pickerPage}));
+    if(kind==='illustration')result=await api('/api/loading-illustrations?'+new URLSearchParams({q:query,page:pickerPage,sort:$('image-sort').value}));
     else{
       if(!gamePresets){const presets=await loadGameFrames();if(seq!==pickerGeneration)return;gamePresets=presets;}
-      let choices=gamePresets;
+      let choices=gamePresets;const order=$('image-sort').value;if(order)choices=[...choices].sort((a,b)=>ResourceDates.compare(kind==='mark'?a.mark_updated_at:a.updated_at,kind==='mark'?b.mark_updated_at:b.updated_at,order));
       if(kind==='mark'){
         const unique=new Map();for(const p of choices)if(p.mark&&p.mark_key){const key=p.mark.toUpperCase()+'|'+p.mark_key;if(!unique.has(key))unique.set(key,p);}
         choices=[...unique.values()];
@@ -448,7 +448,7 @@ async function searchImages(){
       image.onload=()=>{thumb.dataset.state='ready';loading.remove();};
       image.onerror=()=>{thumb.dataset.state='error';thumb.replaceChildren(node('span','asset-missing','미리보기 없음'));};
       image.src='/api/loading-thumbnail/'+kind+'/'+item.id+'?token='+encodeURIComponent(token);
-      thumb.append(image,loading);button.append(thumb,node('span','asset-name',label));
+      thumb.append(image,loading);button.append(thumb,node('span','asset-name',label),node('span','asset-caption',ResourceDates.label(kind==='mark'?item.mark_updated_at:item.updated_at)));
       if(kind==='frame'&&item.effects.trim()){
         const badge=node('span','asset-badge','게임 효과');
         badge.title='게임에 효과가 등록된 프레임입니다. 현재 재현하지 못하는 효과는 선택 후 안내됩니다.';
@@ -528,6 +528,7 @@ for(const kind of Object.keys(pickerLabels)){
     if(next){event.preventDefault();selectPicker(next);$('pick-'+next).focus();}
   };
 }
+$('image-sort').onchange=()=>{pickerPage=1;searchImages();};
 $('refresh-picker').onclick=()=>{gamePresets=null;pickerPage=1;searchImages();};
 $('image-prev').onclick=()=>{pickerPage--;searchImages();};$('image-next').onclick=()=>{pickerPage++;searchImages();};
 function renderInspection(){

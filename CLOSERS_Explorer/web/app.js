@@ -28,7 +28,7 @@ function node(tag, className, text){const el=document.createElement(tag);if(clas
 function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,8000);}
 async function api(path, data){const response=await fetch(path,{headers:{'X-Explorer-Token':token,...(data?{'Content-Type':'application/json'}:{})},...(data?{method:'POST',body:JSON.stringify(data)}:{})});const result=await response.json();if(!response.ok)throw new Error(result.error||'요청에 실패했습니다.');return result;}
 const modelFilterKeys=['character','kind','family','part','variant'];
-function filters(){return {category,q:$('search').value,detail:$('detail').value,format:$('format').value,status:$('status').value,saved:$('saved').value,duplicate:$('duplicate').value,...(category==='models'?Object.fromEntries(modelFilterKeys.map(k=>['model_'+k,$('library-model-'+k).value])):{}),...($('group-axis').value?{group_axis:$('group-axis').value,...(groupValue!==null?{group_value:groupValue}:{})}:{})};}
+function filters(){return {sort:$('resource-sort').value,category,q:$('search').value,detail:$('detail').value,format:$('format').value,status:$('status').value,saved:$('saved').value,duplicate:$('duplicate').value,...(category==='models'?Object.fromEntries(modelFilterKeys.map(k=>['model_'+k,$('library-model-'+k).value])):{}),...($('group-axis').value?{group_axis:$('group-axis').value,...(groupValue!==null?{group_value:groupValue}:{})}:{})};}
 async function modelFilters(seq){
   $('library-model-filters').hidden=category!=='models';if(category!=='models')return;
   const params=Object.fromEntries(modelFilterKeys.map(k=>[k,$('library-model-'+k).value]));
@@ -72,7 +72,7 @@ for(const key of ['source','output'])$('browse-'+key).onclick=async()=>{try{cons
 $('cancel').onclick=async()=>{try{await api('/api/cancel',{});$('job-current').textContent='중단 요청 중…';}catch(e){toast(e.message);}};
 $('extract-filtered').onclick=()=>extract();$('extract-selected').onclick=()=>{if(selected.size)extract([...selected]);};$('extract-one').onclick=()=>{if(activeId!==null)extract([activeId],true);};
 $('close-preview').onclick=()=>$('preview').close();$('preview').addEventListener('close',()=>{if($('preview').open)return;previewGeneration++;document.querySelectorAll('#preview audio').forEach(a=>{a.pause();a.removeAttribute('src');a.load();});activeId=null;activeResource=null;$('preview-content').replaceChildren();setBusy(running);});
-let searchTimer;$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;refresh();},250);};for(const key of ['detail','format','status','saved','duplicate'])$(key).onchange=()=>{page=1;refresh();};
+let searchTimer;$('search').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>{page=1;refresh();},250);};for(const key of ['detail','format','status','saved','duplicate','resource-sort'])$(key).onchange=()=>{page=1;refresh();};
 for(const key of ['saved','duplicate'])$(key).addEventListener('change',()=>{
   const count=['saved','duplicate'].filter(id=>$(id).value).length;
   $('advanced-filter-count').textContent=count?`${count}개 적용 중`:'';
@@ -93,7 +93,7 @@ async function refreshGroups(seq){
     $('group-evidence').textContent=r.evidence;$('empty').hidden=total>0;
     const grid=node('div','grid');for(const g of groupRows){
       const card=node('article','card'),info=node('div','card-info');
-      info.append(node('div','filename',g.label||g.value),node('div','subline',fmt(g.count)+'개 · '+bytes(g.bytes)),node('div','subline',g.tags||''));
+      info.append(node('div','filename',g.label||g.value),node('div','subline',fmt(g.count)+'개 · '+bytes(g.bytes)),node('div','subline',g.tags||''),node('div','subline',ResourceDates.label(g.updated_at)));
       const open=node('button','secondary','그룹 열기');open.onclick=()=>{groupValue=g.value;page=1;$('group-label').value=g.label||'';$('group-tags').value=g.tags||'';$('group-evidence').textContent=g.value+' · '+r.evidence;refresh();};
       const representative=node('button','secondary','대표 미리보기');representative.onclick=()=>preview(g.representative);
       info.append(open,representative);card.append(info);grid.append(card);

@@ -24,10 +24,14 @@ try{
  check($('model-results').children.length===40,'40 results by default');
  const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
  check(first.querySelector('.model-open').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
- check(first.getBoundingClientRect().height<=76&&first.querySelector('.actions button').checkVisibility(),'compact row keeps item actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
+ check(first.getBoundingClientRect().height<=96&&first.querySelector('.actions button').checkVisibility()&&first.querySelector('.model-source-date').checkVisibility(),'compact row keeps date and actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
+ check(ResourceDates.label(Date.UTC(2026,9,21,16))==='원본 수정일 2026-10-22','source date uses Korean timezone');
+ check(ResourceDates.compare(null,0,'newest')>0&&ResourceDates.compare(0,null,'oldest')<0,'unknown dates stay last');
  const initialStar=first.querySelector('.favorite-button');check(!initialStar.closest('details')&&initialStar.textContent==='☆'&&initialStar.getAttribute('aria-label').includes('즐겨찾기 추가'),'favorite is a visible icon with accessible action label');
  details.querySelector('summary').click();check(details.open&&details.querySelector('small').checkVisibility(),'details toggle reveals metadata');
  details.querySelector('summary').click();check(!details.open,'details can collapse again');
+ $('model-sort').value='newest';$('model-sort').dispatchEvent(new Event('change'));await until(()=>calls.at(-1).get('sort')==='newest');
+ check(calls.at(-1).get('page')==='1','sorting resets model page');
  state.busy=true;$('model-next').click();await until(()=>$('model-page').textContent.startsWith('2 /'));
  check(calls.at(-1).get('page')==='2','pagination works while model busy');
  $('model-last').click();await until(()=>$('model-page').textContent.startsWith('4 /'));

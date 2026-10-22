@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="ko">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content"><meta name="explorer-token" content="__TOKEN__"><title>이미지 조합 · CLOSERS Explorer</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/compose.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,interactive-widget=resizes-content"><meta name="explorer-token" content="__TOKEN__"><title>이미지 조합 · CLOSERS Explorer</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/compose.css"><script src="/resource-dates.js"></script></head>
 <body class="composer-page">
   <main class="editor-root">
     <header><div><h1>일러스트 · 프레임 조합</h1><p class="muted">일러스트와 프레임을 골라 이미지나 애니메이션으로 저장하세요.</p></div><a href="/" class="button secondary">라이브러리</a></header>
@@ -29,9 +29,9 @@
           <button id="pick-frame" role="tab" aria-selected="false" aria-controls="image-results" tabindex="-1">프레임</button>
         </div>
         <details id="extra-assets"><summary>추가 장식</summary><p class="muted">다른 화면용 마크를 별도로 추가할 수 있습니다. 위치는 직접 조정합니다.</p><button id="pick-mark" class="secondary" aria-pressed="false" aria-controls="image-results">마크 찾아보기</button></details>
-        <label id="asset-query-label" for="image-query">일러스트 이름 검색</label><input id="image-query" type="search" placeholder="이름으로 찾기" maxlength="200">
+        <label id="asset-query-label" for="image-query">일러스트 이름 검색</label><select id="image-sort" aria-label="원본 수정일 정렬"><option value="">기본 정렬</option><option value="newest">원본 수정일 · 최신순</option><option value="oldest">원본 수정일 · 오래된순</option></select><input id="image-query" type="search" placeholder="이름으로 찾기" maxlength="200">
         <p id="picker-summary" class="muted status-notice" data-state="loading" role="status" aria-live="polite" aria-atomic="true">로딩 일러스트를 불러오고 있습니다…</p>
-        <div id="image-results" class="asset-grid" role="tabpanel" aria-labelledby="pick-illustration"></div>
+        <p class="muted">원본 CMF 수정일 기준 · 이미지가 없는 프레임은 등록 정보의 수정일</p><div id="image-results" class="asset-grid" role="tabpanel" aria-labelledby="pick-illustration"></div>
         <div class="picker-pagination"><button id="image-prev" class="secondary">이전</button><span id="image-page"></span><button id="image-next" class="secondary">다음</button></div>
         <p id="game-frame-status" class="muted" data-state="info" role="status" aria-live="polite" aria-atomic="true">썸네일을 누르면 적용합니다. 추가 장식은 선택 사항입니다.</p>
       </section>

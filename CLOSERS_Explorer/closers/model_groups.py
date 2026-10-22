@@ -72,7 +72,7 @@ class ModelGroups:
             revision=db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
             version=(revision,self.catalog.game_names.version)
             if refresh or version!=self.version:
-                rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive
+                rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive,a.mtime/1000000 updated_at
                     FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.category='models' ORDER BY e.id''').fetchall()
                 self.rows=[self.catalog.game_names.decorate(dict(r,**classify(r['name']))) for r in rows]
                 self.version=version
@@ -111,6 +111,9 @@ class ModelGroups:
 
     @staticmethod
     def paginate(rows,filters):
+        if filters.get('sort') in ('newest','oldest'):
+            direction=-1 if filters['sort']=='newest' else 1
+            rows=sorted(rows,key=lambda r:(r.get('updated_at') is None,direction*(r.get('updated_at') or 0)))
         page=max(1,int(filters.get('page',1)));limit=min(60,max(1,int(filters.get('limit',20))))
         return dict(items=rows[(page-1)*limit:page*limit],total=len(rows),page=page,limit=limit)
 
@@ -131,7 +134,8 @@ class ModelGroups:
             # Display count follows filters; bundle detail resolves the entire exact set.
             parts=sorted({r['part'] for r in rows})
             items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
-                              count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts]))
+                              count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts],
+                              updated_at=max((r['updated_at'] for r in rows if r.get('updated_at') is not None),default=None)))
             # A set thumbnail represents one observed item, never a full outfit illustration.
             for part in ('ONE_PIECE','UPBODY','HAIR','WEAPON','LOWBODY','FOOT','HAND'):
                 icons={r['item_icon']['sha256']:r['item_icon'] for r in rows

@@ -315,7 +315,22 @@ class LoadingData:
                 if len(v) != 23: raise ValueError('지원하지 않는 비주얼 프레임 테이블입니다.')
                 result[v[1]] = dict(id=v[1], name=v[6], image=v[8], top=v[9], bottom=v[10],
                     effects=v[11], mark=v[12], mark_key=v[13], mark_effects=v[14], positions=v[17], scales=v[18])
-            for value in result.values(): value['display_name'] = names.get(value['name'],'')
+            # Dates describe source assets, not the release date of a frame.
+            filenames=sorted({v[k].upper() for v in result.values() for k in ('image','mark') if v[k]})
+            dates={}
+            with self.catalog.connect() as db:
+                for offset in range(0,len(filenames),400):
+                    batch=filenames[offset:offset+400]
+                    dates.update((r[0].upper(),r[1]) for r in db.execute('''SELECT e.name,MAX(a.mtime)/1000000
+                        FROM entries e JOIN archives a ON a.id=e.archive_id
+                        WHERE e.category='images' AND e.name COLLATE NOCASE IN ('''+','.join('?' for _ in batch)+''')
+                        GROUP BY e.name COLLATE NOCASE''',batch))
+            definition_date=max((r['archive_mtime']//1000000 for name in ('FRAME_TEMPLET.NTF','VISUAL_FRAME_TEMPLET.NTF')
+                                 for r in self.rows(name)),default=None)
+            for value in result.values():
+                value['display_name'] = names.get(value['name'],'')
+                value['updated_at'] = dates.get(value['image'].upper(),definition_date)
+                value['mark_updated_at'] = dates.get(value['mark'].upper(),definition_date)
             return list(result.values())
 
     def image_id(self, name):
@@ -440,10 +455,13 @@ class LoadingData:
             output = BytesIO();canvas.save(output,'PNG');body = output.getvalue()
             return body
 
-    def illustrations(self, query='', page=1):
+    def illustrations(self, query='', page=1, sort=''):
         resources = self.cached(('illustrations',), self._illustration_items, persistent=True)
         text = query.casefold()
         items = [item for item in resources if text in ' '.join([item['name'],item['display_name'],item['character']]).casefold()]
+        if sort in ('newest','oldest'):
+            direction=-1 if sort=='newest' else 1
+            items.sort(key=lambda r:(r.get('updated_at') is None,direction*(r.get('updated_at') or 0)))
         page=max(1,min(int(page),max(1,(len(items)+11)//12)))
         return dict(items=items[(page-1)*12:page*12],total=len(items),page=page)
 
@@ -456,8 +474,8 @@ class LoadingData:
                 for offset in range(0,len(filenames),400):
                     batch = filenames[offset:offset+400]
                     resources.extend(dict(r) for r in db.execute(
-                        "SELECT min(id) id,name FROM entries WHERE category='images' AND name COLLATE NOCASE IN ("+
-                        ','.join('?' for _ in batch)+") GROUP BY name COLLATE NOCASE",batch))
+                        "SELECT min(e.id) id,e.name,MAX(a.mtime)/1000000 updated_at FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.category='images' AND e.name COLLATE NOCASE IN ("+
+                        ','.join('?' for _ in batch)+") GROUP BY e.name COLLATE NOCASE",batch))
             items = []
             for resource in resources:
                 registered = registry[resource['name'].upper()]
