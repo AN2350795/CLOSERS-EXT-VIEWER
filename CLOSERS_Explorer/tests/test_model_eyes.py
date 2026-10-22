@@ -103,7 +103,7 @@ class EyeAvatarTests(unittest.TestCase):
 
     def test_separate_eye_geometry_can_switch_between_registered_textures(self):
         mesh=avatar(costume='NA',part='ACC_RING_RIGHT',number=30)
-        self.catalog.scan([fixture(self.root/'alternate.cmf',[(mesh,binary_model('RED.PNG'),0)])])
+        self.catalog.scan([fixture(self.root/'alternate.cmf',[(mesh,binary_model(Path(mesh).with_suffix('.PNG').name),0)])])
         name,body=self.tables[0];types,_,_=ntf.header(body)
         model=[30,'GUST_USER_STRIKER',mesh,'RED.XET','BLUE.XET']+[0]*28+[0,'','']
         self.tables[0]=(name,table(types,[*ntf.rows(body),model]))

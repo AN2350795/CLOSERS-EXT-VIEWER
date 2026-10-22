@@ -142,6 +142,7 @@ class EyeAvatars:
             aliases=set(option['item_ids'])
             option['texture_targets']={Path(r['texture_name']).stem for r in resources
                                        if r['character']==option['character'] and r['face_name']==option['face_name'] and aliases.intersection(r.get('item_ids',[]))}
+            option['texture_targets'].add(Path(option['face_name']).stem)
         return option
 
 
