@@ -99,28 +99,33 @@ class ModelGroups:
 
     def filtered(self,filters,exclude=None):
         rows=self.snapshot(filters.get('refresh')=='1',filters.get('character',''),filters.get('mode',''))
-        for key in ('character','kind','part','family','variant','format'):
-            if key!=exclude and filters.get(key):rows=[r for r in rows if r[key]==filters[key] or key=='character' and filters.get('mode')=='accessories' and not r[key]]
+        if filters.get('items')=='1' and filters.get('character'):
+            if not hasattr(self,'items'):
+                from .model_items import AvatarItems
+                self.items=AvatarItems(self.catalog)
+            rows=self.items.expand(rows,filters['character'])
+        for key in ('character','kind','part','family','variant','format','costume_type'):
+            if key!=exclude and filters.get(key):rows=[r for r in rows if r.get(key)==filters[key] or key=='character' and filters.get('mode')=='accessories' and not r[key]]
         saved=filters.get('saved','')
         if saved=='existing':rows=[r for r in rows if self.saved(r)]
         elif saved=='missing':rows=[r for r in rows if not self.saved(r)]
         if filters.get('q'):
             q=filters['q'].casefold()
-            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+self.catalog.game_names.text(r['name'])).casefold()]
+            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+r.get('display_name','')+' '+r.get('type_label','')+' '+str(r.get('item_id',''))+' '+('' if r.get('appearance_key') else self.catalog.game_names.text(r['name']))).casefold()]
         return rows
 
     def facets(self,filters):
-        keys=('character','kind','family','part','variant')
+        keys=('character','kind','family','part','variant','costume_type')
         base=self.filtered({k:v for k,v in filters.items() if k not in keys})
         return self.facet_rows(base,filters)
 
     @staticmethod
     def facet_rows(base,filters):
-        result={};keys=('character','kind','family','part','variant')
+        result={};keys=('character','kind','family','part','variant','costume_type')
         for key in keys:
-            rows=[r for r in base if all(not filters.get(k) or r[k]==filters[k] for k in keys if k!=key)]
-            counts=Counter(r[key] for r in rows if r[key])
-            result[key]=[dict(value=v,label=CHARACTERS.get(v,v) if key=='character' else LABELS[key].get(v,v),count=n)
+            rows=[r for r in base if all(not filters.get(k) or r.get(k)==filters[k] for k in keys if k!=key)]
+            counts=Counter(r.get(key) for r in rows if r.get(key))
+            result[key]=[dict(value=v,label=CHARACTERS.get(v,v) if key=='character' else LABELS.get(key,{}).get(v,v),count=n)
                          for v,n in sorted(counts.items())]
         return dict(facets=result,evidence='파일명 기반 분류 · 의상 코드는 인게임 의상명 미확정')
 
@@ -151,6 +156,8 @@ class ModelGroups:
             items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
                               count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts],
                               updated_at=max((r['updated_at'] for r in rows if r.get('updated_at') is not None),default=None)))
+            previews={r['preview_entry'] for r in rows if r.get('preview_entry') and r['part'] in ('UPBODY','ONE_PIECE')}
+            if len(previews)==1:items[-1].update(preview_entry=next(iter(previews)),preview_kind='icon')
             # A set thumbnail represents one observed item, never a full outfit illustration.
             for part in ('ONE_PIECE','UPBODY','HAIR','WEAPON','LOWBODY','FOOT','HAND'):
                 icons={r['item_icon']['sha256']:r['item_icon'] for r in rows
@@ -171,13 +178,13 @@ class ModelGroups:
         return title+' · '+rows[0]['set_name']
 
     def browse(self,filters):
-        keys=('character','kind','family','part','variant')
+        keys=('character','kind','family','part','variant','costume_type')
         # One existence pass for both the page and all facet counts.
         base=self.filtered({k:v for k,v in filters.items() if k not in keys or k=='character'})
         if filters.get('mode')=='sets':base=[r for r in base if r['set_key']]
         elif filters.get('mode')=='accessories':base=[dict(r,shared=not bool(r['character']),character=r['character'] or filters.get('character','')) for r in base if r['part'].startswith('ACC_')]
         elif filters.get('mode')=='parts':base=[r for r in base if r['part']!='FACE']
-        rows=[r for r in base if all(not filters.get(k) or r[k]==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
+        rows=[r for r in base if all(not filters.get(k) or r.get(k)==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
         if filters.get('mode')=='sets':result=self.set_rows(rows,filters)
         else:
             result=self.paginate(rows,filters)
@@ -185,15 +192,15 @@ class ModelGroups:
         result.update(self.facet_rows(base,filters))
         return result
 
-    def bundle(self,key,saved='existing'):
-        all_rows=self.filtered(dict(saved=saved,format='x',character=key.split('|')[0]))
+    def bundle(self,key,saved='existing',items=False):
+        all_rows=self.filtered(dict(saved=saved,format='x',character=key.split('|')[0],items='1' if items else '0'))
         rows=[r for r in all_rows if r['set_key']==key and r['flag']!=2]
         if not rows:raise ValueError('해당 조건의 아바타 묶음이 없습니다. 저장 파일·필터를 확인하세요.')
         character=rows[0]['character'];slots=defaultdict(list)
         for row in rows:slots[(row['part'],row['variant'])].append(row)
         has_one_piece=any(part=='ONE_PIECE' and variant=='BASE' for part,variant in slots)
         def choices(rows):
-            return [dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r)) for r in rows]
+            return [dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id')) for r in rows]
         result=[]
         for (part,variant),candidates in sorted(slots.items()):
             checked=part in CORE and part!='FACE' and variant in ('BASE','ALPHA') and not(has_one_piece and part in ('UPBODY','LOWBODY'))

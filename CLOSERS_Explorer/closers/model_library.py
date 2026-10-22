@@ -62,10 +62,12 @@ class Models:
         return dict(name=name,candidates=values[:100],selected=preferred[0]['id'] if len(preferred)==1 else None,
                     truncated=len(values)>100)
 
-    def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None):
+    def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None,items=None):
         if not 1<=len(entry_ids)<=16 or len(set(entry_ids))!=len(entry_ids):
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
         with self.gate:
+            items=items or {}
+            if not isinstance(items,dict) or len(items)>16 or any(str(i) not in {str(v) for v in entry_ids} or not isinstance(k,str) for i,k in items.items()):raise ValueError('아이템 선택 정보가 잘못되었습니다.')
             eye=None
             if eye_key is not None:
                 if eye_face not in entry_ids:raise ValueError('눈동자를 적용할 얼굴을 함께 선택하세요.')
@@ -75,6 +77,20 @@ class Models:
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
                 part = parse_x(body)
+                if str(entry_id) in items:
+                    from .model_items import AvatarItems
+                    if not hasattr(self.groups,'items'):self.groups.items=AvatarItems(self.catalog)
+                    item=self.groups.items.resolve(items[str(entry_id)],row['name'])
+                    source.update(appearance_key=item['key'],item_id=item['item_id'],display_name=item['label'],game_names=[item['label']],game_name_count=1,item_set=item['set_name'])
+                    changed=0
+                    for mesh in part['meshes']:
+                        for mat in mesh['materials']:
+                            target=AvatarItems.texture_target(mat,row['name'],item)
+                            if target:
+                                if not self.matches(target):raise ValueError('선택한 타입의 텍스처가 없습니다: '+target)
+                                mat['texture']=target;changed+=1
+                    if item['textures'] and not changed:part['warnings'].append('선택한 타입의 텍스처 변경 대상이 이 메시에는 없습니다.')
+                    if item['shader_changes']:part['warnings'].append('타입별 게임 툰 셰이더·발광 효과는 재현 범위 밖입니다.')
                 if eye and entry_id==eye_face:
                     source['display_name']=eye['label']
                     if not eye['basic']:
@@ -166,7 +182,10 @@ class Models:
             animation = self.candidates(owner['name'][:-2]+'.XMD',owner)
             character=next(iter(characters),None)
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
-            for source,row in zip(sources,rows):source['model_group']=dict(classify(row['name']))
+            for source,row in zip(sources,rows):
+                source['model_group']=dict(classify(row['name']))
+                if source.get('item_set'):
+                    source['model_group'].update(set_name=source['item_set'],set_key=source['model_group']['character']+'|'+source['item_set'])
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
                          eye_avatar=dict(key=eye['key'],label=eye['label'],character=eye['character'],face_id=eye_face,texture_id=eye_texture,geometry=eye['geometry']) if eye else None,
                          equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))
