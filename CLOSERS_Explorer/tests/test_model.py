@@ -61,6 +61,15 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_material_retains_original_reflection_and_emission_values(self):
+        before=[1,1,1,1,0,0,0,0,0,0,0]
+        after=[.5,.25,.75,.5,150,.1,.2,.3,.4,.5,.6]
+        body=binary_model().replace(numbers(before,True),numbers(after,True))
+        material=parse_x(body)['meshes'][0]['materials'][0]
+        self.assertEqual(material['power'],150)
+        for key,expected in [('color',after[:4]),('specular',after[5:8]),('emissive',after[8:])]:
+            for actual,value in zip(material[key],expected):self.assertAlmostEqual(actual,value)
+
     def test_corner_normals_preserve_hard_edges_uv_and_skin_weights(self):
         def model(normal_faces):
             mesh=obj('Mesh',numbers([4])+numbers([0,0,0,1,0,0,0,1,0,0,0,1],True)

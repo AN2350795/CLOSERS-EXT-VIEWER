@@ -191,7 +191,8 @@ def parse_x(data):
             raise ValueError('X 재질 데이터 길이가 올바르지 않습니다.')
         numeric(value)
         texture = child(node,'TextureFilename')
-        return dict(color=value[:4],texture=texture['values'][0] if texture else None)
+        return dict(color=value[:4],power=value[4],specular=value[5:8],emissive=value[8:11],
+                    texture=texture['values'][0] if texture else None)
     def mesh(node,parent):
         r = iter(node['values'])
         def count(maximum=250_000):
