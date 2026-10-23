@@ -39,5 +39,10 @@ try{
  [...$('avatar-bundle').querySelectorAll('button')].find(b=>b.textContent==='묶음 열기').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.length===2);
  check(JSON.parse(requests.at(-1).searchParams.get('items'))['2']===normal.appearance_key,'bundle applies the item appearance to every component');
  select.value='1|STRIKER:101:0';select.dispatchEvent(new Event('change'));check(!$('avatar-bundle').querySelector('.bundle-components select'),'switching to another removes normal-only component controls');
+ normal.components[1].selected=null;normal.components[1].candidates.push({...child,id:4,archive:'other'});
+ document.querySelector('#model-results .model-open').click();await until(()=>$('avatar-bundle').querySelector('.bundle-slot>select')!==select);
+ const ambiguous=$('avatar-bundle').querySelector('.bundle-slot>select');ambiguous.value='1|STRIKER:100:0';ambiguous.dispatchEvent(new Event('change'));
+ const componentSelect=$('avatar-bundle').querySelector('.bundle-components select');
+ check(componentSelect.checkVisibility()&&componentSelect.closest('details').open&&!componentSelect.value,'ambiguous component sources automatically expand their details');
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}
