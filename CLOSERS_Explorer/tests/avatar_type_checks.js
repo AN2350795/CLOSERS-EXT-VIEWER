@@ -17,12 +17,12 @@ try{
  await import('/model.js');$('model-character').value='STRIKER';$('model-mode').value='parts';$('model-character').dispatchEvent(new Event('change'));await until(()=>document.querySelectorAll('[data-appearance]').length===4);
  document.querySelectorAll('.favorite-button')[0].click();document.querySelectorAll('.favorite-button')[1].click();check($('model-favorites').children.length===2,'shared mesh types have separate favorites');
  document.querySelector('[data-appearance="STRIKER:0:0"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data?.sources[0].item_id===100);
- document.querySelector('[data-appearance="STRIKER:1:0"] .actions button:nth-child(2)').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data?.sources[0].item_id===101);
+ document.querySelector('[data-appearance="STRIKER:1:0"] .actions [data-action="equip"]').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data?.sources[0].item_id===101);
  check(document.querySelectorAll('.model-row.is-selected').length===1,'only selected item type is highlighted');
  check(JSON.parse(new URL(location.href).searchParams.get('items'))['1']==='STRIKER:1:0','URL preserves selected item type');
  modelViewer.state.data.sources[0].appearance_key='STRIKER:alias:0';document.dispatchEvent(new Event('model-selection'));
  check(document.querySelector('[data-appearance="STRIKER:1:0"]').classList.contains('is-selected')&&document.querySelectorAll('.model-row.is-selected').length===1,'an equipped grade alias highlights the merged appearance');
  $('model-costume_type').value='SP';$('model-costume_type').dispatchEvent(new Event('change'));await until(()=>document.querySelectorAll('[data-appearance]').length===1);
- check($('model-results').textContent.includes('[SP타입]'),'additional registered types can be filtered');
+ check($('model-results').querySelector('.model-type-badge').textContent==='SP타입','additional registered types can be filtered');
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}

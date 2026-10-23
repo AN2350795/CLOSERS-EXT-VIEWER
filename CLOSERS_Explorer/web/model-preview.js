@@ -7,6 +7,12 @@ export function setupPreviews({api}){
   let renderer,running=false,stopped=false;
   const queue=[],cache=new Map();
   const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);queue.push(entry.target);pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
+  function placeholder(target,mode,missing=false){
+    const shape=mode==='eyes'?'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>':mode==='accessories'?'<path d="m12 3 3 6 6 3-6 3-3 6-3-6-6-3 6-3Z"/>':'<path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8"/>';
+    target.classList.add('is-placeholder');target.setAttribute('role','img');target.setAttribute('aria-label',missing?'아이콘 없음':'아이콘 불러오는 중');
+    target.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">'+shape+'</svg>';
+    if(missing){const caption=document.createElement('span');caption.className='preview-caption';caption.textContent='아이콘 없음';target.append(caption);}
+  }
   async function render(item,mode,saved){
     if(item.preview_entry){
       const token=document.querySelector('meta[name="explorer-token"]').content;
@@ -71,12 +77,12 @@ export function setupPreviews({api}){
       const key=JSON.stringify([mode,item.key||item.appearance_key||item.id,saved,item.preview_entry,item.item_icon?.sha256]);
       try{
         let src=cache.get(key);if(!cache.has(key)){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
-        if(!src){if(target.isConnected){target.textContent='아이콘 없음';target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
-        if(target.isConnected){const icon=src.startsWith('/api/model-icon/')||item.preview_kind==='icon',img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon?.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
+        if(!src){if(target.isConnected){placeholder(target,mode,true);target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
+        if(target.isConnected){const icon=src.startsWith('/api/model-icon/')||item.preview_kind==='icon',img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.remove('is-placeholder');target.removeAttribute('role');target.removeAttribute('aria-label');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon?.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
       }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
     }}finally{running=false;}
   }
-  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';target.textContent='아이콘 대기';target.title='인게임 아이템 아이콘';target.preview={item,mode,saved};row.prepend(target);observer.observe(target);}
+  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';placeholder(target,mode);target.title='인게임 아이템 아이콘';target.preview={item,mode,saved};row.prepend(target);observer.observe(target);}
   function reset(){observer.disconnect();queue.length=0;}
   window.addEventListener('pagehide',()=>{stopped=true;reset();cache.clear();renderer?.dispose();});
   return {attach,reset};

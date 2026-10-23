@@ -13,7 +13,7 @@ window.fetch=async(url,options)=>{
  if(u.pathname==='/api/model-scene'){
   requests.push(u);const items=JSON.parse(u.searchParams.get('items')||'{}'),ids=u.searchParams.get('entries').split(',').map(Number);
   if(items['1']===normal.appearance_key&&!ids.includes(2)){ids.push(2);items['2']=normal.appearance_key;}
-  const sources=ids.map(id=>{const item=id===3?foot:items[String(id)]===another.appearance_key?another:normal;return {entry_id:id,name:id===2?'WING.X':item.name,display_name:item.display_name,appearance_key:items[String(id)],item_id:item.item_id,model_group:{kind:'avatar',character:'STRIKER',part:id===3?'FOOT':'HAIR',set_key:normal.set_key}};});
+  const sources=ids.map(id=>{const item=id===3?foot:items[String(id)]===another.appearance_key?another:normal;return {entry_id:id,name:id===2?'WING.X':item.name,display_name:item.display_name,appearance_key:items[String(id)],item_id:item.item_id,model_group:{kind:'avatar',character:'STRIKER',part:id===3?foot.part:'HAIR',set_key:normal.set_key}};});
   return Response.json({frames:[],meshes:ids.map(id=>({name:'triangle'+id,source_id:id,frame:-1,vertices:[-1,0,0,1,0,0,0,2,0],indices:[0,2,1],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,0,0,1],image:null}]})),sources,skeleton_source:{name:'HAIR.X',entry_id:1},motion:{candidates:[]},animation:{name:'none',candidates:[]},warnings:[]});
  }
  return original(url,options);
@@ -27,12 +27,16 @@ try{
  check(new URL(location.href).searchParams.get('entries')==='1,2','URL preserves complete composition');
  // The backend can complete older links containing only the main file.
  await modelViewer.loadModel([1]);check(modelViewer.state.ids.includes(2),'state follows expanded backend sources');
- document.querySelector('[data-appearance="STRIKER:101:0"] .actions button:nth-child(2)').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data.sources[0].item_id===101);
+ document.querySelector('[data-appearance="STRIKER:101:0"] .actions [data-action="equip"]').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data.sources[0].item_id===101);
  check(modelViewer.state.ids.join(',')==='1','another appearance removes all normal-only geometry');
- document.querySelector('[data-appearance="STRIKER:100:0"] .actions button:nth-child(2)').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.includes(2));
- document.querySelector('[data-entry="3"] .actions button:nth-child(2)').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.length===3);
+ document.querySelector('[data-appearance="STRIKER:100:0"] .actions [data-action="equip"]').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.includes(2));
+ document.querySelector('[data-entry="3"] .actions [data-action="equip"]').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.length===3);
  [...$('model-parts').querySelectorAll('.model-part')].find(r=>r.textContent.includes('일반 헤어')).querySelector('button').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.ids.length===1);
  check(modelViewer.state.ids[0]===3,'removing hair removes its wing and preserves unrelated equipment');
+ check(!$('model-parts').querySelector('.empty-equipment').open,'empty equipment stays collapsed');
+ foot.part='ACC_BODY_WING';await modelViewer.loadModel([3]);
+ check($('model-parts').querySelector('.equipped-slot h3').textContent==='등·날개'&&$('model-parts').querySelector('.model-part').checkVisibility(),'equipped accessories are visible with a readable slot label');
+ $('model-parts').querySelector('.model-part button').click();check(modelViewer.state.ids.length===0&&!$('model-parts').querySelector('.model-part'),'the last equipped item can be removed');foot.part='FOOT';
  document.querySelector('[data-mode="sets"]').click();await until(()=>document.querySelector('#model-results [data-set]'));document.querySelector('#model-results .model-open').click();await until(()=>!$('avatar-bundle').hidden);
  const select=$('avatar-bundle').querySelector('.bundle-slot>select');check(select.options.length===3,'normal and another are the only hair options');select.value='1|STRIKER:100:0';select.dispatchEvent(new Event('change'));
  check($('avatar-bundle').querySelectorAll('.bundle-components select').length===1,'normal composition includes a wing source');

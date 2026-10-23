@@ -2,7 +2,7 @@ import {setupPicker} from '/model-picker.js';
 const $=id=>document.getElementById(id),state={page:1,ids:[],busy:false};
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const check=(v,message)=>{if(!v)throw Error(message);};
-const api=async url=>({total:20,items:url.includes('/api/model-eyes')?[]:Array.from({length:20},(_,i)=>({id:i+1,name:'Avatar '+i,label:'Outfit '+i,key:'STRIKER|BASIC',character:'STRIKER',archive:'fixture',parts:['HAIR'],count:1})),facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,k==='part'?[{value:'HAIR',label:'헤어',count:20}]:[]]))});
+const api=async url=>({total:20,items:url.includes('/api/model-eyes')?[{key:'STRIKER:basic',label:'이세하 기본 눈동자',character:'STRIKER',basic:true,available:true,face_id:1,face_candidates:[{id:1,name:'FACE.X',archive:'fixture',ordinal:0}],texture_candidates:[]}]:Array.from({length:20},(_,i)=>({id:i+1,name:'Avatar '+i,display_name:'이세하 긴 이름의 아바타 헤어 [SP타입]',costume_type:'SP',label:'Outfit '+i,key:'STRIKER|BASIC',character:'STRIKER',archive:'fixture',parts:['HAIR'],count:1})),facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,k==='part'?[{value:'HAIR',label:'헤어',count:20}]:[]]))});
 const picker=setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
 window.checkPickerLayout=async()=>{
  const rect=()=>$('model-results').getBoundingClientRect();
@@ -19,11 +19,12 @@ window.checkPickerLayout=async()=>{
    [...tabs.children].find(b=>b.textContent==='헤어').click();await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
    check([...tabs.children].find(b=>b.textContent==='헤어').getAttribute('aria-pressed')==='true','part selection is applied');
   }
-  if(mode==='sets'){
+  {
    const row=$('model-results').firstElementChild,name=row.querySelector('.model-open').getBoundingClientRect(),date=row.querySelector('.model-source-date').getBoundingClientRect(),actions=row.querySelector('.actions').getBoundingClientRect(),bounds=row.getBoundingClientRect();
    check(date.top>=name.bottom-1&&actions.top>=date.bottom-1,'set name, date and actions are ordered');
    const buttons=[...row.querySelectorAll('.actions button')].map(b=>b.getBoundingClientRect());
-   check(buttons.length===2&&Math.abs(buttons[0].top-buttons[1].top)<1&&buttons.every(b=>b.left>=bounds.left&&b.right<=bounds.right&&b.bottom<=bounds.bottom),'set actions align without clipping');
+   check(buttons.length===(['sets','eyes'].includes(mode)?2:3)&&buttons.every(b=>Math.abs(b.top-buttons[0].top)<1&&b.left>=bounds.left&&b.right<=bounds.right&&b.bottom<=bounds.bottom),'card actions align without clipping: '+mode);
+   if(mode!=='sets'){const context=row.querySelector('.model-card-context').getBoundingClientRect();check(context.top>=name.bottom-1&&date.top>=context.bottom-1,'card classification stays between name and date: '+mode);}
   }
  }
  $('model-results').scrollTop=40;const scroll=$('model-results').scrollTop;

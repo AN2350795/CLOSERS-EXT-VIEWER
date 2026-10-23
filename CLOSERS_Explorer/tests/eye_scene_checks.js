@@ -24,6 +24,7 @@ try{
  check(modelViewer.state.ids.join(',')==='2,1'&&requests.at(-1).searchParams.get('eye_texture')==='10','eye change preserves hair and sends texture selection');
  document.querySelector('[data-eye="STRIKER:20"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:20');
  check(modelViewer.state.ids.join(',')==='2,1,3','separate eyes keep base face and outfit');
+ check([...document.querySelectorAll('#model-parts .equipped-slot h3')].some(e=>e.textContent==='눈동자'),'equipped eye geometry has a visible eye slot');
  document.querySelector('[data-eye="STRIKER:basic"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:basic');
  check(modelViewer.state.ids.join(',')==='2,1'&&!requests.at(-1).searchParams.has('eye_texture'),'basic restores base face and removes previous eye mesh');
  check(new URL(location.href).searchParams.get('eye')==='STRIKER:basic','reload URL retains selected eye');

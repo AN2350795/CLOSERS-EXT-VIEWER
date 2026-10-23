@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose,restorePose} from './model-core.js';
-import {slots} from './avatar-navigation.js';
+import {slots,partLabels} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
 import {setupPreviews} from './model-preview.js';
 
@@ -52,17 +52,22 @@ async function showTextures(){
   return failed;
 }
 function showParts(){
-  $('model-parts').replaceChildren();const places=new Map();for(const [part,label] of Object.entries({...slots,FACE:'얼굴·눈동자'})){const box=element('section');box.className='equipped-slot';box.append(element('h3',label),element('small','미착용'));places.set(part,box);$('model-parts').append(box);}const extras=element('details');extras.append(element('summary','액세서리·기타 모델'));$('model-parts').append(extras);
+  const panel=$('model-parts');panel.replaceChildren();const places=new Map();
   const equipped=new Map();
   for(const source of state.data.sources){const key=source.appearance_key||source.entry_id;if(!equipped.has(key))equipped.set(key,[]);equipped.get(key).push(source);}
+  const count=element('p','착용 중 '+equipped.size+'개');count.className='equipment-summary';panel.append(count);
   for(const sources of equipped.values()){
-    const source=sources[0],row=element('div');row.className='model-part';const title=element('span',source.display_name||source.name);title.title=(source.game_names||[]).join('\n');row.append(title);
+    const source=sources[0],part=sources.some(s=>s.entry_id===state.eye?.face_id)?'EYES':source.model_group?.part;
+    if(!places.has(part)){const box=element('section');box.className='equipped-slot';box.append(element('h3',partLabels[part]||'기타 모델'));places.set(part,box);panel.append(box);}
+    const row=element('div');row.className='model-part';const header=element('div');header.className='equipped-item-header';const title=element('span',source.display_name||source.name);title.title=(source.game_names||[]).join('\n');header.append(title);row.append(header);
     const metadata=element('details');metadata.append(element('summary',sources.length>1?'구성 모델 '+sources.length+'개':'파일 정보'));
     for(const component of sources){metadata.append(element('p',component.name),element('p',component.archive+' · #'+component.ordinal));if(component.saved_exists){const a=element('a','원본 파일 저장');a.href='/api/download/'+component.entry_id+'?token='+encodeURIComponent(token);metadata.append(a);}else metadata.append(element('p','원본 저장은 라이브러리에서 이 항목을 추출하세요.'));}
     row.append(metadata);
-    if(state.ids.length>sources.length){const remove=element('button','부위 제외');const componentIds=new Set(sources.map(s=>s.entry_id));remove.onclick=()=>operation(()=>loadModel(state.ids.filter(id=>!componentIds.has(id)),state.skeleton));row.append(remove);}
-    const box=places.get(source.model_group?.part);if(box){box.querySelector('small')?.remove();box.append(row);}else extras.append(row);
+    const remove=element('button','제외');remove.className='secondary';remove.setAttribute('aria-label',(source.display_name||source.name)+' 제외');const componentIds=new Set(sources.map(s=>s.entry_id));remove.onclick=()=>state.ids.length===sources.length?$('clear-model').click():operation(()=>loadModel(state.ids.filter(id=>!componentIds.has(id)),state.skeleton));header.append(remove);
+    places.get(part).append(row);
   }
+  const empty=Object.keys(slots).filter(part=>!places.has(part));
+  if(empty.length&&state.data.sources.some(s=>s.model_group?.kind==='avatar')){const remaining=element('details');remaining.className='empty-equipment';remaining.append(element('summary','빈 부위 '+empty.length+'개'));const tags=element('div');for(const part of empty)tags.append(element('span',slots[part]));remaining.append(tags);panel.append(remaining);}
   $('motion-choice').replaceChildren();const motion=state.data.motion;if(motion?.candidates.length){$('motion-choice').append(element('h3','캐릭터 공용 뼈'));for(const candidate of motion.candidates){const button=element('button',candidate.name+' 연결');button.title=candidate.archive;button.onclick=()=>operation(()=>loadModel(state.ids,candidate.id));$('motion-choice').append(button);}}
   $('motion-choice').append(element('p','현재 뼈: '+state.data.skeleton_source.name));
 }
