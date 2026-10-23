@@ -22,13 +22,13 @@
 .character-choice{display:grid;gap:8px;padding:12px;background:var(--soft);border-radius:8px;margin:12px 0}.character-choice label{display:grid;gap:8px;font-weight:600}.part-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:10px 0}.part-tabs button{font-size:12px;padding:5px 8px}.part-tabs button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}.source-tools{margin:12px 0;color:var(--muted)}
 
 /* Browsing controls and results occupy independent, stable rows. */
-.model-picker{display:grid;grid-template-rows:284px minmax(200px,1fr) 110px;height:calc(100dvh - 160px);min-height:660px;max-height:980px;gap:10px;overflow:hidden}
-.picker-top{display:grid;grid-template-rows:28px 52px 40px 36px 36px 32px 24px;gap:6px;min-width:0;overflow:hidden}
+.model-picker{--part-filter-height:92px;display:grid;grid-template-rows:calc(248px + var(--part-filter-height)) minmax(200px,1fr) 110px;height:calc(100dvh - 160px);min-height:720px;max-height:980px;gap:10px;overflow:hidden}
+.picker-top{display:grid;grid-template-rows:28px 52px 40px 36px var(--part-filter-height) 32px 24px;gap:6px;min-width:0;overflow:hidden}
 .picker-top>.picker-heading{grid-row:1;margin:0}.picker-top>.character-choice{grid-row:2;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:0;margin:0;background:none;align-items:end}
 .picker-top .character-choice label{gap:2px}.picker-top .character-choice select{padding:6px;height:32px}.picker-top #basic-avatar{height:32px;padding:4px 8px;font-size:11px}
 .picker-top>#model-search-form{grid-row:3;display:block}.picker-top>#model-search-form>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .picker-top .search-line{height:40px}.picker-top .search-line input{height:36px;padding:6px}.picker-top .search-line button{height:36px;padding:4px 10px}
-.picker-top>.picker-modes{grid-row:4;margin:0}.picker-top>.part-tabs{grid-row:5;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin:0;align-items:start;white-space:nowrap}.picker-top>.part-tabs button{flex-shrink:0;margin:0}
+.picker-top>.picker-modes{grid-row:4;margin:0}.picker-top>.part-tabs{grid-row:5;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:28px;gap:4px;align-content:start;overflow:visible;margin:0;white-space:nowrap}.picker-top>.part-tabs button{min-width:0;height:28px;padding:3px 4px;margin:0;font-size:12px;line-height:20px}
 .picker-tools{grid-row:6;display:flex;gap:6px;min-width:0}.picker-tools select{flex:1;min-width:0;padding:4px;font-size:11px}.picker-tools button{flex-shrink:0;padding:4px 8px;font-size:11px}
 .picker-top>.filter-summary{grid-row:7;margin:0;min-width:0}.filter-summary>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.filter-summary button{flex-shrink:0}
 .picker-list-area{position:relative;min-height:0;min-width:0;overflow:hidden;border-top:1px solid var(--line)}
@@ -37,6 +37,6 @@
 .model-picker>.picker-pagination{margin:0;display:grid;grid-template-columns:1fr auto;gap:6px;align-content:start;font-size:11px;min-width:0}.picker-pagination .page-buttons{grid-column:1/-1;display:flex;gap:4px;justify-content:center}.picker-pagination #model-jump-form{grid-column:1/-1;display:flex;gap:6px;justify-content:flex-end}.picker-pagination #model-jump{width:70px}.picker-pagination button{padding:4px 6px}
 #picker-options{width:min(440px,calc(100% - 32px));max-height:85dvh;overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:20px;box-sizing:border-box}
 #picker-options::backdrop{background:#0008}.picker-options-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}.picker-options-heading h2{font-size:18px;margin:0}#picker-options .model-filters{display:grid;gap:12px}#picker-options select{width:100%}#picker-options #model-advanced>summary{display:none}#picker-options .picker-memory{display:block}#picker-options .picker-memory details{margin:12px 0}
-@media(max-width:760px){.model-picker{height:80dvh;min-height:660px}#model-pages{display:none}.picker-top .picker-modes button{font-size:11px}}
+@media(max-width:760px){.model-picker{height:80dvh}#model-pages{display:none}.picker-top .picker-modes button{font-size:11px}}
 .picker-top>[hidden]{visibility:hidden}.picker-top .picker-tools>[hidden]{visibility:hidden;display:block}.model-picker>.picker-pagination[hidden]{visibility:hidden;display:grid}
 .bundle-components{min-width:0;padding-left:12px;border-left:2px solid var(--line)}.bundle-components:empty{display:none}.bundle-components label,#model-results .model-row-details>label{display:grid;gap:4px;min-width:0;margin:6px 0;font-size:11px;overflow-wrap:anywhere}#model-results .model-row-details>label select{width:100%;min-width:0;max-width:100%}

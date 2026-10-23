@@ -9,7 +9,17 @@ window.checkPickerLayout=async()=>{
  $('model-character').value='STRIKER';await picker.search();
  const top=rect().top,height=rect().height;
  const fixed=message=>check(Math.abs(rect().top-top)<1&&Math.abs(rect().height-height)<1,message);
- for(const mode of ['parts','accessories','eyes','sets']){$('model-mode').value=mode;await picker.search();fixed('list moved after '+mode);}
+ for(const mode of ['parts','accessories','eyes','sets']){
+  $('model-mode').value=mode;await picker.search();fixed('list moved after '+mode);
+  if(mode==='parts'){
+   const tabs=$('part-tabs'),bounds=tabs.getBoundingClientRect(),header=document.querySelector('.picker-top').getBoundingClientRect();
+   check(tabs.children.length===8,'all part filters exist');
+   check(tabs.scrollWidth<=tabs.clientWidth+1&&tabs.scrollHeight<=tabs.clientHeight+1,'part filters require scrolling');
+   for(const button of tabs.children){const b=button.getBoundingClientRect();check(button.checkVisibility()&&b.left>=bounds.left-1&&b.right<=bounds.right+1&&b.top>=bounds.top-1&&b.bottom<=bounds.bottom+1&&b.bottom<=header.bottom,'part filter button is clipped: '+button.textContent);}
+   [...tabs.children].find(b=>b.textContent==='헤어').click();await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
+   check([...tabs.children].find(b=>b.textContent==='헤어').getAttribute('aria-pressed')==='true','part selection is applied');
+  }
+ }
  $('model-results').scrollTop=40;const scroll=$('model-results').scrollTop;
  $('open-picker-options').click();check($('picker-options').open,'filter dialog opens');fixed('filter dialog moves list');
  document.querySelector('#model-favorites').parentElement.open=true;fixed('favorites move list');
