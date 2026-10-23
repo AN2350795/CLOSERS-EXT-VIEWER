@@ -1,5 +1,6 @@
 """Item appearances are independent of the mesh filenames they share."""
 from collections import defaultdict
+import math
 from pathlib import Path
 import re
 
@@ -10,7 +11,42 @@ from .model_groups import classify, LABELS
 
 class AvatarItems(EyeAvatars):
     def texture_rules(self):
-        return self.data.cached(('avatar-texture-rules',1),self._texture_rules,persistent=True)
+        return self.data.cached(('avatar-texture-rules',2),self._texture_rules,persistent=True)
+
+    @staticmethod
+    def parse_texture_rule(row):
+        changes={};unresolved=False
+        shader_changes=any(v for k,v in row.items() if k not in ('m_DeviceID','m_mapTexChange'))
+        auxiliary={'m_MultiTexName','m_MaskTexName','m_strDyeingMaskTexName'}
+        allowed={'m_OrgTexName','m_ChangeTexName','SpecularColor','SpecularPower'}|auxiliary
+        values=row.get('m_mapTexChange',{})
+        if not isinstance(values,dict):return dict(textures={},shader_changes=shader_changes,unresolved=True)
+        for value in values.values():
+            if not isinstance(value,dict):unresolved=True;continue
+            if set(value)=={'m_OrgToonTex','m_ChangeToonTex'}:
+                shader_changes=True
+                if not all(isinstance(v,str) and v for v in value.values()):unresolved=True
+                continue
+            original=value.get('m_OrgTexName')
+            if not isinstance(original,str) or not original or set(value)-allowed:
+                unresolved=True;continue
+            if 'm_ChangeTexName' in value:
+                target=value['m_ChangeTexName']
+                if not isinstance(target,str) or not target:unresolved=True
+                elif original.upper() in changes and changes[original.upper()]!=target.upper():unresolved=True
+                else:changes[original.upper()]=target.upper()
+            # These are extra shader inputs, not replacements for the base image.
+            if set(value)-{'m_OrgTexName','m_ChangeTexName'}:shader_changes=True
+            if any(not isinstance(value[k],str) for k in auxiliary&value.keys()):unresolved=True
+            for field in ('SpecularPower','SpecularColor'):
+                if field not in value:continue
+                numbers=value[field]
+                if field=='SpecularColor':
+                    if not isinstance(numbers,dict) or len(numbers)!=4 or {str(k) for k in numbers}!={'1','2','3','4'}:unresolved=True;continue
+                    numbers=list(numbers.values())
+                else:numbers=[numbers]
+                if any(type(v) not in (int,float) or not math.isfinite(v) for v in numbers):unresolved=True
+        return dict(textures=changes,shader_changes=shader_changes,unresolved=unresolved)
 
     def _texture_rules(self):
         result={}
@@ -21,10 +57,7 @@ class AvatarItems(EyeAvatars):
             for row in self.data.table(name).get('XET_TABLE',{}).values():
                 key=row.get('m_DeviceID','').upper()
                 if not key:continue
-                values=list(row.get('m_mapTexChange',{}).values())
-                valid=[v for v in values if isinstance(v.get('m_OrgTexName'),str) and isinstance(v.get('m_ChangeTexName'),str)]
-                changes={v['m_OrgTexName'].upper():v['m_ChangeTexName'].upper() for v in valid}
-                rule=dict(textures=changes,shader_changes=any(v for k,v in row.items() if k not in ('m_DeviceID','m_mapTexChange')),unresolved=len(valid)!=len(values))
+                rule=self.parse_texture_rule(row)
                 if key in result and result[key]!=rule:rule['ambiguous']=True
                 result[key]=rule
         return result

@@ -120,7 +120,7 @@ class Models:
                                 if not self.matches(target):raise ValueError('선택한 타입의 텍스처가 없습니다: '+target)
                                 mat['texture']=target;changed+=1
                     if item['textures'] and not changed:part['warnings'].append('선택한 타입의 텍스처 변경 대상이 이 메시에는 없습니다.')
-                    if item['shader_changes']:part['warnings'].append('타입별 게임 툰 셰이더·발광 효과는 재현 범위 밖입니다.')
+                    if item['shader_changes']:part['warnings'].append('게임의 보조 텍스처·툰 셰이더·발광 효과는 현재 표시 범위에 포함되지 않습니다.')
                 if eye and entry_id==eye_face:
                     source['display_name']=eye['label']
                     if not eye['basic']:

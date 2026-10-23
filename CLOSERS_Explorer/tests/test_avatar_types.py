@@ -133,6 +133,43 @@ class AvatarTypeTests(unittest.TestCase):
         self.assertIsNone(AvatarItems.texture_target({'texture':None},self.model,rule))
         self.assertIsNone(AvatarItems.texture_target({'texture':'UNCHANGED.PNG'},self.model,rule))
 
+    def test_shader_texture_inputs_are_not_base_texture_replacements(self):
+        for entry in (
+            dict(m_OrgTexName='SKIN.TGA',m_MultiTexName='mat_209_skin.PNG'),
+            dict(m_OrgTexName='SKIN.TGA',m_MaskTexName='MASK.PNG'),
+            dict(m_OrgTexName='SKIN.TGA',m_strDyeingMaskTexName='DYE_MASK.PNG'),
+            dict(m_OrgToonTex='CTT_BASIC0',m_ChangeToonTex='CTT_BASIC_BLUE2'),
+            dict(m_OrgTexName='SKIN.TGA',m_MultiTexName='MAT.PNG',SpecularPower=150.,SpecularColor={1:1.,2:1.,3:1.,4:1.}),
+            dict(m_OrgTexName='SKIN.TGA',m_MultiTexName='MAT.PNG',SpecularPower=150.,SpecularColor={'1':1.,'2':1.,'3':1.,'4':1.}),
+        ):
+            with self.subTest(entry=entry):
+                rule=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:entry}))
+                self.assertEqual(rule,dict(textures={},shader_changes=True,unresolved=False))
+        rule=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG',m_ChangeTexName='BLUE.PNG',m_MultiTexName='MAT.PNG')}))
+        self.assertEqual(rule,dict(textures={'BASE.PNG':'BLUE.PNG'},shader_changes=True,unresolved=False))
+        self.assertEqual(AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG')})),dict(textures={},shader_changes=False,unresolved=False))
+
+    def test_malformed_or_unknown_texture_changes_still_fail(self):
+        for entry in (
+            dict(m_OrgTexName='BASE.PNG',m_ChangeTexName=123),
+            dict(m_OrgTexName='BASE.PNG',m_MultiTexName=123),
+            dict(m_OrgTexName='BASE.PNG',unexpected='TEXTURE.PNG'),
+            dict(m_OrgTexName='BASE.PNG',SpecularColor='invalid'),
+            dict(m_OrgToonTex='CTT_BASIC0',m_ChangeToonTex=123),
+            dict(m_ChangeTexName='BLUE.PNG'),
+        ):
+            with self.subTest(entry=entry):self.assertTrue(AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:entry}))['unresolved'])
+        self.assertTrue(AvatarItems.parse_texture_rule(dict(m_mapTexChange=[]))['unresolved'])
+
+    def test_auxiliary_only_item_opens_with_original_texture_and_effect_notice(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules))
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=self.model[:-2]+'.PNG',m_MultiTexName='mat_209_skin.PNG')}))
+        self.registry.texture_rules=lambda:rules
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+        self.assertEqual(scene['meshes'][0]['materials'][0]['texture'],self.model[:-2]+'.PNG')
+        self.assertTrue(any('보조 텍스처' in warning for warning in scene['warnings']))
+
     def add_component(self,variant='',filename=None):
         from closers import ntf
         name,body=self.tables[0];rows=list(ntf.rows(body))
