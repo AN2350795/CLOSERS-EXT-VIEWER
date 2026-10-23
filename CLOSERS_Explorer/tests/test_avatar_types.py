@@ -35,6 +35,7 @@ class AvatarTypeTests(unittest.TestCase):
         result=self.models.groups.browse(dict(character='STRIKER',mode='sets',items='1'))
         self.assertEqual({r['key'] for r in result['items']},{'STRIKER|CLOTH_123_'+k for k in ('A','B','C','SP','GOLD2')})
         self.assertEqual(len({r['preview_entry'] for r in result['items']}),5)
+        self.assertEqual({r['key'].rsplit('_',1)[1]:r['costume_types'] for r in result['items']},{k:[k] for k in ('A','B','C','SP','GOLD2')})
         part=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='SP'))
         self.assertEqual(part['total'],1);self.assertEqual(part['items'][0]['item_id'],4)
         bundle=self.models.groups.bundle('STRIKER|CLOTH_123_SP','',True)

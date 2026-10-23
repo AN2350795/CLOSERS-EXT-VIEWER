@@ -17,7 +17,7 @@ async function api(url){
   if(fail)throw Error('test network error');
   if(url.startsWith('/api/model-bundle'))return {label:'Test outfit',character:'STRIKER',evidence:'fixture',slots:outfitSlots,face:{candidates:[]},motion:{candidates:[]},defaults:basicParts};
   const count=125,limit=Number(p.get('limit')),page=Number(p.get('page'));
-  return {total:count,page,limit,facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,[]])),items:Array.from({length:Math.min(limit,Math.max(0,count-(page-1)*limit))},(_,i)=>({id:(page-1)*limit+i+1,name:'file '+((page-1)*limit+i+1),archive:'fixture',saved_exists:true,label:'Outfit '+i,key:'STRIKER|CLOTH_'+i,parts:['HAIR','UPBODY'],count:2}))};
+  return {total:count,page,limit,facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,[]])),items:Array.from({length:Math.min(limit,Math.max(0,count-(page-1)*limit))},(_,i)=>({id:(page-1)*limit+i+1,name:'file '+((page-1)*limit+i+1),archive:'fixture',saved_exists:true,label:'Outfit '+i,costume_types:['A'],key:'STRIKER|CLOTH_'+i,parts:['HAIR','UPBODY'],count:2}))};
 }
 const picker=setupPicker({state,api,element,operation:async fn=>{if(!state.busy)await fn();},loadModel:async ids=>{loaded=ids;}});
 try{
@@ -27,7 +27,7 @@ try{
  await picker.search();check(calls.length===0,'initial visit makes no model requests');$('model-character').value='STRIKER';await picker.search();
  check($('model-results').children.length===40,'40 results by default');
  const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
- check(first.querySelector('.model-open>span').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
+ check(first.querySelector('.model-open>span').textContent==='Outfit 0 [A\uD0C0\uC785]'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
  check(first.querySelector('.model-set-code').textContent==='CLOTH_0'&&parseFloat(getComputedStyle(first.querySelector('.model-set-code')).fontSize)<parseFloat(getComputedStyle(first.querySelector('.model-open>span')).fontSize),'set code is secondary to the outfit name');
  check(first.getBoundingClientRect().height<=96&&first.querySelector('.actions button').checkVisibility()&&first.querySelector('.model-source-date').checkVisibility(),'compact row keeps date and actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
  check(ResourceDates.label(Date.UTC(2026,9,21,16))==='원본 수정일 2026-10-22','source date uses Korean timezone');

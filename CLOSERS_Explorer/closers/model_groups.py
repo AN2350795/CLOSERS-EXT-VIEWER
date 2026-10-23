@@ -154,6 +154,7 @@ class ModelGroups:
             # Display count follows filters; bundle detail resolves the entire exact set.
             parts=sorted({r['part'] for r in rows})
             items.append(dict(key=key,character=rows[0]['character'],label=self.bundle_label(rows),
+                              costume_types=sorted({r['costume_type'] for r in rows if r.get('costume_type')}),
                               count=len(rows),parts=parts,part_labels=[LABELS['part'].get(p,p) for p in parts],
                               updated_at=max((r['updated_at'] for r in rows if r.get('updated_at') is not None),default=None)))
             previews={r['preview_entry'] for r in rows if r.get('preview_entry') and r['part'] in ('UPBODY','ONE_PIECE')}
