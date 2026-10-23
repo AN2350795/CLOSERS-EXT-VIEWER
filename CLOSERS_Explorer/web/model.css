@@ -40,3 +40,4 @@
 @media(max-width:760px){.model-picker{height:80dvh}#model-pages{display:none}.picker-top .picker-modes button{font-size:11px}}
 .picker-top>[hidden]{visibility:hidden}.picker-top .picker-tools>[hidden]{visibility:hidden;display:block}.model-picker>.picker-pagination[hidden]{visibility:hidden;display:grid}
 .bundle-components{min-width:0;padding-left:12px;border-left:2px solid var(--line)}.bundle-components:empty{display:none}.bundle-components label,#model-results .model-row-details>label{display:grid;gap:4px;min-width:0;margin:6px 0;font-size:11px;overflow-wrap:anywhere}#model-results .model-row-details>label select{width:100%;min-width:0;max-width:100%}
+#model-results .model-open:has(.model-set-code){flex-direction:column;align-items:flex-start;gap:1px}#model-results .model-open .model-set-code{font-size:10px;line-height:1.3;font-weight:400;color:var(--muted);margin:0}
