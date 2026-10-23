@@ -28,13 +28,14 @@ try{
  check($('model-results').children.length===40,'40 results by default');
  const first=$('model-results').firstElementChild,details=first.querySelector('.model-row-details');
  check(first.querySelector('.model-open>span').textContent==='Outfit 0'&&!details.open&&!details.querySelector('small').checkVisibility(),'names are visible and metadata starts collapsed');
- check(!first.querySelector('.model-set-code')&&details.textContent.includes('A타입')&&details.textContent.includes('CLOTH_0'),'type and set code appear only in details');
- check(first.getBoundingClientRect().height<=96&&first.querySelector('.actions button').checkVisibility()&&first.querySelector('.model-source-date').checkVisibility(),'compact row keeps date and actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
+ check(first.querySelector('.model-type-badge').textContent==='A타입'&&!first.querySelector('.model-open').textContent.includes('CLOTH_0')&&details.textContent.includes('CLOTH_0'),'type appears beside the name while the set code stays in details');
+ check(first.getBoundingClientRect().height<=112&&first.querySelector('.actions button').checkVisibility()&&first.querySelector('.model-source-date').checkVisibility(),'compact row keeps date and actions visible: '+JSON.stringify({height:first.getBoundingClientRect().height,visible:first.querySelector('.actions button').checkVisibility()}));
  check(ResourceDates.label(Date.UTC(2026,9,21,16))==='원본 수정일 2026-10-22','source date uses Korean timezone');
  check(ResourceDates.compare(null,0,'newest')>0&&ResourceDates.compare(0,null,'oldest')<0,'unknown dates stay last');
  const initialStar=first.querySelector('.favorite-button');check(!initialStar.closest('details')&&initialStar.textContent==='☆'&&initialStar.getAttribute('aria-label').includes('즐겨찾기 추가'),'favorite is a visible icon with accessible action label');
- details.querySelector('summary').click();check(details.open&&details.querySelector('small').checkVisibility(),'details toggle reveals metadata');
- details.querySelector('summary').click();check(!details.open,'details can collapse again');
+ const detailToggle=first.querySelector('.set-details-toggle');
+ detailToggle.click();check(details.open&&details.querySelector('small').checkVisibility()&&detailToggle.getAttribute('aria-expanded')==='true','details toggle reveals metadata');
+ detailToggle.click();check(!details.open&&detailToggle.getAttribute('aria-expanded')==='false','details can collapse again');
  $('model-sort').value='newest';$('model-sort').dispatchEvent(new Event('change'));await until(()=>calls.at(-1).get('sort')==='newest');
  check(calls.at(-1).get('page')==='1','sorting resets model page');
  state.busy=true;$('model-next').click();await until(()=>$('model-page').textContent.startsWith('2 /'));

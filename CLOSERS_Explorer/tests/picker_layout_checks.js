@@ -19,6 +19,12 @@ window.checkPickerLayout=async()=>{
    [...tabs.children].find(b=>b.textContent==='헤어').click();await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
    check([...tabs.children].find(b=>b.textContent==='헤어').getAttribute('aria-pressed')==='true','part selection is applied');
   }
+  if(mode==='sets'){
+   const row=$('model-results').firstElementChild,name=row.querySelector('.model-open').getBoundingClientRect(),date=row.querySelector('.model-source-date').getBoundingClientRect(),actions=row.querySelector('.actions').getBoundingClientRect(),bounds=row.getBoundingClientRect();
+   check(date.top>=name.bottom-1&&actions.top>=date.bottom-1,'set name, date and actions are ordered');
+   const buttons=[...row.querySelectorAll('.actions button')].map(b=>b.getBoundingClientRect());
+   check(buttons.length===2&&Math.abs(buttons[0].top-buttons[1].top)<1&&buttons.every(b=>b.left>=bounds.left&&b.right<=bounds.right&&b.bottom<=bounds.bottom),'set actions align without clipping');
+  }
  }
  $('model-results').scrollTop=40;const scroll=$('model-results').scrollTop;
  $('open-picker-options').click();check($('picker-options').open,'filter dialog opens');fixed('filter dialog moves list');
