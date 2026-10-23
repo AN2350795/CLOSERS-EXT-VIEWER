@@ -5,6 +5,7 @@ XMD research: https://github.com/nbreeze/closers-rev/wiki/.XMD
 No extraction/catalog changes; viewer data is derived from original bytes.
 """
 import math
+from collections import defaultdict
 import struct
 import zlib
 
@@ -236,6 +237,39 @@ def parse_x(data):
             if len(offset)!=16 or any(type(i)is not int or not 0<=i<n for i in indices) or any(w<0 or w>1.001 for w in weights):
                 raise ValueError('X 스킨 가중치·행렬이 올바르지 않습니다.')
             skin.append(dict(bone=bone,indices=indices,weights=weights,offset=offset))
+        normals=[]
+        normal_node=child(node,'MeshNormals')
+        if normal_node:
+            values=iter(normal_node['values'])
+            nn=Reader(b'').count(next(values),250_000)
+            source_normals=numeric([next(values) for _ in range(nn*3)])
+            if next(values)!=nf:raise ValueError('X 법선 면 개수가 메시와 다릅니다.')
+            normal_faces=[]
+            for face in faces:
+                if next(values)!=len(face):raise ValueError('X 법선 면의 정점 개수가 다릅니다.')
+                normal_faces.append([Reader(b'').count(next(values),nn-1) for _ in face])
+            if next(values,None) is not None:raise ValueError('X 법선 데이터 길이가 잘못되었습니다.')
+            # X stores normals per corner. Split only the affected vertices,
+            # keeping UVs and every bone influence attached to their source.
+            positions=[];coordinates=[];remapped=[];pairs={};copies=defaultdict(list)
+            for face,normal_face in zip(faces,normal_faces):
+                mapped=[]
+                for vi,ni in zip(face,normal_face):
+                    pair=(vi,ni)
+                    if pair not in pairs:
+                        index=len(pairs)
+                        if index>=250_000:raise ValueError('법선 분리 후 정점이 250,000개를 초과합니다.')
+                        pairs[pair]=index;copies[vi].append(index)
+                        positions.extend(vertices[vi*3:vi*3+3])
+                        normals.extend(source_normals[ni*3:ni*3+3])
+                        if uv:coordinates.extend(uv['values'][1+vi*2:3+vi*2])
+                    mapped.append(pairs[pair])
+                remapped.append(mapped)
+            for weights in skin:
+                expanded=[(copy,weight) for vi,weight in zip(weights['indices'],weights['weights']) for copy in copies[vi]]
+                weights['indices']=[v[0] for v in expanded];weights['weights']=[v[1] for v in expanded]
+            vertices=positions;faces=remapped
+            if uv:uv={'values':[len(positions)//3]+coordinates}
         indices,groups = [],[]
         for mi in range(len(materials)):
             start = len(indices)
@@ -245,7 +279,7 @@ def parse_x(data):
                         indices.extend((face[0],face[i],face[i+1]))
             groups.append([start,len(indices)-start,mi])
         meshes.append(dict(name=node['name'],frame=parent,vertices=vertices,indices=indices,
-                           uv=uv['values'][1:] if uv else [],materials=materials,groups=groups,skin=skin))
+                           uv=uv['values'][1:] if uv else [],normals=normals,materials=materials,groups=groups,skin=skin))
     def visit(nodes,parent=-1):
         for node in nodes:
             if node['kind']=='Frame':

@@ -61,6 +61,24 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_corner_normals_preserve_hard_edges_uv_and_skin_weights(self):
+        def model(normal_faces):
+            mesh=obj('Mesh',numbers([4])+numbers([0,0,0,1,0,0,0,1,0,0,0,1],True)
+                +numbers([2,3,0,1,2,3,0,3,1])
+                +obj('MeshNormals',numbers([2])+numbers([0,0,1,0,1,0],True)+numbers(normal_faces))
+                +obj('MeshTextureCoords',numbers([4])+numbers([0,0,1,0,0,1,1,1],True))
+                +obj('SkinWeights',string('ROOT')+numbers([4,0,1,2,3])+numbers([1]*4,True)+numbers(IDENTITY,True)))
+            return b'xof 0303bin 0032'+obj('Frame',mesh,'ROOT')
+        mesh=parse_x(model([2,3,0,0,0,3,1,1,1]))['meshes'][0]
+        self.assertEqual(mesh['vertices'],[0,0,0,1,0,0,0,1,0,0,0,0,0,0,1,1,0,0])
+        self.assertEqual(mesh['normals'],[0,0,1]*3+[0,1,0]*3)
+        self.assertEqual(mesh['uv'],[0,0,1,0,0,1,0,0,1,1,1,0])
+        self.assertEqual(sorted(mesh['skin'][0]['indices']),list(range(6)))
+        self.assertEqual(mesh['skin'][0]['weights'],[1]*6)
+        self.assertEqual(mesh['indices'],list(range(6)))
+        for bad in ([1,3,0,0,0],[2,3,0,0,0,3,2,1,1],[2,2,0,0,3,1,1,1]):
+            with self.subTest(bad=bad),self.assertRaises(ValueError):parse_x(model(bad))
+
     def test_scene_stops_reading_parts_when_vertex_budget_is_exceeded(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); catalog = Catalog(root/'work')
