@@ -144,9 +144,12 @@ class AvatarTypeTests(unittest.TestCase):
         ):
             with self.subTest(entry=entry):
                 rule=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:entry}))
-                self.assertEqual(rule,dict(textures={},shader_changes=True,unresolved=False))
+                self.assertEqual(rule['textures'],{})
+                self.assertTrue(rule['shader_changes']);self.assertFalse(rule['unresolved'])
+                if 'm_OrgTexName' in entry:
+                    self.assertEqual(rule['materials']['SKIN.TGA'],{k:v for k,v in entry.items() if k!='m_OrgTexName'})
         rule=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG',m_ChangeTexName='BLUE.PNG',m_MultiTexName='MAT.PNG')}))
-        self.assertEqual(rule,dict(textures={'BASE.PNG':'BLUE.PNG'},shader_changes=True,unresolved=False))
+        self.assertEqual(rule,dict(textures={'BASE.PNG':'BLUE.PNG'},materials={'BASE.PNG':{'m_MultiTexName':'MAT.PNG'}},shader_changes=True,unresolved=False))
         self.assertEqual(AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG')})),dict(textures={},shader_changes=False,unresolved=False))
 
     def test_malformed_or_unknown_texture_changes_still_fail(self):
@@ -168,7 +171,32 @@ class AvatarTypeTests(unittest.TestCase):
         item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
         scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
         self.assertEqual(scene['meshes'][0]['materials'][0]['texture'],self.model[:-2]+'.PNG')
-        self.assertTrue(any('보조 텍스처' in warning for warning in scene['warnings']))
+        preview=scene['meshes'][0]['materials'][0]['material_preview']
+        self.assertEqual(preview['texture'],'MAT_209_SKIN.PNG')
+        self.assertIsNone(preview['image']['selected'])
+        self.assertTrue(any('보조 재질' in warning for warning in scene['warnings']))
+
+    def test_skin_material_follows_original_texture_and_selected_item(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules))
+        original=self.model[:-2]+'.TGA'
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_ChangeTexName=reference[:-4]+'.PNG',m_MultiTexName='MAT_209_SKIN.PNG')}))
+        self.registry.texture_rules=lambda:rules
+        self.catalog.scan([fixture(self.root/'materials.cmf',[('MAT_209_SKIN.PNG',b'image',0)])])
+        for kind in ('A','B'):
+            item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type=kind))[0]
+            scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+            material=scene['meshes'][0]['materials'][0]
+            self.assertEqual('material_preview' in material,kind=='A')
+            if kind=='A':
+                self.assertIsNotNone(material['material_preview']['image']['selected'])
+                self.assertEqual(material['texture'],reference[:-4]+'.PNG')
+        self.assertEqual(AvatarItems.material_inputs({'texture':'UNCHANGED.PNG'},{'materials':{original:{'m_MultiTexName':'MAT_209_SKIN.PNG'}}}),{})
+
+    def test_material_map_duplicates_remain_ambiguous(self):
+        files=[('MAT_209_SKIN.PNG',b'image',0)]
+        self.catalog.scan([fixture(self.root/'material1.cmf',files),fixture(self.root/'material2.cmf',files)])
+        info=self.models.candidates('MAT_209_SKIN.PNG',{'archive_id':-1})
+        self.assertIsNone(info['selected']);self.assertEqual(len(info['candidates']),2)
 
     def add_component(self,variant='',filename=None):
         from closers import ntf

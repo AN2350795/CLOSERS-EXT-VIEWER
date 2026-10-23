@@ -1,0 +1,76 @@
+import * as T from '/vendor/three/three.module.min.js';
+import {buildModel} from '/model-core.js';
+import {setMaterialPreview,setMaterialPreviewMap} from '/model-materials.js';
+const check=(value,message)=>{if(!value)throw Error(message);};
+const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});
+renderer.setSize(96,96);renderer.setClearColor(0x000000);renderer.outputColorSpace=T.SRGBColorSpace;
+const camera=new T.OrthographicCamera(-2,2,2,-2,.1,100);camera.position.z=10;camera.updateMatrixWorld(true);
+const gl=renderer.getContext(),errors=[];renderer.debug.onShaderError=()=>errors.push('shader compilation failed');
+const pixels=scene=>{renderer.render(scene,camera);const result=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,result);return result;};
+const sphere=new T.DataTexture(new Uint8Array([100,100,100,255,200,80,50,255,80,80,80,255,240,100,60,255]),2,2);
+sphere.needsUpdate=true;sphere.colorSpace=T.SRGBColorSpace;sphere.flipY=false;
+const identity=new T.Matrix4().toArray();
+function fixture(count){
+  return {frames:Array.from({length:count},(_,i)=>({name:'bone'+i,parent:-1,matrix:identity})),meshes:[0,1].map(k=>({
+    name:'mesh'+k,frame:-1,vertices:[-1.7+k*2,-.7,0,-.3+k*2,-.7,0,-1+k*2,.7,0],indices:[0,1,2],uv:[0,0,1,0,0,1],normals:[0,0,1,0,0,1,0,0,1],groups:[[0,3,0]],
+    materials:[{color:[.2,.1,.05,1],...(k?{}:{material_preview:{kind:'skin-sphere'}})}],
+    skin:Array.from({length:count},(_,i)=>({bone:'bone'+i,offset:identity,indices:[0,1,2],weights:[1/count,1/count,1/count]})),
+  }))};
+}
+try{
+  for(const count of [0,4,5]){
+    const data=fixture(count),model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;model.root.updateMatrixWorld(true);scene.add(model.root);
+    const before=pixels(scene);setMaterialPreviewMap(model.materials[0],sphere);const after=pixels(scene);
+    let changed=0;for(let i=0;i<before.length;i++){
+      const x=(i/4|0)%96;if(x>=48)check(before[i]===after[i],'preview affected unrelated material');
+      else if(before[i]!==after[i])changed++;
+      if(i%4===3)check(before[i]===after[i],'preview changed alpha');
+    }
+    check(changed>100,'empty highlight: '+count);
+    setMaterialPreview(model.materials[0],false);const restored=pixels(scene);
+    check(restored.every((v,i)=>v===before[i]),'toggle did not restore base pixels: '+count);
+    setMaterialPreview(model.materials[0],true);
+    if(count){
+      model.bones.forEach(b=>b.rotation.y=.4);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());
+      const reference=buildModel(fixture(0)),expectedScene=new T.Scene();reference.root.scale.z=1;reference.root.rotation.y=.4;reference.root.updateMatrixWorld(true);expectedScene.add(reference.root);setMaterialPreviewMap(reference.materials[0],sphere);
+      const posed=pixels(scene),expected=pixels(expectedScene);
+      check(posed.filter((v,i)=>Math.abs(v-expected[i])>2).length<12,'animated normals differ from rigid reference: '+count);
+      reference.dispose();
+    }
+    const saved=model.materials[0].userData.materialPreview.uniforms.avatarSkinMap.value;
+    setMaterialPreviewMap(model.materials[1],sphere);check(!model.materials[1].userData.materialPreview,'unrelated material acquired preview');
+    check(saved===sphere,'map reference lost');model.dispose();
+  }
+  check(!errors.length,errors.join('\n'));
+  const shared=fixture(0);shared.meshes[1].materials[0].material_preview={kind:'skin-sphere'};
+  const pair=buildModel(shared);setMaterialPreviewMap(pair.materials[0],sphere);
+  check(pair.materials[1].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'two items share mutable uniforms');pair.dispose();
+
+  // Exercise the real loader, role-specific cache, checkbox and missing maps.
+  const originalFetch=window.fetch;let missing=false;
+  window.fetch=async (url,options)=>{
+    const path=String(url);
+    if(path.startsWith('/api/model-browser'))return new Response(JSON.stringify({total:0,items:[],facets:{character:[],kind:[],family:[],part:[],variant:[]}}));
+    if(path.startsWith('/api/composition-source/'))return new Response(JSON.stringify({width:4,height:4,image_sha256:'fixture'}));
+    if(path.startsWith('/api/model-scene')){
+      const data=fixture(0);data.meshes[0].materials[0].image={name:'BASE.PNG',candidates:[{id:71,archive:'fixture',ordinal:0}],selected:71};
+      data.meshes[0].materials[0].material_preview.image={name:'MAT_209_SKIN.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71};
+      return new Response(JSON.stringify({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{name:'none',candidates:[]},warnings:[]}));
+    }
+    return originalFetch(url,options);
+  };
+  await import('/model.js');await modelViewer.loadModel([1]);
+  const checkbox=document.getElementById('material-preview'),note=document.getElementById('material-preview-note');
+  check(!checkbox.disabled&&checkbox.checked&&!note.hidden,'preview control not available');
+  check(modelViewer.state.textures.size===2,'base and sphere texture roles share mutable wrapping');
+  const [base,aux]=[modelViewer.state.textures.get('base:71'),modelViewer.state.textures.get('auxiliary:71')];
+  check(base!==aux&&base.wrapS===T.RepeatWrapping&&aux.wrapS===T.ClampToEdgeWrapping,'role wrapping invalid');
+  check(document.querySelectorAll('#model-textures [data-texture-role]').length===2,'texture roles missing');
+  checkbox.click();check(modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'checkbox did not disable');
+  await modelViewer.loadModel([1]);check(!checkbox.checked&&modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'reload lost toggle preference');
+  missing=true;await modelViewer.loadModel([1]);
+  check(modelViewer.state.model.materials[0].map&&document.getElementById('model-status').textContent.includes('텍스처 확인 필요'),'missing auxiliary lost base or notice');
+  document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&modelViewer.state.textures.size===0,'clear left preview enabled');
+  document.body.dataset.checks='passed';
+}catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}
+finally{sphere.dispose();renderer.dispose();renderer.forceContextLoss();}

@@ -3,6 +3,7 @@ import {buildModel,applyPose,restorePose} from './model-core.js';
 import {slots,partLabels} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
 import {setupPreviews} from './model-preview.js';
+import {setMaterialPreview,setMaterialPreviewMap} from './model-materials.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),texturePixels:0};
@@ -37,19 +38,24 @@ function initRenderer(){
 }
 function resetCamera(){if(!state.model)return;const bounds=new THREE.Box3();for(const m of state.model.meshes){if(m.visible)bounds.expandByObject(m,true);}if(bounds.isEmpty())bounds.setFromObject(state.model.root);bounds.getCenter(target);const size=bounds.getSize(new THREE.Vector3());orbit.distance=Math.max(size.length()*1.45,1);orbit.yaw=0;orbit.pitch=.12;camera.near=Math.max(.01,orbit.distance/1000);camera.far=Math.max(1000,orbit.distance*100);camera.updateProjectionMatrix();}
 function disposeModel(){stop();state.animation=null;state.clip=null;state.time=0;if(boneHelper){scene.remove(boneHelper);boneHelper.geometry.dispose();boneHelper.material.dispose();boneHelper=null;}if(state.model){scene.remove(state.model.root);state.model.dispose();state.model=null;}for(const t of state.textures.values())t.dispose();state.textures.clear();state.texturePixels=0;$('animation-clip').replaceChildren(element('option','연결된 동작 없음'));updateTime();}
-async function texture(id,materials){
-  let map=state.textures.get(id);
-  if(!map){const metadata=await api('/api/composition-source/'+id);if(state.texturePixels+metadata.width*metadata.height>32*1024*1024)throw Error('텍스처 합계는 33,554,432픽셀까지 지원합니다.');map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);map.colorSpace=THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=THREE.RepeatWrapping;state.textures.set(id,map);state.texturePixels+=metadata.width*metadata.height;}
-  materials.forEach(m=>{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;});
+async function texture(id,materials,role='base'){
+  const key=role+':'+id;let map=state.textures.get(key);
+  if(!map){const metadata=await api('/api/composition-source/'+id);if(state.texturePixels+metadata.width*metadata.height>32*1024*1024)throw Error('텍스처 합계는 33,554,432픽셀까지 지원합니다.');map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);map.colorSpace=THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=role==='base'?THREE.RepeatWrapping:THREE.ClampToEdgeWrapping;state.textures.set(key,map);state.texturePixels+=metadata.width*metadata.height;}
+  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
 }
 function sourceSelector(info,callback){const select=element('select');select.append(element('option',info.candidates.length?'출처를 선택하세요':'일치하는 파일 없음'));select.firstChild.value='';for(const row of info.candidates){const option=element('option',row.archive+' · #'+row.ordinal);option.value=row.id;select.append(option);}if(info.selected)select.value=info.selected;select.onchange=()=>{if(select.value)operation(()=>callback(Number(select.value)));};return select;}
 async function showTextures(){
   $('model-textures').replaceChildren();const groups=new Map();
-  for(const material of state.model.materials){const info=material.userData.input.image;if(!info)continue;const key=JSON.stringify(info);if(!groups.has(key))groups.set(key,{info,materials:[]});groups.get(key).materials.push(material);}
+  for(const material of state.model.materials){for(const role of ['base','auxiliary']){const input=material.userData.input,info=role==='base'?input.image:input.material_preview?.image;if(!info)continue;const key=role+':'+JSON.stringify(info);if(!groups.has(key))groups.set(key,{info,role,materials:[]});groups.get(key).materials.push(material);}}
   let failed=0;
-  for(const {info,materials} of groups.values()){const row=element('div');row.className='model-row';row.append(element('span',info.name));const message=element('small');const load=async id=>{message.textContent='불러오는 중…';try{await texture(id,materials);message.textContent='원본 해상도 적용';}catch(e){failed++;message.textContent='텍스처 표시 실패: '+e.message;}};row.append(sourceSelector(info,load),message);$('model-textures').append(row);if(info.selected)await load(info.selected);else{failed++;message.textContent=info.candidates.length?'여러 출처가 있어 자동으로 선택하지 않았습니다.':'동일한 파일 이름의 이미지가 없습니다.';}}
+  for(const {info,role,materials} of groups.values()){const row=element('div');row.className='model-row';row.dataset.textureRole=role;row.append(element('span',(role==='auxiliary'?'피부 보조 재질 · ':'기본색 · ')+info.name));const message=element('small');const load=async id=>{message.textContent='불러오는 중…';try{await texture(id,materials,role);message.textContent=role==='auxiliary'?'재질 미리보기 적용':'원본 해상도 적용';}catch(e){failed++;message.textContent='텍스처 표시 실패: '+e.message;}};row.append(sourceSelector(info,load),message);$('model-textures').append(row);if(info.selected)await load(info.selected);else{failed++;message.textContent=info.candidates.length?'여러 출처가 있어 자동으로 선택하지 않았습니다.':'동일한 파일 이름의 이미지가 없습니다.';}}
   if(!groups.size)$('model-textures').textContent='모델에 명시된 텍스처가 없습니다.';
   return failed;
+}
+function updateMaterialPreview(){
+  const supported=state.model?.materials.some(m=>m.userData.materialPreview)||false;
+  $('material-preview').disabled=!supported;$('material-preview-note').hidden=!supported;
+  state.model?.materials.forEach(m=>setMaterialPreview(m,$('material-preview').checked));
 }
 function showParts(){
   const panel=$('model-parts');panel.replaceChildren();const places=new Map();
@@ -90,7 +96,7 @@ async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntrie
   const parameters=new URLSearchParams({entries:ids.join(',')});if(Object.keys(items).length)parameters.set('items',JSON.stringify(items));if(skeleton)parameters.set('skeleton',skeleton);if(eye){parameters.set('eye',eye.key);parameters.set('eye_face',eye.face_id);if(eye.texture_id)parameters.set('eye_texture',eye.texture_id);}
   $('model-status').classList.add('is-loading');$('viewport').setAttribute('aria-busy','true');
   try{
-  status(`모델 여는 중… · ${ids.length}개 파일의 데이터를 불러오고 있습니다.`);const data=await api('/api/model-scene?'+parameters);ids=data.sources.map(s=>s.entry_id);parameters.set('entries',ids.join(','));const resolvedItems=Object.fromEntries(data.sources.filter(s=>s.appearance_key).map(s=>[s.entry_id,s.appearance_key]));if(Object.keys(resolvedItems).length)parameters.set('items',JSON.stringify(resolvedItems));const model=buildModel(data);disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();status('모델 여는 중… · 텍스처를 적용하고 있습니다.');const failed=await showTextures();resetCamera();
+  status(`모델 여는 중… · ${ids.length}개 파일의 데이터를 불러오고 있습니다.`);const data=await api('/api/model-scene?'+parameters);ids=data.sources.map(s=>s.entry_id);parameters.set('entries',ids.join(','));const resolvedItems=Object.fromEntries(data.sources.filter(s=>s.appearance_key).map(s=>[s.entry_id,s.appearance_key]));if(Object.keys(resolvedItems).length)parameters.set('items',JSON.stringify(resolvedItems));const model=buildModel(data);disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();status('모델 여는 중… · 텍스처를 적용하고 있습니다.');updateMaterialPreview();const failed=await showTextures();resetCamera();
   status('모델 여는 중… · 게임 동작 연결을 확인하고 있습니다.');
   $('animation-choice').replaceChildren(element('p',data.animation.name));$('animation-choice').append(sourceSelector(data.animation,connectAnimation));$('animation-verification').textContent='연결할 XMD가 없거나 출처 선택이 필요합니다.';let animationError='';if(data.animation.selected){try{await connectAnimation(data.animation.selected);}catch(e){animationError=' · 동작: '+e.message;}}
   const vertices=data.meshes.reduce((s,m)=>s+m.vertices.length/3,0);status(`${ids.length}개 파일 · 메시 ${data.meshes.length}개 · 정점 ${vertices.toLocaleString()}개${data.equipment_visibility?.hidden.length?' · 장비 겹침 방지 '+data.equipment_visibility.hidden.length+'개 메시 숨김':''}${failed?' · 텍스처 확인 필요 '+failed+'개':''}${animationError}${data.warnings.length?' · '+data.warnings.join(' '):''}`);
@@ -105,7 +111,7 @@ async function chooseClip(index){
 const {search}=setupPicker({state,api,operation,loadModel,applyEye,element,previews:setupPreviews({api})});
 $('clear-model').onclick=()=>{
   if(state.busy||!state.model)return;
-  disposeModel();state.ids=[];state.eye=null;state.skeleton=null;state.data=null;
+  disposeModel();state.ids=[];state.eye=null;state.skeleton=null;state.data=null;updateMaterialPreview();
   $('model-parts').replaceChildren(element('p','선택한 모델이 없습니다.'));
   $('motion-choice').replaceChildren();$('animation-choice').replaceChildren(element('p','연결된 동작 없음'));
   $('model-textures').replaceChildren();$('animation-verification').textContent='XMD의 _DEFAULT 자세와 X의 전체 뼈 행렬을 대조한 뒤 재생합니다.';
@@ -115,6 +121,7 @@ $('clear-model').onclick=()=>{
 };
 $('reset-camera').onclick=resetCamera;$('bind-pose').onclick=()=>{if(!state.model||state.busy)return;stop();restorePose(state.model,state.data);state.clip=null;state.time=0;updateTime();setBusy(false);$('animation-clip').value='';status('X 파일의 기본 자세');};
 $('show-helpers').onchange=$('show-equipment-hidden').onchange=updateMeshVisibility;$('wireframe').onchange=()=>state.model?.materials.forEach(m=>m.wireframe=$('wireframe').checked);$('show-bones').onchange=()=>{if(boneHelper)boneHelper.visible=$('show-bones').checked;};
+$('material-preview').onchange=updateMaterialPreview;
 $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()=>chooseClip(Number($('animation-clip').value)));};$('play-animation').onclick=()=>{if(!state.clip||state.busy)return;state.playing=!state.playing;if(state.playing&&state.time>=state.clip.clip.duration)state.time=0;$('play-animation').textContent=state.playing?'일시정지':'재생';};$('animation-seek').oninput=()=>{if(!state.clip||state.busy)return;stop();state.time=Number($('animation-seek').value);applyPose(state.model,state.clip,state.time);updateTime();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{renderer?.setAnimationLoop(null);disposeModel();renderer?.dispose();});
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.

@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {isFaceShadingMaterial} from './face-preview.js';
+import {installMaterialPreview} from './model-materials.js';
 
 // Store a sparse list rather than reserving a fixed number of influences per
 // vertex. WebGL2 vertex shaders can fetch every influence without truncation.
@@ -15,8 +16,10 @@ function extendSkinning(mesh,weights,textures){
   texture.needsUpdate=true;textures.push(texture);
   mesh.geometry.setAttribute('influenceRange',new THREE.Float32BufferAttribute(ranges,2));
   for(const material of mesh.material){
-    material.customProgramCacheKey=()=> 'closers-full-skinning-v1';
+    const previousCompile=material.onBeforeCompile,previousKey=material.customProgramCacheKey.bind(material);
+    material.customProgramCacheKey=()=>previousKey()+'|closers-full-skinning-v1';
     material.onBeforeCompile=shader=>{
+      previousCompile.call(material,shader);
       shader.uniforms.influenceTexture={value:texture};
       shader.vertexShader=shader.vertexShader.replace('#include <skinning_pars_vertex>',`#include <skinning_pars_vertex>
 attribute vec2 influenceRange;
@@ -59,6 +62,8 @@ export function buildModel(data){
     for(const m of data.meshes){
       const g=new THREE.BufferGeometry();geometries.push(g);g.setAttribute('position',new THREE.Float32BufferAttribute(m.vertices,3));g.setIndex(m.indices);
       if(m.uv.length)g.setAttribute('uv',new THREE.Float32BufferAttribute(m.uv,2));
+      if(m.normals?.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(m.normals,3));
+      else if(m.materials.some(v=>v.material_preview))g.computeVertexNormals();
       const mats=m.materials.map(v=>{
         // Observed face SDF maps store shading data in alpha. Cutting them out
         // removes a cheek. Keep opacity testing for eyes, hair and other maps.
@@ -66,7 +71,7 @@ export function buildModel(data){
         // X meshes include reverse-facing outline/interior surfaces. Drawing
         // both sides exposes those surfaces as patches on skin, hair and cloth.
         const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(...v.color.slice(0,3)),opacity:faceShadingAlpha?1:v.color[3],transparent:!faceShadingAlpha&&v.color[3]<1,side:THREE.FrontSide,alphaTest:faceShadingAlpha?0:.1});
-        mat.userData.input=v;mat.userData.faceShadingAlpha=faceShadingAlpha;materials.push(mat);return mat;
+        mat.userData.input=v;mat.userData.faceShadingAlpha=faceShadingAlpha;installMaterialPreview(mat);materials.push(mat);return mat;
       });
       for(const group of m.groups)g.addGroup(...group);
       let mesh;

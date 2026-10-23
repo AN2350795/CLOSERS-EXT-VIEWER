@@ -11,11 +11,11 @@ from .model_groups import classify, LABELS
 
 class AvatarItems(EyeAvatars):
     def texture_rules(self):
-        return self.data.cached(('avatar-texture-rules',2),self._texture_rules,persistent=True)
+        return self.data.cached(('avatar-texture-rules',3),self._texture_rules,persistent=True)
 
     @staticmethod
     def parse_texture_rule(row):
-        changes={};unresolved=False
+        changes={};materials={};unresolved=False
         shader_changes=any(v for k,v in row.items() if k not in ('m_DeviceID','m_mapTexChange'))
         auxiliary={'m_MultiTexName','m_MaskTexName','m_strDyeingMaskTexName'}
         allowed={'m_OrgTexName','m_ChangeTexName','SpecularColor','SpecularPower'}|auxiliary
@@ -38,6 +38,11 @@ class AvatarItems(EyeAvatars):
             # These are extra shader inputs, not replacements for the base image.
             if set(value)-{'m_OrgTexName','m_ChangeTexName'}:shader_changes=True
             if any(not isinstance(value[k],str) for k in auxiliary&value.keys()):unresolved=True
+            extra={k:v for k,v in value.items() if k not in ('m_OrgTexName','m_ChangeTexName')}
+            if extra:
+                key=original.upper()
+                if key in materials and materials[key]!=extra:unresolved=True
+                materials[key]=extra
             for field in ('SpecularPower','SpecularColor'):
                 if field not in value:continue
                 numbers=value[field]
@@ -46,7 +51,9 @@ class AvatarItems(EyeAvatars):
                     numbers=list(numbers.values())
                 else:numbers=[numbers]
                 if any(type(v) not in (int,float) or not math.isfinite(v) for v in numbers):unresolved=True
-        return dict(textures=changes,shader_changes=shader_changes,unresolved=unresolved)
+        result=dict(textures=changes,shader_changes=shader_changes,unresolved=unresolved)
+        if materials:result['materials']=materials
+        return result
 
     def _texture_rules(self):
         result={}
@@ -197,6 +204,14 @@ class AvatarItems(EyeAvatars):
             item.update(textures={},shader_changes=False)
         else:raise ValueError('타입의 표시 정의를 찾을 수 없습니다: '+ref)
         return item
+
+    @staticmethod
+    def material_inputs(material,item):
+        original=Path((material.get('texture') or '').replace('\\','/')).name.upper()
+        values=item.get('materials',{})
+        if original in values:return values[original]
+        matches=[v for k,v in values.items() if Path(k).stem.upper()==Path(original).stem]
+        return matches[0] if len(matches)==1 else {}
 
     @staticmethod
     def texture_target(material,model,item):
