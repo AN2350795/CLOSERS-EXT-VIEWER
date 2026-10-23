@@ -52,6 +52,44 @@ class AvatarTypeTests(unittest.TestCase):
         self.assertEqual(len(set(textures)),5)
         with self.assertRaises(ValueError):self.models.scene([rows[0]['id']],items={str(rows[0]['id']):'STRIKER:999:0'})
 
+    def add_item_alias(self,reference=None):
+        from closers import ntf
+        for index in (0,1):
+            name,body=self.tables[index]
+            types=ntf.header(body)[0];rows=list(ntf.rows(body))
+            alias=list(rows[0]);alias[0 if index==0 else 1]=11
+            if index==0 and reference:alias[3]=alias[4]=reference
+            self.tables[index]=(name,table(types,rows+[alias]))
+
+    def test_bundle_selects_identical_grade_aliases_without_merging_items(self):
+        self.add_item_alias()
+        rows=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))
+        self.assertEqual({r['item_id'] for r in rows},{1,11})
+        slot=self.models.groups.bundle('STRIKER|CLOTH_123_A','',True)['slots'][0]
+        self.assertEqual(len(slot['candidates']),1)
+        candidate=slot['candidates'][0]
+        self.assertEqual(slot['selected'],candidate['id'])
+        self.assertEqual(candidate['item_ids'],[1,11])
+        self.assertEqual(candidate['appearance_key'],'STRIKER:1:0')
+
+    def test_bundle_keeps_different_appearance_references_separate(self):
+        self.add_item_alias('DIFFERENT.XET')
+        slot=self.models.groups.bundle('STRIKER|CLOTH_123_A','',True)['slots'][0]
+        self.assertEqual(len(slot['candidates']),2)
+        self.assertIsNone(slot['selected'])
+
+    def test_basic_defaults_also_select_identical_grade_aliases(self):
+        from closers import ntf
+        self.add_item_alias()
+        name,body=self.tables[1];rows=list(ntf.rows(body))
+        for index in (0,len(rows)-1):
+            rows[index]=list(rows[index]);rows[index][3]='BASIC'
+        self.tables[1]=(name,table(ntf.header(body)[0],rows))
+        bundle=self.models.groups.bundle('STRIKER|CLOTH_123_B','',True)
+        default=bundle['defaults'][0]
+        self.assertEqual(default['candidates'][0]['item_ids'],[1,11])
+        self.assertEqual(default['selected'],default['candidates'][0]['id'])
+
     def test_texture_changes_follow_registered_shared_materials(self):
         from closers.model_items import AvatarItems
         rule=dict(textures={'OTHER_CHARACTER_HAIR_02.PNG':'OTHER_CHARACTER_HAIR_BLUE_02.PNG'})

@@ -199,13 +199,24 @@ class ModelGroups:
         character=rows[0]['character'];slots=defaultdict(list)
         for row in rows:slots[(row['part'],row['variant'])].append(row)
         has_one_piece=any(part=='ONE_PIECE' and variant=='BASE' for part,variant in slots)
-        def choices(rows):
-            return [dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id')) for r in rows]
+        def selection(rows):
+            # Item grades can share one file and appearance. They are aliases,
+            # not competing sources. Keep distinct files and XET views separate.
+            grouped={}
+            for r in sorted(rows,key=lambda r:(r['id'],r.get('item_id') or 0)):
+                identity=(r['id'],r.get('reference'),r.get('set_name'),r.get('display_name'))
+                if not r.get('appearance_key'):identity=(r['id'],)
+                if identity not in grouped:
+                    grouped[identity]=dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=[])
+                if r.get('item_id') is not None and r['item_id'] not in grouped[identity]['item_ids']:
+                    grouped[identity]['item_ids'].append(r['item_id'])
+            candidates=list(grouped.values())
+            return dict(candidates=candidates,selected=candidates[0]['id'] if len(candidates)==1 else None)
         result=[]
         for (part,variant),candidates in sorted(slots.items()):
             checked=part in CORE and part!='FACE' and variant in ('BASE','ALPHA') and not(has_one_piece and part in ('UPBODY','LOWBODY'))
             result.append(dict(part=part,variant=variant,label=LABELS['part'].get(part,part)+' · '+LABELS['variant'].get(variant,variant),
-                               candidates=choices(candidates),selected=candidates[0]['id'] if len(candidates)==1 else None,checked=checked))
+                               **selection(candidates),checked=checked))
         faces=[r for r in rows if r['part']=='FACE' and r['variant']=='BASE']
         if not faces:faces=[r for r in all_rows if r['kind']=='avatar' and r['character']==character and r['part']=='FACE' and r['set_name']=='BASIC' and r['variant']=='BASE' and r['flag']!=2]
         motions=[r for r in all_rows if r['name'].upper()=='MOTION_'+character+'.X' and r['flag']!=2]
@@ -224,9 +235,9 @@ class ModelGroups:
                 if alpha:variants.append(('ALPHA',alpha))
             for variant,candidates in variants:
                 defaults.append(dict(part=part,variant=variant,label='기본 '+LABELS['part'].get(part,part)+' · '+LABELS['variant'][variant],
-                                     candidates=choices(candidates),selected=candidates[0]['id'] if len(candidates)==1 else None))
+                                     **selection(candidates)))
         return dict(key=key,character=character,label=self.bundle_label(rows),slots=result,
                     defaults=defaults,
-                    face=dict(candidates=choices(faces),selected=faces[0]['id'] if len(faces)==1 else None),
-                    motion=dict(candidates=choices(motions),selected=motions[0]['id'] if len(motions)==1 else None),
+                    face=selection(faces),
+                    motion=selection(motions),
                     evidence='같은 캐릭터·의상 코드·타입의 파일명 묶음; 얼굴은 동일 캐릭터 기본 얼굴 후보')
