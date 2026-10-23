@@ -11,11 +11,11 @@ from .model_groups import classify, LABELS
 
 class AvatarItems(EyeAvatars):
     def texture_rules(self):
-        return self.data.cached(('avatar-texture-rules',3),self._texture_rules,persistent=True)
+        return self.data.cached(('avatar-texture-rules',7),self._texture_rules,persistent=True)
 
     @staticmethod
     def parse_texture_rule(row):
-        changes={};materials={};unresolved=False
+        changes={};materials={};toon={};unresolved=False
         shader_changes=any(v for k,v in row.items() if k not in ('m_DeviceID','m_mapTexChange'))
         auxiliary={'m_MultiTexName','m_MaskTexName','m_strDyeingMaskTexName'}
         allowed={'m_OrgTexName','m_ChangeTexName','SpecularColor','SpecularPower'}|auxiliary
@@ -26,6 +26,7 @@ class AvatarItems(EyeAvatars):
             if set(value)=={'m_OrgToonTex','m_ChangeToonTex'}:
                 shader_changes=True
                 if not all(isinstance(v,str) and v for v in value.values()):unresolved=True
+                else:toon[len(toon)+1]=value
                 continue
             original=value.get('m_OrgTexName')
             if not isinstance(original,str) or not original or set(value)-allowed:
@@ -53,6 +54,13 @@ class AvatarItems(EyeAvatars):
                 if any(type(v) not in (int,float) or not math.isfinite(v) for v in numbers):unresolved=True
         result=dict(textures=changes,shader_changes=shader_changes,unresolved=unresolved)
         if materials:result['materials']=materials
+        # Keep item-level shader changes instead of discarding them as a flag.
+        # Their source texture keys are independent of diffuse substitutions.
+        for field,output in (('m_mapToonTexChange','toon_changes'),('m_mapEmissiveMaterial','emissive_materials')):
+            block=row.get(field,{})
+            if block:result[output]=block
+        if toon:
+            result['toon_changes']={'texture_rows':toon,'item_rows':result.get('toon_changes',{})}
         return result
 
     def _texture_rules(self):
@@ -65,7 +73,20 @@ class AvatarItems(EyeAvatars):
                 key=row.get('m_DeviceID','').upper()
                 if not key:continue
                 rule=self.parse_texture_rule(row)
-                if key in result and result[key]!=rule:rule['ambiguous']=True
+                if key in result:
+                    previous=result[key]
+                    # Newly inspected auxiliary blocks must not make a valid
+                    # diffuse appearance unloadable when duplicate XET rows
+                    # disagree. Disable the conflicting effects explicitly.
+                    auxiliary={'toon_changes','emissive_materials'}
+                    conflicts=set(previous.get('material_conflicts',[]))
+                    conflicts.update(k for k in auxiliary if previous.get(k)!=rule.get(k))
+                    for field in conflicts:rule.pop(field,None)
+                    if conflicts:rule['material_conflicts']=sorted(conflicts)
+                    ignored=auxiliary|{'material_conflicts','ambiguous','shader_changes'}
+                    if previous.get('ambiguous') or {k:v for k,v in previous.items() if k not in ignored}!={k:v for k,v in rule.items() if k not in ignored}:
+                        rule['ambiguous']=True
+                    rule['shader_changes'] |= previous['shader_changes']
                 result[key]=rule
         return result
 

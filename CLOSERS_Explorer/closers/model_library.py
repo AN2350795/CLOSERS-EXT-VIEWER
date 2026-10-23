@@ -116,20 +116,22 @@ class Models:
                     changed=0
                     for mesh in part['meshes']:
                         for mat in mesh['materials']:
+                            from .model_materials import plan
+                            report,emission=plan(mat,item)
+                            mat['material_report']=report
                             inputs=AvatarItems.material_inputs(mat,item)
                             multi=inputs.get('m_MultiTexName','')
-                            # Stage one: the observed skin sphere maps only.
-                            # Other multi maps may use different game shaders.
+                            # Keep the old preview source for inspection only.
                             if re.fullmatch(r'MAT_\d+_SKIN\.(?:PNG|TGA)',multi,re.I):
-                                mat['material_preview']=dict(kind='skin-sphere',texture=multi.upper())
+                                mat['material_preview']=dict(kind='skin-sphere',texture=multi.upper(),status='unsupported',reason='MatCap 활성 조건과 원본 normal/alpha 연결 확인 필요')
+                            if emission:mat['material_preview']=emission
                             target=AvatarItems.texture_target(mat,row['name'],item)
                             if target:
                                 if not self.matches(target):raise ValueError('선택한 타입의 텍스처가 없습니다: '+target)
                                 mat['texture']=target;changed+=1
                     if item['textures'] and not changed:part['warnings'].append('선택한 타입의 텍스처 변경 대상이 이 메시에는 없습니다.')
                     if item['shader_changes']:
-                        previewed=any('material_preview' in mat for mesh in part['meshes'] for mat in mesh['materials'])
-                        part['warnings'].append('피부 보조 재질은 미리보기로 적용하며, 게임의 툰 조명·마스크·발광 효과는 아직 지원하지 않습니다.' if previewed else '게임의 보조 텍스처·툰 셰이더·발광 효과는 현재 표시 범위에 포함되지 않습니다.')
+                        part['warnings'].append('보조 재질: XET 발광은 근사 미리보기이며 게임 bloom은 미지원입니다. 피부 MatCap·툰 조명·마스크·염색·반사는 원본 연결/조명 확인이 필요하여 적용하지 않습니다.')
                 if eye and entry_id==eye_face:
                     source['display_name']=eye['label']
                     if not eye['basic']:
@@ -218,6 +220,8 @@ class Models:
                         if 'material_preview' in mat:
                             preview=mat['material_preview']
                             preview['image']=self.candidates(preview['texture'],row)
+                        for auxiliary in mat.get('material_report',{}).get('textures',[]):
+                            auxiliary['image']=self.candidates(auxiliary['texture'],row)
                     # Helper/collision geometry remains available as a toggle.
                     mesh['helper'] = any(s in mesh['name'].upper() for s in ('COLLISION','ATTACK_SPHERE','ATTACK_LINE','SHADOW_'))
                     scene['meshes'].append(mesh)

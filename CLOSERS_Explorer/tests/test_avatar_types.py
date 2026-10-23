@@ -198,6 +198,36 @@ class AvatarTypeTests(unittest.TestCase):
         info=self.models.candidates('MAT_209_SKIN.PNG',{'archive_id':-1})
         self.assertIsNone(info['selected']);self.assertEqual(len(info['candidates']),2)
 
+    def test_emissive_material_is_item_specific_and_missing_map_keeps_base(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules));original=self.model[:-2]+'.PNG'
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_ChangeTexName=reference[:-4]+'.PNG')},
+            m_mapEmissiveMaterial={1:dict(OrgTexName=original,EmissiveTexName='LIGHT.PNG',EmissiveColor={1:1,2:.5,3:.25,4:1},fEmissiveStrength=.9)}))
+        self.registry.texture_rules=lambda:rules
+        for kind in ('A','B','C'):
+            item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type=kind))[0]
+            scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+            material=scene['meshes'][0]['materials'][0]
+            self.assertEqual('material_preview' in material,kind=='A')
+            self.assertIsNotNone(material['image']['selected'])
+            if kind=='A':
+                self.assertEqual(material['material_report']['source_texture'],original)
+                self.assertEqual(material['material_preview']['kind'],'emissive')
+                self.assertIsNone(material['material_preview']['image']['selected'])
+
+    def test_duplicate_auxiliary_definitions_disable_effect_and_keep_diffuse(self):
+        self.catalog.scan([fixture(self.root/'xet.cmf',[('XET_TABLE.LUA',b'fixture',0)])])
+        base=dict(m_DeviceID='A.XET',m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG',m_ChangeTexName='A.PNG')})
+        alternate=dict(base,m_mapEmissiveMaterial={1:dict(OrgTexName='BASE.PNG',EmissiveTexName='LIGHT.PNG')})
+        with patch.object(self.registry.data,'table',return_value={'XET_TABLE':{1:base,2:alternate,3:base}}):
+            rule=self.registry._texture_rules()['A.XET']
+        self.assertNotIn('ambiguous',rule)
+        self.assertEqual(rule['textures'],{'BASE.PNG':'A.PNG'})
+        self.assertEqual(rule['material_conflicts'],['emissive_materials'])
+        self.assertNotIn('emissive_materials',rule)
+        conflicting=dict(base,m_mapTexChange={1:dict(m_OrgTexName='BASE.PNG',m_ChangeTexName='B.PNG')})
+        with patch.object(self.registry.data,'table',return_value={'XET_TABLE':{1:base,2:conflicting,3:base}}):
+            self.assertTrue(self.registry._texture_rules()['A.XET']['ambiguous'])
+
     def add_component(self,variant='',filename=None):
         from closers import ntf
         name,body=self.tables[0];rows=list(ntf.rows(body))

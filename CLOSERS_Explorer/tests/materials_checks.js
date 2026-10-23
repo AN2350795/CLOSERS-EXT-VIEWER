@@ -13,11 +13,28 @@ const identity=new T.Matrix4().toArray();
 function fixture(count){
   return {frames:Array.from({length:count},(_,i)=>({name:'bone'+i,parent:-1,matrix:identity})),meshes:[0,1].map(k=>({
     name:'mesh'+k,frame:-1,vertices:[-1.7+k*2,-.7,0,-.3+k*2,-.7,0,-1+k*2,.7,0],indices:[0,1,2],uv:[0,0,1,0,0,1],normals:[0,0,1,0,0,1,0,0,1],groups:[[0,3,0]],
-    materials:[{color:[.2,.1,.05,1],...(k?{}:{material_preview:{kind:'skin-sphere'}})}],
+    materials:[{color:[.2,.1,.05,1],...(k?{}:{material_preview:{kind:'emissive',status:'approximate',color:[1,.5,.25,1],strength:.9}})}],
     skin:Array.from({length:count},(_,i)=>({bone:'bone'+i,offset:identity,indices:[0,1,2],weights:[1/count,1/count,1/count]})),
   }))};
 }
 try{
+  // Numerical shader oracle: emission is independent of the diffuse color.
+  const constant=new T.DataTexture(new Uint8Array([128,64,32,255]),1,1);constant.needsUpdate=true;
+  const linearToSrgb=x=>x<=.0031308?x*12.92:1.055*Math.pow(x,1/2.4)-.055;
+  for(const base of [.02,.2]){
+    const data=fixture(0);data.meshes[0].materials[0].color=[base,base,base,1];
+    const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);
+    setMaterialPreviewMap(model.materials[0],constant);const actual=pixels(scene),index=(48*96+24)*4;
+    for(let c=0;c<3;c++){
+      const expected=Math.round(255*linearToSrgb(base+[128,64,32][c]/255*[1,.5,.25][c]*.9));
+      check(Math.abs(actual[index+c]-expected)<=1,'emission equation or color channel changed: '+c);
+    }
+    model.dispose();
+  }
+  constant.dispose();
+  const unverified=fixture(0);unverified.meshes[0].materials[0].material_preview={kind:'skin-sphere',status:'unsupported'};
+  const unsupported=buildModel(unverified);setMaterialPreviewMap(unsupported.materials[0],sphere);
+  check(!unsupported.materials[0].userData.materialPreview,'unverified skin equation was installed');unsupported.dispose();
   for(const count of [0,4,5]){
     const data=fixture(count),model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;model.root.updateMatrixWorld(true);scene.add(model.root);
     const before=pixels(scene);setMaterialPreviewMap(model.materials[0],sphere);const after=pixels(scene);
@@ -37,14 +54,14 @@ try{
       check(posed.filter((v,i)=>Math.abs(v-expected[i])>2).length<12,'animated normals differ from rigid reference: '+count);
       reference.dispose();
     }
-    const saved=model.materials[0].userData.materialPreview.uniforms.avatarSkinMap.value;
+    const saved=model.materials[0].userData.materialPreview.uniforms.avatarEmissiveMap.value;
     setMaterialPreviewMap(model.materials[1],sphere);check(!model.materials[1].userData.materialPreview,'unrelated material acquired preview');
     check(saved===sphere,'map reference lost');model.dispose();
   }
   check(!errors.length,errors.join('\n'));
-  const shared=fixture(0);shared.meshes[1].materials[0].material_preview={kind:'skin-sphere'};
+  const shared=fixture(0);shared.meshes[1].materials[0].material_preview={kind:'emissive',status:'approximate',color:[1,.5,.25,1],strength:.9};
   const pair=buildModel(shared);setMaterialPreviewMap(pair.materials[0],sphere);
-  check(pair.materials[1].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'two items share mutable uniforms');pair.dispose();
+  check(pair.materials[1].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'two items share mutable uniforms');pair.dispose();
 
   // Exercise the real loader, role-specific cache, checkbox and missing maps.
   const originalFetch=window.fetch;let missing=false;
@@ -64,10 +81,10 @@ try{
   check(!checkbox.disabled&&checkbox.checked&&!note.hidden,'preview control not available');
   check(modelViewer.state.textures.size===2,'base and sphere texture roles share mutable wrapping');
   const [base,aux]=[modelViewer.state.textures.get('base:71'),modelViewer.state.textures.get('auxiliary:71')];
-  check(base!==aux&&base.wrapS===T.RepeatWrapping&&aux.wrapS===T.ClampToEdgeWrapping,'role wrapping invalid');
+  check(base!==aux&&base.wrapS===T.RepeatWrapping&&aux.wrapS===T.RepeatWrapping,'role wrapping invalid');
   check(document.querySelectorAll('#model-textures [data-texture-role]').length===2,'texture roles missing');
-  checkbox.click();check(modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'checkbox did not disable');
-  await modelViewer.loadModel([1]);check(!checkbox.checked&&modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarSkinEnabled.value===0,'reload lost toggle preference');
+  checkbox.click();check(modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'checkbox did not disable');
+  await modelViewer.loadModel([1]);check(!checkbox.checked&&modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'reload lost toggle preference');
   missing=true;await modelViewer.loadModel([1]);
   check(modelViewer.state.model.materials[0].map&&document.getElementById('model-status').textContent.includes('텍스처 확인 필요'),'missing auxiliary lost base or notice');
   document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&modelViewer.state.textures.size===0,'clear left preview enabled');
