@@ -1,6 +1,7 @@
 const $=id=>document.getElementById(id),check=(v,m)=>{if(!v)throw Error(m);};
 const until=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('Timed out: '+fn);};
 const rows=['A','B','C','SP'].map((type,i)=>({id:1,name:'SHARED.X',character:'STRIKER',part:'UPBODY',family:'CLOTH',variant:'BASE',archive:'fixture',set_name:'CLOTH_123_'+type,set_key:'STRIKER|CLOTH_123_'+type,type_label:type,costume_type:type,item_id:100+i,appearance_key:'STRIKER:'+i+':0',display_name:'상의 ['+type+'타입]'}));
+rows[1].appearance_keys=[rows[1].appearance_key,'STRIKER:alias:0'];
 const facets={character:[],kind:[],family:[],part:[{value:'UPBODY',label:'상의',count:4}],variant:[],costume_type:rows.map(r=>({value:r.costume_type,label:r.costume_type,count:1}))};
 const original=fetch;
 window.fetch=async(url,options)=>{
@@ -19,6 +20,8 @@ try{
  document.querySelector('[data-appearance="STRIKER:1:0"] .actions button:nth-child(2)').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.data?.sources[0].item_id===101);
  check(document.querySelectorAll('.model-row.is-selected').length===1,'only selected item type is highlighted');
  check(JSON.parse(new URL(location.href).searchParams.get('items'))['1']==='STRIKER:1:0','URL preserves selected item type');
+ modelViewer.state.data.sources[0].appearance_key='STRIKER:alias:0';document.dispatchEvent(new Event('model-selection'));
+ check(document.querySelector('[data-appearance="STRIKER:1:0"]').classList.contains('is-selected')&&document.querySelectorAll('.model-row.is-selected').length===1,'an equipped grade alias highlights the merged appearance');
  $('model-costume_type').value='SP';$('model-costume_type').dispatchEvent(new Event('change'));await until(()=>document.querySelectorAll('[data-appearance]').length===1);
  check($('model-results').textContent.includes('[SP타입]'),'additional registered types can be filtered');
  document.body.dataset.checks='passed';

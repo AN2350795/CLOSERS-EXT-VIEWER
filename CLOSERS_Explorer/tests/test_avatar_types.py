@@ -78,6 +78,40 @@ class AvatarTypeTests(unittest.TestCase):
         self.assertEqual(len(slot['candidates']),2)
         self.assertIsNone(slot['selected'])
 
+    def test_browser_merges_grade_aliases_before_pagination_and_facet_counts(self):
+        self.add_item_alias()
+        filters=dict(character='STRIKER',mode='parts',items='1')
+        result=self.models.groups.browse(filters)
+        self.assertEqual(result['total'],5)
+        item=next(r for r in result['items'] if r['costume_type']=='A')
+        self.assertEqual(item['item_ids'],[1,11])
+        self.assertEqual(item['appearance_keys'],['STRIKER:11:0','STRIKER:1:0'])
+        self.assertEqual(item['item_id'],1)
+        self.assertEqual(next(f['count'] for f in result['facets']['costume_type'] if f['value']=='A'),1)
+        self.assertEqual(self.models.groups.browse(dict(filters,limit=1,page=6))['items'],[])
+        # Alias numbers remain searchable and original item records stay intact.
+        found=self.models.groups.browse(dict(filters,q='11'))
+        self.assertEqual(found['total'],1);self.assertIn(11,found['items'][0]['item_ids'])
+        self.assertEqual(self.models.groups.entries(dict(filters,mode='files'))['total'],6)
+        self.assertEqual(len(self.models.groups.filtered(filters)),6)
+
+    def test_browser_preserves_distinct_textures_and_compositions(self):
+        self.add_item_alias('DIFFERENT.XET')
+        result=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='A'))
+        self.assertEqual(result['total'],2)
+        self.add_component()
+        result=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='A'))
+        self.assertEqual(result['total'],2)
+        self.assertEqual({len(r.get('components',[])) for r in result['items']},{0,2})
+
+    def test_browser_preserves_duplicate_file_sources(self):
+        self.add_item_alias()
+        self.catalog.scan([fixture(self.root/'duplicate.cmf',[(self.model,binary_model(self.model[:-2]+'.PNG'),0)])])
+        result=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='A'))
+        self.assertEqual(result['total'],2)
+        self.assertEqual(len({r['id'] for r in result['items']}),2)
+        self.assertTrue(all(r['item_ids']==[1,11] for r in result['items']))
+
     def test_basic_defaults_also_select_identical_grade_aliases(self):
         from closers import ntf
         self.add_item_alias()

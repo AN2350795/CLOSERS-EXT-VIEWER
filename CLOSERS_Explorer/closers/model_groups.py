@@ -177,6 +177,25 @@ class ModelGroups:
         title=prefix if len(prefix)>len(character)+2 else character
         return title+' · '+rows[0]['set_name']
 
+    @staticmethod
+    def appearance_identity(row):
+        if not row.get('appearance_key'):return (row['id'],)
+        components=tuple(sorted((c['name'],c['reference']) for c in row.get('components',[])))
+        return (row['id'],row.get('reference'),row.get('set_name'),row.get('display_name'),components)
+
+    @classmethod
+    def merge_appearances(cls,rows):
+        """Collapse grade aliases, keeping actual files and appearances distinct."""
+        groups={}
+        for row in rows:groups.setdefault(cls.appearance_identity(row),[]).append(row)
+        result=[]
+        for aliases in groups.values():
+            primary=min(aliases,key=lambda r:r.get('item_id') or 0)
+            result.append(dict(primary,
+                               item_ids=sorted({r['item_id'] for r in aliases if r.get('item_id') is not None}),
+                               appearance_keys=sorted({r['appearance_key'] for r in aliases if r.get('appearance_key')})))
+        return result
+
     def browse(self,filters):
         keys=('character','kind','family','part','variant','costume_type')
         # One existence pass for both the page and all facet counts.
@@ -184,6 +203,8 @@ class ModelGroups:
         if filters.get('mode')=='sets':base=[r for r in base if r['set_key']]
         elif filters.get('mode')=='accessories':base=[dict(r,shared=not bool(r['character']),character=r['character'] or filters.get('character','')) for r in base if r['part'].startswith('ACC_')]
         elif filters.get('mode')=='parts':base=[r for r in base if r['part']!='FACE']
+        if filters.get('items')=='1' and filters.get('mode') in ('parts','accessories','sets'):
+            base=self.merge_appearances(base)
         rows=[r for r in base if all(not filters.get(k) or r.get(k)==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
         if filters.get('mode')=='sets':result=self.set_rows(rows,filters)
         else:
@@ -202,17 +223,7 @@ class ModelGroups:
         def selection(rows):
             # Item grades can share one file and appearance. They are aliases,
             # not competing sources. Keep distinct files and XET views separate.
-            grouped={}
-            for r in sorted(rows,key=lambda r:(r['id'],r.get('item_id') or 0)):
-                identity=(r['id'],r.get('reference'),r.get('set_name'),r.get('display_name'))
-                if r.get('components'):
-                    identity+=(tuple(sorted((c['name'],c['reference']) for c in r['components'])),)
-                if not r.get('appearance_key'):identity=(r['id'],)
-                if identity not in grouped:
-                    grouped[identity]=dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=[],components=r.get('components',[]))
-                if r.get('item_id') is not None and r['item_id'] not in grouped[identity]['item_ids']:
-                    grouped[identity]['item_ids'].append(r['item_id'])
-            candidates=list(grouped.values())
+            candidates=[dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=r['item_ids'],components=r.get('components',[])) for r in self.merge_appearances(rows)]
             return dict(candidates=candidates,selected=candidates[0]['id'] if len(candidates)==1 else None)
         result=[]
         for (part,variant),candidates in sorted(slots.items()):
