@@ -115,6 +115,10 @@ try{
  const iconRow=element('div');iconRow.className='model-row';$('model-results').append(iconRow);previews.attach(iconRow,{key:'icon-outfit',label:'Icon outfit',item_icon:{sha256:'a'.repeat(64),part_label:'상의'}},'sets','existing');
  iconRow.scrollIntoView();await until(()=>iconRow.querySelector('img'));await iconRow.querySelector('img').decode();
  check(previewRequests===0&&iconRow.querySelector('.is-item-icon')&&!iconRow.textContent.trim()&&iconRow.querySelector('.model-thumbnail').title.includes('상의')&&iconRow.querySelector('img').alt.includes('인게임'),'item icon has no visible caption and keeps accessible description');
+ for(const preview_entry of [71,72]){
+  const row=element('div');row.className='model-row';$('model-results').append(row);previews.attach(row,{id:99,name:'Shared mesh',preview_entry,preview_kind:'icon'},'parts','existing');row.scrollIntoView();await until(()=>row.querySelector('img'));
+  check(new URL(row.querySelector('img').src).pathname==='/api/media/'+preview_entry,'shared model appearances keep their own item icons');
+ }
  const unavailable=element('div');unavailable.className='model-row';$('model-results').append(unavailable);previews.attach(unavailable,{id:2,name:'unavailable icon',item_icon:{sha256:'b'.repeat(64)}},'files','existing');
  unavailable.scrollIntoView();await until(()=>unavailable.textContent.includes('아이콘 없음'));
  check(previewRequests===0&&!unavailable.querySelector('img'),'failed item icon does not fall back to a model preview');previews.reset();

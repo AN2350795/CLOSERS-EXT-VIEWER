@@ -14,7 +14,7 @@ class PickerBrowserTests(unittest.TestCase):
     checks_script = 'picker_checks.js'
     page_file = 'model.html'
     entry_script = '<script type="module" src="/model.js"></script>'
-    extra_images = ()
+    extra_images = ('/api/media/71','/api/media/72')
     animation_export = False
     responsive_checks = False
 

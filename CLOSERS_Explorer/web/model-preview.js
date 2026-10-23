@@ -68,7 +68,7 @@ export function setupPreviews({api}){
     try{while(queue.length&&!stopped){
       const target=queue.shift();if(!target.isConnected)continue;
       const {item,mode,saved}=target.preview;
-      const key=JSON.stringify([mode,item.key||item.id,saved,item.item_icon?.sha256]);
+      const key=JSON.stringify([mode,item.key||item.appearance_key||item.id,saved,item.preview_entry,item.item_icon?.sha256]);
       try{
         let src=cache.get(key);if(!cache.has(key)){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
         if(!src){if(target.isConnected){target.textContent='아이콘 없음';target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
