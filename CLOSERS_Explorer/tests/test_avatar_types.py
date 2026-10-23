@@ -98,5 +98,91 @@ class AvatarTypeTests(unittest.TestCase):
         self.assertIsNone(AvatarItems.texture_target({'texture':None},self.model,rule))
         self.assertIsNone(AvatarItems.texture_target({'texture':'UNCHANGED.PNG'},self.model,rule))
 
+    def add_component(self,variant='',filename=None):
+        from closers import ntf
+        name,body=self.tables[0];rows=list(ntf.rows(body))
+        component=filename or self.model.replace('100_GUST','200_GUST').replace('.X',variant+'.X')
+        record=list(rows[0]);record[2]=component
+        self.tables[0]=(name,table(ntf.header(body)[0],rows+[record]))
+        self.catalog.scan([fixture(self.root/('component'+str(len(rows))+'.cmf'),[(component,binary_model(self.model[:-2]+'.PNG'),0)])])
+        return component
+
+    def test_registered_component_models_form_one_item_and_load_together(self):
+        component=self.add_component()
+        result=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='A'))
+        self.assertEqual(result['total'],1)
+        item=result['items'][0]
+        self.assertEqual({c['name'] for c in item['components']},{self.model,component})
+        slot=self.models.groups.bundle('STRIKER|CLOTH_123_A','',True)['slots'][0]
+        self.assertEqual(len(slot['candidates']),1);self.assertIsNotNone(slot['selected'])
+        scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+        self.assertEqual({s['name'] for s in scene['sources']},{self.model,component})
+        self.assertEqual({s['item_id'] for s in scene['sources']},{1})
+        self.assertEqual(len(scene['meshes']),2)
+        self.assertEqual({s['entry_id'] for s in scene['sources']},{m['source_id'] for m in scene['meshes']})
+        # A different item sharing the main file does not inherit its components.
+        other=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='B'))[0]
+        other_scene=self.models.scene([other['id']],items={str(other['id']):other['appearance_key']})
+        self.assertEqual(len(other_scene['sources']),1)
+
+    def test_same_main_model_with_different_components_remains_a_choice(self):
+        self.add_item_alias();self.add_component()
+        slot=self.models.groups.bundle('STRIKER|CLOTH_123_A','',True)['slots'][0]
+        self.assertEqual(len(slot['candidates']),2);self.assertIsNone(slot['selected'])
+        self.assertEqual({len(c['components']) for c in slot['candidates']},{0,2})
+
+    def test_component_source_ambiguity_requires_explicit_selection(self):
+        component=self.add_component()
+        self.catalog.scan([fixture(self.root/'duplicate.cmf',[(component,binary_model(self.model[:-2]+'.PNG'),0)])])
+        slot=self.models.groups.bundle('STRIKER|CLOTH_123_A','',True)['slots'][0]
+        item=slot['candidates'][0];child=next(c for c in item['components'] if c['name']==component)
+        self.assertIsNone(child['selected']);self.assertEqual(len(child['candidates']),2)
+        with self.assertRaisesRegex(ValueError,'출처'):
+            self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+        chosen=child['candidates'][1]['id']
+        scene=self.models.scene([item['id'],chosen],items={str(item['id']):item['appearance_key']})
+        self.assertEqual({s['entry_id'] for s in scene['sources']},{item['id'],chosen})
+        self.assertTrue(all(s['appearance_key']==item['appearance_key'] for s in scene['sources']))
+
+    def test_alpha_is_included_and_dye_stays_optional(self):
+        alpha=self.add_component('_ALPHA');dye=self.add_component('_DYE')
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A',variant='BASE'))[0]
+        scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+        self.assertEqual({s['name'] for s in scene['sources']},{self.model,alpha})
+        self.assertNotIn(dye,{s['name'] for s in scene['sources']})
+
+    def test_missing_component_is_reported_instead_of_partial_item(self):
+        from closers import ntf
+        name,body=self.tables[0];rows=list(ntf.rows(body));record=list(rows[0]);record[2]=self.model.replace('100_GUST','999_GUST')
+        self.tables[0]=(name,table(ntf.header(body)[0],rows+[record]))
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        self.assertEqual(item['components'][1]['candidates'],[])
+        with self.assertRaisesRegex(ValueError,'구성 모델이 없습니다'):
+            self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+
+    def test_character_override_replaces_generic_models_instead_of_combining(self):
+        from closers import ntf
+        component=self.add_component()
+        name,body=self.tables[0];rows=list(ntf.rows(body));rows[-1]=list(rows[-1]);rows[-1][1]='GUST_USER_STRIKER'
+        self.tables[0]=(name,table(ntf.header(body)[0],rows))
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        self.assertEqual(item['name'],component)
+        self.assertFalse(item.get('components'))
+        scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+        self.assertEqual([s['name'] for s in scene['sources']],[component])
+
+    def test_component_expansion_respects_the_scene_file_limit(self):
+        from closers import ntf
+        name,body=self.tables[0];rows=list(ntf.rows(body));files=[]
+        for index in range(16):
+            filename=self.model.replace('100_GUST',str(200+index)+'_GUST')
+            record=list(rows[0]);record[2]=filename;rows.append(record)
+            files.append((filename,binary_model(self.model[:-2]+'.PNG'),0))
+        self.tables[0]=(name,table(ntf.header(body)[0],rows))
+        self.catalog.scan([fixture(self.root/'many.cmf',files)])
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        with self.assertRaisesRegex(ValueError,'16개'):
+            self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
+
 
 if __name__=='__main__':unittest.main()

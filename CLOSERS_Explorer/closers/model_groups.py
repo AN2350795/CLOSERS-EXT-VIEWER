@@ -103,7 +103,7 @@ class ModelGroups:
             if not hasattr(self,'items'):
                 from .model_items import AvatarItems
                 self.items=AvatarItems(self.catalog)
-            rows=self.items.expand(rows,filters['character'])
+            rows=self.items.expand(rows,filters['character'],composite=filters.get('mode')!='files')
         for key in ('character','kind','part','family','variant','format','costume_type'):
             if key!=exclude and filters.get(key):rows=[r for r in rows if r.get(key)==filters[key] or key=='character' and filters.get('mode')=='accessories' and not r[key]]
         saved=filters.get('saved','')
@@ -205,9 +205,11 @@ class ModelGroups:
             grouped={}
             for r in sorted(rows,key=lambda r:(r['id'],r.get('item_id') or 0)):
                 identity=(r['id'],r.get('reference'),r.get('set_name'),r.get('display_name'))
+                if r.get('components'):
+                    identity+=(tuple(sorted((c['name'],c['reference']) for c in r['components'])),)
                 if not r.get('appearance_key'):identity=(r['id'],)
                 if identity not in grouped:
-                    grouped[identity]=dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=[])
+                    grouped[identity]=dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=[],components=r.get('components',[]))
                 if r.get('item_id') is not None and r['item_id'] not in grouped[identity]['item_ids']:
                     grouped[identity]['item_ids'].append(r['item_id'])
             candidates=list(grouped.values())

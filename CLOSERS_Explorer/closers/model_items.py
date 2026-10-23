@@ -30,7 +30,7 @@ class AvatarItems(EyeAvatars):
         return result
 
     def definitions(self):
-        return self.data.cached(('avatar-items',1),self._definitions,persistent=True)
+        return self.data.cached(('avatar-items',2),self._definitions,persistent=True)
 
     def _definitions(self):
         models={}
@@ -45,7 +45,7 @@ class AvatarItems(EyeAvatars):
                     character=g['character'] or (v[1].removeprefix('GUST_USER_') if v[1].startswith('GUST_USER_') else '')
                     key=(v[0],character,filename.upper())
                     priority=int(v[1]=='GUST_USER_'+character)
-                    record=dict(item_id=v[0],character=character,model_name=filename.upper(),refs=refs.copy())
+                    record=dict(item_id=v[0],character=character,model_name=filename.upper(),refs=refs.copy(),model_priority=priority)
                     if key not in models or priority>models[key][0]:models[key]=(priority,record)
                     elif priority==models[key][0]:
                         models[key][1]['refs']=list(dict.fromkeys(models[key][1]['refs']+refs))
@@ -78,21 +78,63 @@ class AvatarItems(EyeAvatars):
                                    view=i+1 if len(refs)>1 else 0))
         return result
 
-    def expand(self,rows,character):
-        definitions=[r for r in self.definitions() if r['character'] in (character,'')]
+    def compositions(self):
+        def build():
+            groups=defaultdict(list)
+            for item in self.definitions():groups[item['key']].append(item)
+            for key,values in groups.items():
+                priority=max(v.get('model_priority',0) for v in values)
+                groups[key]=[v for v in values if v.get('model_priority',0)==priority]
+            return dict(groups)
+        # Reuse the definition objects in memory; serializing the full graph
+        # would duplicate the large source-verified definition cache on disk.
+        return self.data.cached(('avatar-item-compositions',2),build)
+
+    def composition(self,key,name):
+        values=self.compositions().get(key,[])
+        matches=[v for v in values if v['model_name']==name.upper()]
+        if len(matches)!=1:raise ValueError('선택한 아이템과 모델의 연결이 다릅니다.')
+        # DYE is an optional dye mesh, not part of the ordinary appearance.
+        dye=classify(name)['variant']=='DYE'
+        return [v for v in values if (classify(v['model_name'])['variant']=='DYE')==dye]
+
+    def expand(self,rows,character,composite=True):
+        index=self.compositions()
+        known_names={r['model_name'] for r in self.definitions() if r['character'] in (character,'')}
+        definitions=[r for values in index.values() for r in values if r['character'] in (character,'')]
+        specific={r['item_id'] for r in definitions if r['character']==character}
+        definitions=[r for r in definitions if r['character'] or r['item_id'] not in specific]
         by_model=defaultdict(list)
+        roots={};components={}
+        available={r['name'].upper() for r in rows}
+        for item in definitions:
+            dye=classify(item['model_name'])['variant']=='DYE'
+            composition=[v for v in index[item['key']] if (classify(v['model_name'])['variant']=='DYE')==dye]
+            group=(item['key'],classify(item['model_name'])['variant']=='DYE')
+            if group not in roots:
+                primary=min(composition,key=lambda v:(v['model_name'] not in available,classify(v['model_name'])['variant']!='BASE',v['model_name']))
+                roots[group]=primary['model_name'];components[group]=composition
+            by_model[item['model_name']].append(item)
         names=sorted({r['icon_name'] for r in definitions if r['icon_name']})
         icons=defaultdict(list)
+        sources=defaultdict(list)
         with self.catalog.connect() as db:
             for offset in range(0,len(names),400):
                 batch=names[offset:offset+400]
                 for r in db.execute("SELECT id,name FROM entries WHERE category='images' AND flag!=2 AND name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+')',batch):icons[r['name'].upper()].append(r['id'])
-        for r in definitions:by_model[r['model_name']].append(r)
+            model_names=sorted({v['model_name'] for values in components.values() if len(values)>1 for v in values})
+            for offset in range(0,len(model_names),400):
+                batch=model_names[offset:offset+400]
+                for r in db.execute("SELECT e.id,e.name,e.ordinal,a.path archive FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.format='x' AND e.flag!=2 AND e.name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+') ORDER BY e.id',batch):sources[r['name'].upper()].append(dict(r))
         result=[]
         for row in rows:
             appearances=by_model[row['name'].upper()]
-            if not appearances:result.append(row);continue
+            if not appearances:
+                if not composite or row['name'].upper() not in known_names:result.append(row)
+                continue
             for item in appearances:
+                group=(item['key'],classify(item['model_name'])['variant']=='DYE')
+                if composite and row['name'].upper()!=roots[group]:continue
                 code=item['set_name'];g=classify(row['name'])
                 bundled=bool(code and code not in ('A','NA','NB') and g['family']!='ACCESSORY')
                 label=item['label']+((' · 표시 '+str(item['view'])) if item['view'] else '')
@@ -103,12 +145,14 @@ class AvatarItems(EyeAvatars):
                            family=code.split('_')[0] if code.split('_')[0] in LABELS['family'] else g['family'],
                            type_label=code,costume_type=costume_type,reference=item['reference'],preview_kind='icon')
                 value.pop('item_icon',None)
+                if composite and len(components[group])>1:
+                    value['components']=[dict(name=v['model_name'],appearance_key=v['key'],reference=v['reference'],candidates=sources[v['model_name']],selected=row['id'] if v['model_name']==row['name'].upper() else (sources[v['model_name']][0]['id'] if len(sources[v['model_name']])==1 else None)) for v in components[group]]
                 if len(icons[item['icon_name']])==1:value['preview_entry']=icons[item['icon_name']][0]
                 result.append(value)
         return result
 
     def resolve(self,key,name):
-        matches=[r for r in self.definitions() if r['key']==key and r['model_name']==name.upper()]
+        matches=[r for r in self.compositions().get(key,[]) if r['model_name']==name.upper()]
         if len(matches)!=1:raise ValueError('선택한 아이템과 모델의 연결이 다릅니다.')
         item=dict(matches[0])
         rules=self.texture_rules();ref=item['reference']

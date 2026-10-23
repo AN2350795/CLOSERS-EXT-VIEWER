@@ -1,5 +1,6 @@
 """Resolve local model dependencies without merging duplicate source records."""
 import hashlib
+from collections import defaultdict
 from pathlib import Path
 import threading
 
@@ -62,12 +63,39 @@ class Models:
         return dict(name=name,candidates=values[:100],selected=preferred[0]['id'] if len(preferred)==1 else None,
                     truncated=len(values)>100)
 
+    def complete_items(self,entry_ids,items):
+        """Load every registered component of an equipped item, exactly once."""
+        if not items:return entry_ids,items
+        from .model_items import AvatarItems
+        if not hasattr(self.groups,'items'):self.groups.items=AvatarItems(self.catalog)
+        entry_ids=list(entry_ids);items=dict(items)
+        selected=defaultdict(list)
+        for entry_id in entry_ids:
+            row=self.catalog.get(entry_id)
+            selected[row['name'].upper()].append(entry_id)
+        for entry_id,key in list(items.items()):
+            row=self.catalog.get(int(entry_id))
+            for component in self.groups.items.composition(key,row['name']):
+                name=component['model_name'];found=selected[name]
+                if len(found)>1:raise ValueError('한 아이템의 구성 모델 출처를 하나만 선택하세요: '+name)
+                if not found:
+                    candidates=[v for v in self.matches(name) if self.catalog.get(v['id'])['flag']!=2]
+                    if len(candidates)!=1:
+                        raise ValueError(('아이템 구성 모델의 출처를 의상 묶음에서 선택하세요: ' if candidates else '아이템 구성 모델이 없습니다. 원본 폴더를 다시 분석하세요: ')+name)
+                    found.append(candidates[0]['id']);entry_ids.append(found[0])
+                    if len(entry_ids)>16:raise ValueError('아이템 구성 모델을 포함해 X 모델은 16개까지 선택해 주세요.')
+                component_id=str(found[0])
+                if component_id in items and items[component_id]!=key:raise ValueError('같은 구성 모델에 서로 다른 아이템을 적용할 수 없습니다.')
+                items[component_id]=key
+        return entry_ids,items
+
     def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None,items=None):
         if not 1<=len(entry_ids)<=16 or len(set(entry_ids))!=len(entry_ids):
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
         with self.gate:
             items=items or {}
             if not isinstance(items,dict) or len(items)>16 or any(str(i) not in {str(v) for v in entry_ids} or not isinstance(k,str) for i,k in items.items()):raise ValueError('아이템 선택 정보가 잘못되었습니다.')
+            entry_ids,items=self.complete_items(entry_ids,items)
             eye=None
             if eye_key is not None:
                 if eye_face not in entry_ids:raise ValueError('눈동자를 적용할 얼굴을 함께 선택하세요.')
@@ -81,7 +109,9 @@ class Models:
                     from .model_items import AvatarItems
                     if not hasattr(self.groups,'items'):self.groups.items=AvatarItems(self.catalog)
                     item=self.groups.items.resolve(items[str(entry_id)],row['name'])
-                    source.update(appearance_key=item['key'],item_id=item['item_id'],display_name=item['label'],game_names=[item['label']],game_name_count=1,item_set=item['set_name'])
+                    composition=self.groups.items.composition(item['key'],row['name'])
+                    primary=min(composition,key=lambda v:(classify(v['model_name'])['variant']!='BASE',v['model_name']))
+                    source.update(appearance_key=item['key'],item_id=item['item_id'],display_name=item['label'],game_names=[item['label']],game_name_count=1,item_set=item['set_name'],item_part=classify(primary['model_name'])['part'])
                     changed=0
                     for mesh in part['meshes']:
                         for mat in mesh['materials']:
@@ -184,6 +214,7 @@ class Models:
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
             for source,row in zip(sources,rows):
                 source['model_group']=dict(classify(row['name']))
+                if source.get('item_part'):source['model_group']['part']=source['item_part']
                 if source.get('item_set'):
                     source['model_group'].update(set_name=source['item_set'],set_key=source['model_group']['character']+'|'+source['item_set'])
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
