@@ -7,7 +7,17 @@ const api=async url=>{requests.push(new URL(url,location.href));return ({total:2
 const picker=setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
 window.checkPickerLayout=async()=>{
  const rect=()=>$('model-results').getBoundingClientRect();
+ $('model-character').value='';$('model-mode').value='sets';await picker.search();
+ check($('wardrobe-panel').classList.contains('awaiting-character'),'empty selection uses compact layout');
+ check(!document.querySelector('.picker-tools').checkVisibility()&&!$('wardrobe-tabs').checkVisibility(),'unused browsing controls are removed from layout');
+ check($('open-picker-options').textContent==='기록'&&$('open-picker-options').closest('.side-panel-heading'),'records stays in the panel heading');
+ const choice=document.querySelector('.character-choice').getBoundingClientRect();
+ check(rect().top-choice.bottom<=16,'no reserved space after character choice');
+ const heading=document.querySelector('#wardrobe-panel>.side-panel-heading').getBoundingClientRect();
+ for(const id of ['open-picker-options','toggle-wardrobe']){const b=$(id).getBoundingClientRect();check(b.left>=heading.left&&b.right<=heading.right+1,'heading controls fit');}
+ $('open-picker-options').click();check($('picker-options').open&&!$('model-advanced').checkVisibility(),'records opens before choosing a character');$('close-picker-options').click();
  $('model-character').value='STRIKER';await picker.search();
+ check(!$('wardrobe-panel').classList.contains('awaiting-character')&&$('open-picker-options').textContent==='필터 · 기록','character choice restores browsing and full label');
  const top=rect().top,height=rect().height;
  const fixed=message=>check(Math.abs(rect().top-top)<1&&Math.abs(rect().height-height)<1,message);
  for(const mode of ['parts','accessories','eyes','sets']){
@@ -20,7 +30,7 @@ window.checkPickerLayout=async()=>{
    const part=$('model-part'),sort=$('model-sort'),tools=document.querySelector('.picker-tools');
    check(part.checkVisibility()&&tools.contains(part)&&tools.contains(sort),'part and sort controls share the toolbar');
    const bounds=tools.getBoundingClientRect();
-   for(const control of [part,sort,$('open-picker-options')]){const b=control.getBoundingClientRect();check(b.left>=bounds.left&&b.right<=bounds.right+1&&Math.abs(b.top-bounds.top)<1,'toolbar controls fit on one row');}
+   for(const control of [part,sort]){const b=control.getBoundingClientRect();check(b.left>=bounds.left&&b.right<=bounds.right+1&&Math.abs(b.top-bounds.top)<1,'toolbar controls fit on one row');}
    check([...part.options].some(o=>o.value==='HAIR'),'available parts exist');
    part.value='HAIR';part.dispatchEvent(new Event('change'));await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
    check(part.value==='HAIR','part selection is retained');

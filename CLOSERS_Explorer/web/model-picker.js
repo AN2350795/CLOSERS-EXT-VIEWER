@@ -218,6 +218,10 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
     const p=filters(),mode=$('model-mode').value;
     const chosen=$('model-character').value;
     const browsing=!!chosen||mode==='files';
+    $('wardrobe-panel').classList.toggle('awaiting-character',!browsing);
+    $('open-picker-options').textContent=browsing?'필터 · 기록':'기록';
+    $('picker-options-title').textContent=browsing?'상세 필터 · 기록':'기록';
+    $('picker-date-note').hidden=!browsing;
     for(const selector of ['#model-search-form','#wardrobe-tabs','#model-sort','#model-advanced','.filter-summary','.picker-pagination'])document.querySelector(selector).hidden=!browsing;
     $('model-costume_type').parentElement.hidden=['eyes','files'].includes(mode);$('model-kind').hidden=mode!=='files';$('model-variant').parentElement.hidden=mode!=='files';
     $('basic-avatar').disabled=!chosen;

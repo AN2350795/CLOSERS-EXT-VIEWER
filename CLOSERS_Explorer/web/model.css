@@ -169,7 +169,7 @@
 
 /* Each side panel keeps its own heading available when collapsed. */
 .side-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;margin-bottom:10px}
-.side-panel-heading h2{margin:0;font-size:14px}
+.side-panel-heading h2{margin:0 auto 0 0;font-size:14px}
 .side-panel-heading button{flex-shrink:0;padding:4px 8px;font-size:11px}
 .model-layout,.model-layout.info-collapsed,.model-layout:not(.info-collapsed){--wardrobe-width:320px;--equipment-width:260px;grid-template-columns:var(--wardrobe-width) minmax(0,1fr) var(--equipment-width)}
 .model-layout.wardrobe-collapsed{--wardrobe-width:44px}
@@ -180,6 +180,7 @@
 .picker-top>.character-choice{grid-row:1}.picker-top>#model-search-form{grid-row:2}.picker-top>.picker-modes{grid-row:3}.picker-tools{grid-row:4}.picker-top>.filter-summary{grid-row:5}
 .model-layout>.is-collapsed{display:block;padding:8px 4px;overflow:hidden;scrollbar-gutter:auto}
 .is-collapsed>:not(.side-panel-heading){display:none!important}
+.is-collapsed #open-picker-options{display:none}
 .is-collapsed>.side-panel-heading{flex-direction:column;gap:14px;margin:0}
 .is-collapsed>.side-panel-heading h2{display:none}
 .is-collapsed>.side-panel-heading button{padding:0;min-width:30px;min-height:32px;font-size:0}
@@ -206,4 +207,14 @@
   .model-layout,.model-layout.info-collapsed,.model-layout:not(.info-collapsed){grid-template-columns:300px minmax(0,1fr);grid-template-rows:36px minmax(0,1fr)}
   .model-layout.active-panel-collapsed{grid-template-columns:300px minmax(0,1fr);grid-template-rows:36px minmax(0,1fr)}
   .model-layout>.is-collapsed{align-self:start}
+}
+
+.model-picker.awaiting-character{grid-template-rows:28px 52px minmax(0,1fr)}
+.awaiting-character .picker-top{grid-template-rows:52px}
+.awaiting-character .picker-top>:not(.character-choice),.awaiting-character>.picker-pagination,.awaiting-character #basic-avatar{display:none!important}
+.awaiting-character .character-choice{grid-template-columns:minmax(0,1fr)}
+.awaiting-character #model-results>p{margin:12px 0;font-size:12px;line-height:1.7;color:var(--muted)}
+@media(max-width:900px){
+  .model-picker.awaiting-character{grid-template-rows:28px 32px minmax(0,1fr)}
+  .awaiting-character .picker-top{grid-template-rows:32px}
 }
