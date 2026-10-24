@@ -6,6 +6,8 @@
 <section class="panel viewport-panel" aria-labelledby="viewport-title">
 <div class="viewport-toolbar"><h2 id="viewport-title">3D 미리보기</h2><div class="viewport-actions">
 <button id="reset-camera" class="secondary">시점 초기화</button>
+<button id="bind-pose" class="secondary">기본 자세</button>
+<button id="clear-model" class="secondary" disabled>선택 모델 초기화</button>
 <button id="open-view-settings" class="secondary" aria-haspopup="dialog" aria-controls="view-settings">보기 설정</button>
 <button id="toggle-model-info" class="secondary desktop-control" aria-expanded="true" aria-controls="equipment-panel">장착 접기</button>
 <button id="expand-viewer" class="secondary" aria-haspopup="dialog" aria-controls="viewer-dialog">크게 보기</button>
@@ -16,7 +18,7 @@
 <dialog id="view-settings" aria-labelledby="view-settings-title"><div class="view-settings-heading"><h2 id="view-settings-title">보기 설정</h2><button id="close-view-settings" class="secondary" autofocus>닫기</button></div>
 <div class="view-settings-options"><label><input id="show-helpers" type="checkbox"> 충돌·보조 메시</label><label><input id="show-equipment-hidden" type="checkbox"> 장비 숨김 해제</label><label><input id="wireframe" type="checkbox"> 와이어프레임</label><label><input id="show-bones" type="checkbox"> 뼈 보기</label>
 <label class="material-preview-control"><input id="material-preview" type="checkbox" checked disabled> 발광 재질 미리보기 (근사)</label><p id="material-preview-note" class="muted" hidden>보조 재질을 근사하여 표시합니다. 인게임 조명과 차이가 있으며, 끄면 기본색과 비교할 수 있습니다.</p></div>
-<div class="model-controls"><button id="bind-pose" class="secondary">기본 자세</button><button id="clear-model" class="secondary" disabled>선택 모델 초기화</button></div></dialog>
+</dialog>
 <div class="animation-controls"><label for="animation-clip">게임 동작</label><select id="animation-clip" disabled><option>연결된 동작 없음</option></select><div class="model-controls"><button id="play-animation" disabled>재생</button><label><input id="animation-loop" type="checkbox" checked> 반복</label><label>속도 <select id="animation-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select></label><span id="animation-time">0.00 / 0.00초</span></div><input id="animation-seek" type="range" min="0" max="1" step="0.001" value="0" aria-label="동작 재생 위치" disabled></div></section>
 <div class="workspace-switch" role="group" aria-label="탐색 패널 선택"><button id="show-wardrobe" aria-pressed="true" aria-controls="wardrobe-panel">의상 탐색</button><button id="show-equipment" aria-pressed="false" aria-controls="equipment-panel">장착 부위</button></div>
 <section id="equipment-panel" class="panel model-info" aria-label="장착 부위"><div id="avatar-bundle" hidden></div><h2>장착 부위</h2><div id="model-parts"></div><details><summary>파일 출처 · 동작 연결 · 텍스처</summary><div id="motion-choice"></div><h3>동작 파일</h3><div id="animation-choice"></div><p id="animation-verification" class="muted">XMD의 _DEFAULT 자세와 X의 전체 뼈 행렬을 대조한 뒤 재생합니다.</p><h3>텍스처</h3><div id="model-textures"></div></details><details><summary>지원 범위</summary><p>바이너리 X·MSZIP 압축 X, XMD 0001의 검증 가능한 뼈 동작을 지원합니다. FBX·SKEL, X 내부 동작, 게임 셰이더·효과는 아직 지원하지 않습니다. 원본 추출 파일은 변경하지 않습니다.</p></details></section></div></main><dialog id="viewer-dialog" aria-labelledby="viewport-title"></dialog></body></html>
