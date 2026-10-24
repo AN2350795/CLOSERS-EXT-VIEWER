@@ -14,6 +14,7 @@ import zlib
 
 from test_explorer import fixture
 from closers.catalog import Catalog,file_hash
+from closers.cmf import Archive
 from closers.composition import CompositionImages,resolve_sources
 from closers.server import create_server,Media
 
@@ -83,6 +84,22 @@ class CompositionTests(unittest.TestCase):
         other,current=self.images.prepare(1)
         self.assertNotEqual(current['source_sha256'],metadata['source_sha256'])
         self.assertEqual(other.read_bytes(),second)
+
+    def test_prepared_metadata_reuse_revalidates_sources_catalog_and_derived_file(self):
+        body=png(2,2)
+        source=fixture(self.root/'a.cmf',[('a.png',body,0)])
+        self.catalog.scan([source])
+        path,metadata=self.images.prepare(1)
+        metadata['entry_id']=999  # A caller cannot mutate the retained manifest.
+        with patch('closers.composition.Archive',side_effect=AssertionError('repeated source read')):
+            self.assertEqual(self.images.prepare(1)[1]['entry_id'],1)
+        path.write_bytes(b'corrupted cached image')
+        self.assertEqual(self.images.prepare(1)[0].read_bytes(),body)
+        with self.catalog.connect() as db:self.catalog.changed(db)
+        with patch('closers.composition.Archive',wraps=Archive) as read:
+            self.images.prepare(1);self.assertEqual(read.call_count,1)
+        source.write_bytes(source.read_bytes()+b'changed')
+        with self.assertRaisesRegex(ValueError,'원본이 변경'):self.images.prepare(1)
 
     def test_input_limits_corruption_and_encrypted_rejection(self):
         source=fixture(self.root/'a.cmf',[('bad.dds',b'DDS '+bytes(124),0),('secret.png',png(1,1),2),('big.png',png(1,1),0)])

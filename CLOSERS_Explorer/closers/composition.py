@@ -5,6 +5,10 @@ import struct
 import tempfile
 import threading
 import uuid
+from collections import OrderedDict
+from contextlib import closing
+import sqlite3
+from .loading_cache import stamp
 
 from .cmf import Archive
 from .library import saved_file
@@ -47,6 +51,7 @@ class CompositionImages:
         self.directory = catalog.workspace / 'composition-cache'
         self.directory.mkdir(exist_ok=True)
         self.gate = threading.BoundedSemaphore(1)
+        self.prepared = OrderedDict()
 
     def prepare(self,entry_id):
         with self.gate:
@@ -57,6 +62,23 @@ class CompositionImages:
             before = stored.stat() if stored else None
             if (before.st_size if before else row['size']) > MAX_BYTES:
                 raise ValueError('합성 입력 파일은 64 MiB까지 지원합니다.')
+            # Recheck catalog identity and the exact byte source for every request.
+            # Cached metadata owns no decoded image buffers.
+            with closing(sqlite3.connect(self.catalog.db,timeout=30)) as db:
+                revision=db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
+            if not stored:self.catalog.verify_source(row)
+            source_stamp=(before.st_size,before.st_mtime_ns,before.st_ino) if before else stamp(row['archive'])
+            identity=(revision,self.catalog.db.stat().st_ino,tuple(sorted(row.items())),str(stored),source_stamp)
+            cached=self.prepared.pop(int(entry_id),None)
+            damaged=None
+            if cached:
+                old_identity,target,target_stamp,metadata=cached
+                current_stamp=stamp(target)
+                if old_identity==identity and current_stamp==target_stamp:
+                    target.touch()
+                    self.prepared[int(entry_id)]=(identity,target,stamp(target),metadata)
+                    return target,dict(metadata)
+                if current_stamp!=target_stamp:damaged=target
             digest = hashlib.sha256()
             with tempfile.SpooledTemporaryFile(max_size=1024*1024,mode='w+b',dir=self.directory) as source:
                 if stored:
@@ -78,7 +100,7 @@ class CompositionImages:
                 check_dimensions(size)
                 ext = row['format'] if row['format'] in NATIVE else 'png'
                 target = self.directory / (digest.hexdigest()+'-full-v1.'+ext)
-                if not target.is_file():
+                if not target.is_file() or target==damaged:
                     temp = target.with_name(target.name+'.'+uuid.uuid4().hex+'.partial')
                     try:
                         source.seek(0)
@@ -107,6 +129,8 @@ class CompositionImages:
             metadata = dict(entry_id=row['id'],archive=row['archive'],ordinal=row['ordinal'],name=row['name'],
                             format=row['format'],source_sha256=digest.hexdigest(),image_sha256=image_digest.hexdigest(),
                             width=size[0],height=size[1],bytes=target.stat().st_size)
+            self.prepared[int(entry_id)]=(identity,target,stamp(target),dict(metadata))
+            while len(self.prepared)>128:self.prepared.popitem(last=False)
             return target,metadata
 
     @staticmethod
