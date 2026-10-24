@@ -30,6 +30,7 @@ try{
  document.querySelector('#viewer-dialog').close();await frame();await selectBackground('original');
  const original=backgroundPixel();check(Math.abs(original[0]-17)<=1&&Math.abs(original[1]-24)<=1,'restored viewer applies background after resize');
  document.querySelector('#stage-reset').click();await frame();
+ document.querySelector('#model-canvas').dispatchEvent(new WheelEvent('wheel',{deltaY:-200,cancelable:true}));await frame();const eyeView=JSON.stringify(modelViewer.view);
  document.querySelector('[data-mode=eyes]').click();await until(()=>document.querySelectorAll('[data-eye]').length===3);
  document.querySelector('[data-eye="STRIKER:10"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:10');
  check(modelViewer.state.ids.join(',')==='2,1'&&requests.at(-1).searchParams.get('eye_texture')==='10','eye change preserves hair and sends texture selection');
@@ -39,6 +40,7 @@ try{
  document.querySelector('[data-eye="STRIKER:basic"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:basic');
  check(modelViewer.state.ids.join(',')==='2,1'&&!requests.at(-1).searchParams.has('eye_texture'),'basic restores base face and removes previous eye mesh');
  check(new URL(location.href).searchParams.get('eye')==='STRIKER:basic','reload URL retains selected eye');
+ check(JSON.stringify(modelViewer.view)===eyeView,'eye changes preserve the current camera view');
  document.querySelector('#clear-model').click();check(modelViewer.state.eye===null,'clear resets selected eye');
  document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}

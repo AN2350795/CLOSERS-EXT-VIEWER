@@ -10,6 +10,9 @@ import {setupModelStage} from './model-stage.js';
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),textureKeys:new Set(),texturePixels:0,generation:0,timings:null};
 const textureCache=new TextureCache();
+const preserveViewKey='closers-model-preserve-view-v1';
+try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}catch{}
+$('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage;
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
@@ -42,6 +45,12 @@ function initRenderer(){
   renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip){const duration=state.clip.clip.duration;state.time+=delta*Number($('animation-speed').value);if(state.time>=duration){if($('animation-loop').checked&&duration>0)state.time%=duration;else{state.time=duration;stop();}}applyPose(state.model,state.clip,state.time);updateTime();}const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);renderer.render(scene,camera);});
 }
 function resetCamera(){if(!state.model)return;const bounds=new THREE.Box3();for(const m of state.model.meshes){if(m.visible)bounds.expandByObject(m,true);}if(bounds.isEmpty())bounds.setFromObject(state.model.root);bounds.getCenter(target);const size=bounds.getSize(new THREE.Vector3());orbit.distance=Math.max(size.length()*1.45,1);orbit.yaw=0;orbit.pitch=.12;camera.near=Math.max(.01,orbit.distance/1000);camera.far=Math.max(1000,orbit.distance*100);camera.updateProjectionMatrix();}
+function avatarCharacter(data){
+  const sources=data?.sources||[];
+  if(!sources.length||sources.some(source=>source.model_group?.kind!=='avatar'))return null;
+  const characters=new Set(sources.map(source=>source.model_group.character).filter(Boolean));
+  return characters.size===1?[...characters][0]:null;
+}
 function disposeModel(){stage?.fit(null);stop();animationVersion++;clipVersion++;state.animation=null;state.clip=null;state.time=0;if(boneHelper){scene.remove(boneHelper);boneHelper.geometry.dispose();boneHelper.material.dispose();boneHelper=null;}if(state.model){scene.remove(state.model.root);state.model.dispose();state.model=null;}for(const key of state.textureKeys)textureCache.release(key);state.textures=new Map();state.textureKeys=new Set();state.texturePixels=0;$('animation-clip').replaceChildren(element('option','연결된 동작 없음'));updateTime();}
 async function texture(id,materials,role='base'){
   const model=state.model,generation=state.generation,timings=state.timings;
@@ -141,7 +150,8 @@ async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntrie
   const data=await api('/api/model-scene?'+parameters,modelController.signal);if(!current())return;timings.sceneMs=performance.now()-started;
   ids=data.sources.map(s=>s.entry_id);parameters.set('entries',ids.join(','));const resolvedItems=Object.fromEntries(data.sources.filter(s=>s.appearance_key).map(s=>[s.entry_id,s.appearance_key]));if(Object.keys(resolvedItems).length)parameters.set('items',JSON.stringify(resolvedItems));
   const buildStarted=performance.now(),model=buildModel(data);timings.buildMs=performance.now()-buildStarted;
-  disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();resetCamera();
+  const character=avatarCharacter(data),preserveView=!!state.model&&$('preserve-view').checked&&!!character&&character===avatarCharacter(state.data);
+  disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();if(!preserveView)resetCamera();
   status('모델 여는 중… · 텍스처를 적용하고 있습니다.');updateMaterialPreview();const textureStarted=performance.now();
   const failed=await showTextures();if(!current())return;timings.textureMs=performance.now()-textureStarted;
   // Readiness includes a rendered frame with textures, even when XMD is slow.
@@ -177,5 +187,5 @@ $('material-preview').onchange=updateMaterialPreview;
 $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()=>chooseClip(Number($('animation-clip').value)));};$('play-animation').onclick=()=>{if(!state.clip||state.busy)return;state.playing=!state.playing;if(state.playing&&state.time>=state.clip.clip.duration)state.time=0;$('play-animation').textContent=state.playing?'일시정지':'재생';};$('animation-seek').oninput=()=>{if(!state.clip||state.busy)return;stop();state.time=Number($('animation-seek').value);applyPose(state.model,state.clip,state.time);updateTime();};
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{viewerDisposed=true;state.generation++;modelController?.abort();renderer?.setAnimationLoop(null);disposeModel();stage?.dispose();textureCache.clear();renderer?.dispose();});
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.
-window.modelViewer={state,loadModel:(...args)=>operation(()=>loadModel(...args),true),chooseClip:index=>operation(()=>chooseClip(index)),textureCache,THREE};
+window.modelViewer={get view(){return {target:target.toArray(),...orbit};},state,loadModel:(...args)=>operation(()=>loadModel(...args),true),chooseClip:index=>operation(()=>chooseClip(index)),textureCache,THREE};
 try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{});});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
