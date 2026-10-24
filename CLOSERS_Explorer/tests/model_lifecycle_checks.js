@@ -24,6 +24,13 @@ try{
   deferMotion=true;await modelViewer.loadModel([1]);
   check(!modelViewer.state.busy&&!modelViewer.state.animation&&modelViewer.state.model,'visible readiness waited for animation');
   check(document.getElementById('viewport').getAttribute('aria-busy')==='false'&&modelViewer.state.timings.readyMs>0,'visible readiness was not rendered');
+  const canvas=document.getElementById('model-canvas'),visibleModel=modelViewer.state.model;
+  document.getElementById('expand-viewer').click();
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  check(modelViewer.state.model===visibleModel&&document.getElementById('viewer-dialog').contains(canvas)&&!canvas.getContext('webgl2').isContextLost(),'expanding lost the active scene or WebGL context');
+  document.getElementById('viewer-dialog').close();
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+  check(modelViewer.state.model===visibleModel&&document.querySelector('.model-layout').contains(canvas)&&!canvas.getContext('webgl2').isContextLost(),'restoring lost the active scene or WebGL context');
   const first=modelViewer.state.textures.get('base:71');
   await modelViewer.loadModel([1]);check(modelViewer.state.textures.get('base:71')===first&&metadataCalls===2,'reopen failed to validate metadata or reuse texture');
   sha='changed';await modelViewer.loadModel([1]);check(modelViewer.state.textures.get('base:71')!==first,'changed texture digest reused stale GPU data');

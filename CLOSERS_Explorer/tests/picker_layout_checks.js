@@ -12,12 +12,15 @@ window.checkPickerLayout=async()=>{
  for(const mode of ['parts','accessories','eyes','sets']){
   $('model-mode').value=mode;await picker.search();fixed('list moved after '+mode);
   if(mode==='parts'){
-   const tabs=$('part-tabs'),bounds=tabs.getBoundingClientRect(),header=document.querySelector('.picker-top').getBoundingClientRect();
+   const mobileFilters=innerWidth<=900;
+   if(mobileFilters)$('open-picker-options').click();
+   const tabs=$('part-tabs'),bounds=tabs.getBoundingClientRect(),header=(mobileFilters?$('picker-options'):document.querySelector('.picker-top')).getBoundingClientRect();
    check(tabs.children.length===8,'all part filters exist');
    check(tabs.scrollWidth<=tabs.clientWidth+1&&tabs.scrollHeight<=tabs.clientHeight+1,'part filters require scrolling');
    for(const button of tabs.children){const b=button.getBoundingClientRect();check(button.checkVisibility()&&b.left>=bounds.left-1&&b.right<=bounds.right+1&&b.top>=bounds.top-1&&b.bottom<=bounds.bottom+1&&b.bottom<=header.bottom,'part filter button is clipped: '+button.textContent);}
    [...tabs.children].find(b=>b.textContent==='헤어').click();await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
    check([...tabs.children].find(b=>b.textContent==='헤어').getAttribute('aria-pressed')==='true','part selection is applied');
+   if(mobileFilters)$('close-picker-options').click();
   }
   {
    const row=$('model-results').firstElementChild,name=row.querySelector('.model-open').getBoundingClientRect(),date=row.querySelector('.model-source-date').getBoundingClientRect(),actions=row.querySelector('.actions').getBoundingClientRect(),bounds=row.getBoundingClientRect();
@@ -33,12 +36,15 @@ window.checkPickerLayout=async()=>{
  $('close-picker-options').click();check(!$('picker-options').open,'filter dialog closes');check($('model-results').scrollTop===scroll,'dialog changes list scroll');
  $('picker-status').textContent='상태 안내 '.repeat(30);fixed('long status moves list');$('picker-status').textContent='';
  $('model-filter-summary').textContent='매우 긴 검색 조건 '.repeat(30);fixed('long summary moves list');
- check(rect().height>=180,'list is too short');
+ check(rect().height>=180,'list is too short: '+rect().height+' at '+innerWidth+'x'+innerHeight);
  check(document.documentElement.scrollWidth<=innerWidth+1,'horizontal page overflow');
+ const pickerPanel=document.querySelector('.model-picker'),pickerScroll=pickerPanel.scrollTop;
+ pickerPanel.scrollTop=pickerPanel.scrollHeight;
  const panel=document.querySelector('.model-picker').getBoundingClientRect();
  for(const control of document.querySelectorAll('.picker-pagination button,#model-jump')){
   if(!control.checkVisibility())continue;const b=control.getBoundingClientRect();check(b.left>=panel.left&&b.right<=panel.right&&b.bottom<=panel.bottom,'pagination control clipped');
  }
+ pickerPanel.scrollTop=pickerScroll;
  return {width:innerWidth,top,height};
 };
 try{await picker.search();await window.checkPickerLayout();document.body.dataset.checks='passed';}

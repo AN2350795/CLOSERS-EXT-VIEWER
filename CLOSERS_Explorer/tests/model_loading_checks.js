@@ -22,7 +22,7 @@ try{
   check(status.getBoundingClientRect().top===20,'opening stays visible after scrolling');
   release();await pending;
   check(modelViewer.state.model&&!status.classList.contains('is-loading')&&viewport.getAttribute('aria-busy')==='false'&&!modelViewer.state.busy,'success clears loading and busy state');
-  check(status.textContent.includes('메시 1개')&&status.parentElement.firstElementChild===status,'result stays above viewport controls');
+  check(status.textContent.includes('메시 1개')&&status.parentElement===viewport&&getComputedStyle(status).position==='absolute','result stays inside scene without moving controls');
   fail=true;requested=false;pending=modelViewer.loadModel([2]);await until(()=>requested);release();await pending;
   check(!status.classList.contains('is-loading')&&viewport.getAttribute('aria-busy')==='false'&&status.textContent.includes('시험 모델 열기 실패'),'failure clears loading and explains error');
   check(modelViewer.state.ids[0]===1,'failed opening preserves previous model');
