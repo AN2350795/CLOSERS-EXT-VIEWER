@@ -202,14 +202,16 @@ class Media:
             raise ValueError('미리보기는 암호화되지 않은 64 MiB 이하 파일을 지원합니다. 추출 후 외부 프로그램으로 확인해 주세요.')
         if row['format'] not in ('png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'dds', 'tga', 'ogg', 'wav', 'mp3', 'flac'):
             raise ValueError('이 형식은 정보·바이너리 미리보기를 이용해 주세요.')
-        identity = f"{row['id']}-{row['archive_mtime']}-{row['archive_size']}"
+        identity = hashlib.sha256(json.dumps([row.get(k) for k in
+            ('id','archive','ordinal','name','archive_mtime','archive_size','size','stored','offset','flag','format')]).encode()).hexdigest()
         convert = row['format'] in ('dds', 'tga')
         ext = 'png' if convert else row['format']
         output = self.output_file(row)
         if output:
             if not convert:
                 return output.open('rb'), output.stat().st_size, mimetypes.guess_type(output.name)[0] or 'application/octet-stream'
-            identity += f'-output-{output.stat().st_mtime_ns}'
+            output_stat=output.stat()
+            identity += '-output-'+hashlib.sha256(json.dumps([str(output),output_stat.st_size,output_stat.st_mtime_ns,output_stat.st_ino]).encode()).hexdigest()
         else:
             self.catalog.verify_source(row)
         target = self.directory / f'{identity}.{ext}'
@@ -351,7 +353,9 @@ def create_server(catalog, port=0):
                 elif url.path == '/api/model-browser':
                     self.respond(models.groups.browse(query))
                 elif url.path.startswith('/api/model-icon/'):
-                    self.respond(catalog.game_names.icon_image(url.path.rsplit('/',1)[1]),'image/png')
+                    digest=url.path.rsplit('/',1)[1]
+                    self.respond(catalog.game_names.icon_image(digest),'image/png',
+                                 cache_control='private, no-cache',etag='"'+digest+'"')
                 elif url.path == '/api/model-list':
                     self.respond(models.groups.entries(query))
                 elif url.path == '/api/model-sets':
@@ -480,12 +484,26 @@ def create_server(catalog, port=0):
                     with media.gate:
                         self.respond(media.text(row, query.get('limit', 4096), query.get('encoding', 'auto')))
                 elif url.path.startswith('/api/media/'):
-                    row = catalog.get(int(url.path.rsplit('/', 1)[1]))
+                    # Image bytes need source metadata, not names/history/counts.
+                    row = catalog.get_resource(int(url.path.rsplit('/', 1)[1]))
                     with media.gate:
                         stream, length, mime = media.file(row)
                         with stream:
                             start, end = 0, length - 1
                             value = self.headers.get('Range')
+                            # Source checks in media.file precede even a 304 response.
+                            output=media.output_file(row)
+                            identity=[row['id'],row['archive'],row['ordinal'],row['archive_mtime'],row['archive_size'],
+                                      row['size'],row['stored'],row['offset'],row['flag'],row['format'],
+                                      str(output),os.stat(output).st_mtime_ns if output else None,
+                                      os.fstat(stream.fileno()).st_ino,length]
+                            etag='"'+hashlib.sha256(json.dumps(identity).encode()).hexdigest()+'"'
+                            if not value and self.headers.get('If-None-Match')==etag:
+                                self.send_response(304)
+                                self.send_header('ETag',etag)
+                                self.send_header('Cache-Control','private, no-cache')
+                                self.end_headers()
+                                return
                             if value:
                                 import re
                                 match = re.fullmatch(r'bytes=(\d*)-(\d*)', value)
@@ -507,7 +525,8 @@ def create_server(catalog, port=0):
                             self.send_header('Content-Length', str(end - start + 1))
                             self.send_header('Accept-Ranges', 'bytes')
                             self.send_header('X-Content-Type-Options', 'nosniff')
-                            self.send_header('Cache-Control', 'private, max-age=60')
+                            self.send_header('Cache-Control', 'private, no-cache')
+                            self.send_header('ETag',etag)
                             if value:
                                 self.send_header('Content-Range', f'bytes {start}-{end}/{length}')
                             self.end_headers()

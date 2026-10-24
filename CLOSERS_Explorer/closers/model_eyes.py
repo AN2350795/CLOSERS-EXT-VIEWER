@@ -91,7 +91,7 @@ class EyeAvatars:
             for offset in range(0,len(image_names),400):
                 batch=image_names[offset:offset+400]
                 for r in db.execute('''SELECT e.id,e.name,e.output,e.flag,a.path archive,e.ordinal,a.mtime/1000000 updated_at
-                    FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.flag!=2 AND e.format IN ('x','png','tga','dds')
+                    FROM entries e INDEXED BY idx_entry_name_nocase JOIN archives a ON a.id=e.archive_id WHERE e.flag!=2 AND e.format IN ('x','png','tga','dds')
                     AND e.name COLLATE NOCASE IN ('''+','.join('?' for _ in batch)+') ORDER BY e.id',batch):
                     by_name[r['name'].upper()].append(dict(r))
         basics={r['name'].upper() for r in faces if classify(r['name'])['set_name']=='BASIC'}
@@ -119,6 +119,10 @@ class EyeAvatars:
         return result
 
     def browse(self,filters):
+        with self.catalog.session():
+            return self._browse(filters)
+
+    def _browse(self,filters):
         rows=self.resources(filters.get('character',''))
         if filters.get('saved')=='existing':rows=[r for r in rows if r['saved_exists']]
         elif filters.get('saved')=='missing':rows=[r for r in rows if not r['saved_exists']]

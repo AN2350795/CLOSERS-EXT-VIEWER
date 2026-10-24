@@ -198,6 +198,10 @@ class ModelGroups:
         return result
 
     def browse(self,filters):
+        with self.catalog.session():
+            return self._browse(filters)
+
+    def _browse(self,filters):
         keys=('character','kind','family','part','variant','costume_type')
         # One existence pass for both the page and all facet counts.
         base=self.filtered({k:v for k,v in filters.items() if k not in keys or k=='character'})

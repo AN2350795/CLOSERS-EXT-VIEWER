@@ -182,11 +182,12 @@ class AvatarItems(EyeAvatars):
         with self.catalog.connect() as db:
             for offset in range(0,len(names),400):
                 batch=names[offset:offset+400]
-                for r in db.execute("SELECT id,name FROM entries WHERE category='images' AND flag!=2 AND name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+')',batch):icons[r['name'].upper()].append(r['id'])
+                # The category index otherwise scans every image for each batch.
+                for r in db.execute("SELECT id,name FROM entries INDEXED BY idx_entry_name_nocase WHERE category='images' AND flag!=2 AND name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+')',batch):icons[r['name'].upper()].append(r['id'])
             model_names=sorted({v['model_name'] for values in components.values() if len(values)>1 for v in values})
             for offset in range(0,len(model_names),400):
                 batch=model_names[offset:offset+400]
-                for r in db.execute("SELECT e.id,e.name,e.ordinal,a.path archive FROM entries e JOIN archives a ON a.id=e.archive_id WHERE e.format='x' AND e.flag!=2 AND e.name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+') ORDER BY e.id',batch):sources[r['name'].upper()].append(dict(r))
+                for r in db.execute("SELECT e.id,e.name,e.ordinal,a.path archive FROM entries e INDEXED BY idx_entry_name_nocase JOIN archives a ON a.id=e.archive_id WHERE e.format='x' AND e.flag!=2 AND e.name COLLATE NOCASE IN ("+','.join('?' for _ in batch)+') ORDER BY e.id',batch):sources[r['name'].upper()].append(dict(r))
         result=[]
         for row in rows:
             appearances=by_model[row['name'].upper()]
