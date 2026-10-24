@@ -270,6 +270,57 @@ class Models:
             mapping = bind_mapping(scene,animation)
             return dict(clips=animation['clips'],mapping=mapping,skeleton_source=source,animation_source=animation_source)
 
+    def motion_library(self,skeleton_id,entry_ids):
+        """Index every related pack, including failures and duplicate sources."""
+        from .model_motions import CATEGORIES,category,related
+        if len(entry_ids)>16:raise ValueError('모델은 16개까지 선택해 주세요.')
+        with self.operation():
+            body,owner,source=self.read(skeleton_id,'x')
+            skeleton=self.parse(body,source,'x')
+            rows=[owner]+[self.catalog.get(i) for i in entry_ids]
+            characters={classify(r['name'])['character'] for r in rows
+                        if classify(r['name'])['kind'] in ('avatar','motion') and classify(r['name'])['character']}
+            if len(characters)>1:raise ValueError('동작을 탐색할 캐릭터가 서로 다릅니다.')
+            character=next(iter(characters),'')
+            stems={Path(r['name']).stem.upper() for r in rows}
+            with self.catalog.connect() as db:
+                candidates=[dict(r) for r in db.execute('''SELECT e.id,e.name,e.ordinal,e.flag,a.path archive
+                    FROM entries e JOIN archives a ON a.id=e.archive_id
+                    WHERE e.format='xmd' ORDER BY e.name COLLATE NOCASE,a.path,e.ordinal''')
+                    if related(r['name'],character,stems)]
+            files=[]
+            for row in candidates:
+                item=dict(row,category=category(row['name']),clips=[],status='unavailable',error='',skeleton_id=skeleton_id)
+                try:
+                    data,_,animation_source=self.read(row['id'],'xmd')
+                    animation=self.parse(data,animation_source,'xmd')
+                    item['clips']=animation['clips']
+                    item['sha256']=animation_source['sha256']
+                    try:
+                        bind_mapping(skeleton,animation)
+                    except ValueError as original:
+                        # Bikes, transformations and taskforce packs may carry extra bones.
+                        # Only an independently verified companion X may replace the rig.
+                        verified=[]
+                        names=[Path(row['name']).stem+'.X']
+                        if character:names.append('MOTION_'+character+'.X')
+                        for name in dict.fromkeys(names):
+                            for candidate in self.matches(name):
+                                try:
+                                    rig,_,rig_source=self.read(candidate['id'],'x')
+                                    bind_mapping(self.parse(rig,rig_source,'x'),animation)
+                                    verified.append(rig_source)
+                                except (ValueError,OSError):pass
+                            if verified:break
+                        if len(verified)!=1:raise original
+                        item.update(skeleton_id=verified[0]['entry_id'],skeleton_name=verified[0]['name'])
+                    item['status']='ready'
+                except (ValueError,OSError) as exc:
+                    item['error']=str(exc)
+                files.append(item)
+            return dict(character=character,skeleton_source=source,categories=CATEGORIES,files=files,
+                        evidence='파일명 기준 분류입니다. 아바타 착용 조건·공식 스킬명은 확정하지 않습니다.')
+
     def clip(self,skeleton_id,animation_id,index,expected):
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
