@@ -211,6 +211,37 @@ class AvatarItems(EyeAvatars):
                     value['components']=[dict(name=v['model_name'],appearance_key=v['key'],reference=v['reference'],candidates=sources[v['model_name']],selected=row['id'] if v['model_name']==row['name'].upper() else (sources[v['model_name']][0]['id'] if len(sources[v['model_name']])==1 else None)) for v in components[group]]
                 if len(icons[item['icon_name']])==1:value['preview_entry']=icons[item['icon_name']][0]
                 result.append(value)
+        return self.shared_hairs(result,definitions,character) if composite else result
+
+    @staticmethod
+    def shared_hairs(rows,definitions,character):
+        """Expose an untyped A hair in sibling outfits lacking registered hair.
+
+        Preserve the actual item key, XET and complete composition. A missing
+        source file for a registered sibling hair is not evidence of sharing.
+        """
+        registered=set();common=set()
+        for item in definitions:
+            if item['character']!=character or classify(item['model_name'])['part']!='HAIR':continue
+            registered.add(item['set_name'])
+            if not re.search(r'\[[^\]]*타입\]',item['label']):common.add(item['key'])
+        sets=defaultdict(list);hairs=defaultdict(list)
+        for row in rows:
+            if row['character']!=character or not row.get('set_key'):continue
+            sets[row['set_name']].append(row)
+            if row['part']=='HAIR' and row.get('appearance_key') in common:hairs[row['set_name']].append(row)
+        result=list(rows)
+        for code,values in sets.items():
+            match=re.fullmatch(r'((?:CLOTH|RARE)_\d+)_([A-Z]+\d*)',code)
+            if not match or match[2]=='A' or code in registered or any(v['part']=='HAIR' for v in values):continue
+            types={v['costume_type'] for v in values if v.get('costume_type')}
+            if len(types)>1:continue  # An ambiguous outfit does not establish a shared type.
+            base=match[1]+'_A'
+            for hair in hairs.get(base,[]):
+                result.append(dict(hair,set_name=code,set_key=character+'|'+code,type_label=code,
+                                   costume_type=next(iter(types),match[2]),
+                                   shared_hair=dict(source_set_key=character+'|'+base,source_set_name=base,
+                                                    target_set_key=character+'|'+code,source_type='A')))
         return result
 
     def resolve(self,key,name):

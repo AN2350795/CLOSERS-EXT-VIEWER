@@ -111,7 +111,7 @@ class ModelGroups:
         elif saved=='missing':rows=[r for r in rows if not self.saved(r)]
         if filters.get('q'):
             q=filters['q'].casefold()
-            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+r.get('display_name','')+' '+r.get('type_label','')+' '+str(r.get('item_id',''))+' '+('' if r.get('appearance_key') else self.catalog.game_names.text(r['name']))).casefold()]
+            rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+r.get('display_name','')+' '+r.get('type_label','')+' '+str(r.get('item_id',''))+' '+(' ['+r['costume_type']+'타입]' if r.get('shared_hair') else '')+' '+('' if r.get('appearance_key') else self.catalog.game_names.text(r['name']))).casefold()]
         return rows
 
     def facets(self,filters):
@@ -228,13 +228,16 @@ class ModelGroups:
         def selection(rows):
             # Item grades can share one file and appearance. They are aliases,
             # not competing sources. Keep distinct files and XET views separate.
-            candidates=[dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=r['item_ids'],components=r.get('components',[])) for r in self.merge_appearances(rows)]
+            candidates=[dict(id=r['id'],name=r['name'],display_name=r.get('display_name',r['name']),archive=r['archive'],ordinal=r['ordinal'],saved_exists=self.saved(r),appearance_key=r.get('appearance_key'),item_id=r.get('item_id'),item_ids=r['item_ids'],components=r.get('components',[]),
+                             **({'shared_hair':r['shared_hair']} if r.get('shared_hair') else {})) for r in self.merge_appearances(rows)]
             return dict(candidates=candidates,selected=candidates[0]['id'] if len(candidates)==1 else None)
         result=[]
         for (part,variant),candidates in sorted(slots.items()):
             checked=part in CORE and part!='FACE' and variant in ('BASE','ALPHA') and not(has_one_piece and part in ('UPBODY','LOWBODY'))
             result.append(dict(part=part,variant=variant,label=LABELS['part'].get(part,part)+' · '+LABELS['variant'].get(variant,variant),
                                **selection(candidates),checked=checked))
+            shared=[r['shared_hair'] for r in candidates if r.get('shared_hair')]
+            if shared and len(shared)==len(candidates):result[-1]['shared_hair']=shared[0]
         faces=[r for r in rows if r['part']=='FACE' and r['variant']=='BASE']
         if not faces:faces=[r for r in all_rows if r['kind']=='avatar' and r['character']==character and r['part']=='FACE' and r['set_name']=='BASIC' and r['variant']=='BASE' and r['flag']!=2]
         motions=[r for r in all_rows if r['name'].upper()=='MOTION_'+character+'.X' and r['flag']!=2]
