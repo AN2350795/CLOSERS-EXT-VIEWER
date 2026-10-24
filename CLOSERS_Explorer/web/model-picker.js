@@ -23,10 +23,8 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
   $('basic-avatar').onclick=()=>operation(()=>showBundle($('model-character').value+'|BASIC'));
   $('source-browser').onclick=()=>{$('picker-options').close();for(const key of keys)$('model-'+key).value='';$('model-mode').value='files';$('model-saved').value='';reset();};
   $('model-advanced').open=settings.advanced===true;
-  document.querySelector('.model-layout').classList.toggle('picker-wide',settings.wide===true);
-  $('picker-expand').setAttribute('aria-pressed',String(settings.wide===true));$('picker-expand').textContent=settings.wide?'목록 줄이기':'목록 넓게';
   function save(){if(!memory.save())$('model-memory-status').textContent='브라우저 저장 공간을 사용할 수 없어 이번 탭에서만 기억합니다.';}
-  function rememberSettings(){memory.data.settings=Object.fromEntries([...keys,'saved','mode','limit','sort'].map(k=>[k,$('model-'+k).value]));Object.assign(memory.data.settings,{q:$('model-search').value,page:state.page,advanced:$('model-advanced').open,wide:document.querySelector('.model-layout').classList.contains('picker-wide')});save();}
+  function rememberSettings(){memory.data.settings=Object.fromEntries([...keys,'saved','mode','limit','sort'].map(k=>[k,$('model-'+k).value]));Object.assign(memory.data.settings,{q:$('model-search').value,page:state.page,advanced:$('model-advanced').open});save();}
   function record(item,mode){return {identity:item.appearance_key?'item:'+item.appearance_key:mode==='eyes'?'eye:'+item.key:mode==='sets'?'set:'+item.key:'file:'+item.name,label:item.label||item.display_name||item.name,q:item.appearance_key?item.display_name:mode==='eyes'?item.label:mode==='sets'?item.key.split('|').slice(1).join('|'):item.name,character:item.character||'',mode};}
   function find(record){$('picker-options').close();record={...record,character:record.character||$('model-character').value};for(const key of keys)$('model-'+key).value='';if(record.character){const select=$('model-character');select.append(new Option(record.character,record.character));select.value=record.character;}$('model-mode').value=record.mode;$('model-search').value=record.q;$('model-saved').value='';reset();}
   function renderMemory(){for(const key of ['favorites','recent']){const list=$('model-'+key);list.replaceChildren();if(!memory.data[key].length)list.append(element('p',key==='favorites'?'즐겨찾기한 항목이 없습니다.':'최근 사용한 항목이 없습니다.'));for(const record of memory.data[key]){const row=element('div'),open=element('button',record.label);row.className='memory-row';open.className='secondary';open.title='현재 목록에서 다시 찾기';open.onclick=()=>find(record);const remove=element('button','삭제');remove.className='secondary';remove.setAttribute('aria-label',record.label+' 기록 삭제');remove.onclick=()=>{memory.data[key]=memory.data[key].filter(r=>r.identity!==record.identity);save();renderMemory();updateStars();};row.append(open,remove);list.append(row);}}}
@@ -262,7 +260,6 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
   $('model-jump-form').onsubmit=e=>{e.preventDefault();go($('model-jump').value);};
   document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{for(const key of ['kind','family','part','variant','costume_type'])$('model-'+key).value='';$('model-search').value='';$('model-mode').value=b.dataset.mode;if(b.dataset.mode==='eyes')$('model-saved').value='';reset();});
   $('model-filter-clear').onclick=()=>{for(const key of keys.filter(k=>k!=='character'))$('model-'+key).value='';$('model-search').value='';$('model-saved').value='existing';reset();};
-  $('picker-expand').onclick=()=>{const wide=document.querySelector('.model-layout').classList.toggle('picker-wide');$('picker-expand').setAttribute('aria-pressed',String(wide));$('picker-expand').textContent=wide?'목록 줄이기':'목록 넓게';rememberSettings();};
   $('model-advanced').ontoggle=rememberSettings;
   document.addEventListener('model-selection',()=>{for(const source of state.data?.sources||[])recent({...source,...source.model_group},'files');});
   document.addEventListener('model-selection',markSelection);
@@ -276,14 +273,29 @@ export function setupViewerLayout(){
   const $=id=>document.getElementById(id);
   const layout=document.querySelector('.model-layout');
   const compact=matchMedia('(max-width:1500px)');
-  function setEquipmentVisible(visible){
-    layout.classList.toggle('info-collapsed',!visible);
-    $('toggle-model-info').setAttribute('aria-expanded',String(visible));
-    $('toggle-model-info').textContent=visible?'장착 접기':'장착 보기';
+  function updateCollapsedRow(){
+    const equipment=layout.classList.contains('show-equipment');
+    layout.classList.toggle('active-panel-collapsed',layout.classList.contains(equipment?'info-collapsed':'wardrobe-collapsed'));
   }
-  setEquipmentVisible(!compact.matches);
-  compact.addEventListener('change',()=>setEquipmentVisible(!compact.matches));
+  function setPanelVisible(id,buttonId,className,label,visible){
+    layout.classList.toggle(className,!visible);
+    $(id).classList.toggle('is-collapsed',!visible);
+    const button=$(buttonId);
+    button.setAttribute('aria-expanded',String(visible));
+    button.setAttribute('aria-label',label+(visible?' 접기':' 펼치기'));
+    button.textContent=visible?'접기':'펼치기';
+    updateCollapsedRow();
+  }
+  function setEquipmentVisible(visible){
+    setPanelVisible('equipment-panel','toggle-model-info','info-collapsed','장착 부위',visible);
+  }
+  function setWardrobeVisible(visible){
+    setPanelVisible('wardrobe-panel','toggle-wardrobe','wardrobe-collapsed','아바타 꾸미기',visible);
+  }
+  setEquipmentVisible(!compact.matches||innerWidth<=900);
+  setWardrobeVisible(true);
   $('toggle-model-info').onclick=()=>setEquipmentVisible(layout.classList.contains('info-collapsed'));
+  $('toggle-wardrobe').onclick=()=>setWardrobeVisible(layout.classList.contains('wardrobe-collapsed'));
 
   // Keep the small-screen picker short enough to show results below the search.
   const narrow=matchMedia('(max-width:900px)');
@@ -308,11 +320,12 @@ export function setupViewerLayout(){
     layout.classList.toggle('show-equipment',equipment);
     $('show-wardrobe').setAttribute('aria-pressed',String(!equipment));
     $('show-equipment').setAttribute('aria-pressed',String(equipment));
+    updateCollapsedRow();
   }
   $('show-wardrobe').onclick=()=>selectPanel(false);
   $('show-equipment').onclick=()=>selectPanel(true);
   document.addEventListener('model-reveal-equipment',()=>{setEquipmentVisible(true);selectPanel(true);});
-  document.addEventListener('model-reveal-wardrobe',()=>selectPanel(false));
+  document.addEventListener('model-reveal-wardrobe',()=>{setWardrobeVisible(true);selectPanel(false);});
   $('open-view-settings').onclick=()=>$('view-settings').showModal();
   $('close-view-settings').onclick=()=>$('view-settings').close();
   $('open-stage-settings').onclick=()=>$('stage-settings').showModal();

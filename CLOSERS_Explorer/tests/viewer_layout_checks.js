@@ -31,14 +31,23 @@ window.checkViewerLayout=async()=>{
     const before=rect('#viewport').width;
     const collapsed=document.querySelector('.model-layout').classList.contains('info-collapsed');
     $('toggle-model-info').click();await frame();
-    check($('equipment-panel').checkVisibility()===collapsed,'equipment toggle');
+    check($('equipment-panel').classList.contains('is-collapsed')!==collapsed,'equipment toggle');
+    check($('toggle-model-info').checkVisibility(),'equipment toggle remains available');
     check(collapsed?rect('#viewport').width<before:rect('#viewport').width>before,'scene responds to equipment toggle');
     $('toggle-model-info').click();await frame();
-    if(innerWidth>=1440)check(rect('#viewport').width/innerWidth>.55,'scene receives most of desktop width');
+    const wardrobeWidth=rect('#viewport').width;
+    $('toggle-wardrobe').click();await frame();
+    check(!$('model-results').checkVisibility()&&$('toggle-wardrobe').checkVisibility(),'collapsed wardrobe keeps its toggle');
+    check(rect('#viewport').width>wardrobeWidth,'wardrobe collapse widens viewer');
+    if(!$('equipment-panel').classList.contains('is-collapsed'))$('toggle-model-info').click();await frame();
+    check($('wardrobe-panel').classList.contains('is-collapsed')&&$('equipment-panel').classList.contains('is-collapsed'),'both panels collapse independently');
+    $('toggle-wardrobe').click();if(!collapsed)$('toggle-model-info').click();await frame();
+    if(innerWidth>=1440)check(rect('#viewport').width/innerWidth>.5,'scene receives most of desktop width');
   }else{
     const landscape=innerWidth>600&&innerHeight<=550;
     check(landscape?rect('.workspace-switch').right<=panel.left:rect('.workspace-switch').top>=panel.bottom,'panel switch outside viewer');
     $('show-equipment').click();await frame();
+    if($('equipment-panel').classList.contains('is-collapsed')){$('toggle-model-info').click();await frame();}
     check($('equipment-panel').checkVisibility()&&!$('wardrobe-panel').checkVisibility(),'mobile equipment panel');
     $('equipment-panel').append(Object.assign(document.createElement('p'),{textContent:'장착 정보 '.repeat(300)}));
     $('equipment-panel').scrollTop=200;await frame();
@@ -49,7 +58,14 @@ window.checkViewerLayout=async()=>{
     $('wardrobe-panel').scrollTop=200;await frame();
     check(rect('#viewport').y===original.y,'wardrobe scroll preserves viewer');
     $('wardrobe-panel').scrollTop=0;
+    $('toggle-wardrobe').click();await frame();
+    check(!$('model-results').checkVisibility()&&$('toggle-wardrobe').checkVisibility(),'mobile wardrobe can collapse and reopen');
+    $('toggle-wardrobe').click();await frame();
+    $('show-equipment').click();$('toggle-model-info').click();await frame();
+    check(!$('model-parts').checkVisibility()&&$('toggle-model-info').checkVisibility(),'mobile equipment can collapse and reopen');
+    $('toggle-model-info').click();$('show-wardrobe').click();await frame();
   }
+  check($('wardrobe-panel').contains($('toggle-wardrobe'))&&$('equipment-panel').contains($('toggle-model-info')),'collapse buttons belong to each panel');
   const canvas=$('model-canvas');
   $('expand-viewer').click();await frame();
   check($('viewer-dialog').open&&$('viewer-dialog').contains(canvas),'expand keeps canvas');

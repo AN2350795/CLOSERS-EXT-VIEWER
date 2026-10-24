@@ -85,7 +85,9 @@ try{
  check(document.querySelector('[data-mode="accessories"]').getAttribute('aria-pressed')==='true','mode selected');
  state.ids=[1];document.dispatchEvent(new Event('model-selection'));
  check($('model-results').firstChild.classList.contains('is-selected'),'selected file badge');
- $('picker-expand').click();check(document.querySelector('.model-layout').classList.contains('picker-wide'),'expand picker');
+ check(!$('picker-expand'),'wide-list control removed');
+ $('toggle-wardrobe').click();check($('wardrobe-panel').classList.contains('is-collapsed'),'collapse wardrobe from its panel');
+ $('toggle-wardrobe').click();check(!$('wardrobe-panel').classList.contains('is-collapsed'),'restore wardrobe');
  check($('avatar-bundle').closest('.model-info'),'bundle detail separated from list');
  const star=$('model-results').querySelector('.favorite-button');check(star.checkVisibility()&&!star.closest('details'),'favorite stays outside metadata');star.click();
  check(star.getAttribute('aria-pressed')==='true'&&$('model-favorites').querySelector('button'),'favorite persisted and listed');
