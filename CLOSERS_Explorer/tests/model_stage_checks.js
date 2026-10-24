@@ -20,6 +20,18 @@ try{
   change('stage-background','gray');const gray=pixel();check(Math.max(...gray.slice(0,3))-Math.min(...gray.slice(0,3))<=1,'neutral background');
   change('stage-background','original');const original=pixel();check(Math.abs(original[0]-17)<=1&&Math.abs(original[1]-24)<=1,'original background preserved');
   change('stage-background','custom');$('stage-color').value='#ff0000';$('stage-color').dispatchEvent(new Event('input'));check(pixel()[0]>250&&pixel()[1]<2,'custom color');
+  stage.resize(400,800);change('stage-background','light');
+  check(pixel()[0]>200,'background updates after uploaded texture changes dimensions');
+  check(renderer.getContext().getError()===renderer.getContext().NO_ERROR,'resizing background has no GPU errors');
+  for(const [width,height] of [[1280,720],[320,800],[844,390],[400,800]]){
+    const previous=scene.background;let released=false;previous.addEventListener('dispose',()=>released=true);
+    stage.resize(width,height);check(released&&scene.background!==previous,'resize replaces and releases GPU texture');
+    for(const preset of ['studio','gray','light','dark','original','custom']){
+      change('stage-background',preset);const actual=pixel();
+      check(actual[3]===255&&renderer.getContext().getError()===renderer.getContext().NO_ERROR,'all presets render after resize: '+preset);
+    }
+  }
+  change('stage-background','custom');
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(2,4,2),new THREE.MeshBasicMaterial());mesh.position.set(3,2,1);mesh.updateMatrixWorld();
   stage.fit({meshes:[mesh]});check(stage.shadow.visible&&stage.shadow.position.y<0&&stage.shadow.position.x===3,'shadow placed under model bounds');
   $('stage-shadow').checked=false;$('stage-shadow').dispatchEvent(new Event('change'));check(!stage.shadow.visible,'shadow toggle');
@@ -28,9 +40,12 @@ try{
   const blob=await new Promise(r=>image.toBlob(r,'image/png')),transfer=new DataTransfer();transfer.items.add(new File([blob],'background.png',{type:'image/png'}));
   change('stage-background','image');$('stage-image').files=transfer.files;$('stage-image').dispatchEvent(new Event('change'));
   await until(()=>JSON.parse(localStorage.getItem(key)).image);await until(()=>{const c=scene.background.image;return c.getContext('2d').getImageData(c.width/2,c.height/2,1,1).data[1]>240;});
+  check(pixel()[1]>240&&pixel()[0]<10,'uploaded image reaches WebGL output');
   restored.resize(800,400);await until(()=>scene.background.image.getContext('2d').getImageData(400,200,1,1).data[1]>240);
+  check(pixel()[1]>240&&renderer.getContext().getError()===renderer.getContext().NO_ERROR,'image renders after GPU texture resize');
   check(scene.background.image.getContext('2d').getImageData(5,200,1,1).data[1]<200,'portrait image fits without stretching or cropping');
   restored.dispose();const imageRestored=setupModelStage({scene});await until(()=>scene.background.image.getContext('2d').getImageData(512,512,1,1).data[1]>240);
+  check(pixel()[1]>240,'restored image reaches WebGL output');
   check($('stage-background').value==='image','image restored under production image CSP');
   imageRestored.fit({meshes:[mesh]});imageRestored.fit(null);check(!imageRestored.shadow.visible,'clear hides ground');
   $('stage-reset').click();check($('stage-background').value==='studio'&&$('stage-shadow').checked&&!JSON.parse(localStorage.getItem(key)).image,'reset clears image and restores defaults');

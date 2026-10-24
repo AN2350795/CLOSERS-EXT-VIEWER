@@ -19,6 +19,17 @@ window.fetch=async(url,options)=>{
 };
 try{
  await import('/model.js');await modelViewer.loadModel([2,1]);document.querySelector('#model-character').value='STRIKER';
+ const frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+ const backgroundPixel=()=>{const gl=document.querySelector('#model-canvas').getContext('webgl2'),pixel=new Uint8Array(4);gl.readPixels(2,2,1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);check(gl.getError()===gl.NO_ERROR,'real viewer background has no GPU errors');return pixel;};
+ const selectBackground=async preset=>{const select=document.querySelector('#stage-background');select.value=preset;select.dispatchEvent(new Event('change'));await frame();};
+ document.querySelector('#open-stage-settings').click();
+ await selectBackground('custom');const color=document.querySelector('#stage-color');color.value='#ff0000';color.dispatchEvent(new Event('input'));await frame();
+ check(backgroundPixel()[0]>250&&backgroundPixel()[1]<2,'real viewer applies custom background');
+ document.querySelector('#close-stage-settings').click();document.querySelector('#expand-viewer').click();await frame();
+ await selectBackground('gray');const gray=backgroundPixel();check(Math.abs(gray[0]-119)<=1&&Math.abs(gray[1]-119)<=1,'expanded viewer applies background after resize');
+ document.querySelector('#viewer-dialog').close();await frame();await selectBackground('original');
+ const original=backgroundPixel();check(Math.abs(original[0]-17)<=1&&Math.abs(original[1]-24)<=1,'restored viewer applies background after resize');
+ document.querySelector('#stage-reset').click();await frame();
  document.querySelector('[data-mode=eyes]').click();await until(()=>document.querySelectorAll('[data-eye]').length===3);
  document.querySelector('[data-eye="STRIKER:10"] .model-open').click();await until(()=>!modelViewer.state.busy&&modelViewer.state.eye?.key==='STRIKER:10');
  check(modelViewer.state.ids.join(',')==='2,1'&&requests.at(-1).searchParams.get('eye_texture')==='10','eye change preserves hair and sends texture selection');

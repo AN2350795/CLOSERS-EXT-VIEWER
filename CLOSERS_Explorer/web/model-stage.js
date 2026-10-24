@@ -17,8 +17,14 @@ export function setupModelStage({scene,root=document}){
     }
   }catch{}
   const canvas=document.createElement('canvas');canvas.width=canvas.height=1024;
-  const context=canvas.getContext('2d'),background=new THREE.CanvasTexture(canvas);
-  background.colorSpace=THREE.SRGBColorSpace;
+  const context=canvas.getContext('2d');
+  function createBackground(){
+    const texture=new THREE.CanvasTexture(canvas);
+    texture.colorSpace=THREE.SRGBColorSpace;
+    texture.generateMipmaps=false;texture.minFilter=THREE.LinearFilter;
+    return texture;
+  }
+  let background=createBackground();
   const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=128;
   const shadowContext=shadowCanvas.getContext('2d'),gradient=shadowContext.createRadialGradient(64,64,0,64,64,64);
   gradient.addColorStop(0,'rgba(0,0,0,.32)');gradient.addColorStop(.35,'rgba(0,0,0,.22)');gradient.addColorStop(1,'rgba(0,0,0,0)');
@@ -81,7 +87,10 @@ export function setupModelStage({scene,root=document}){
       const scale=Math.min(1,1280/Math.max(width,height));
       const w=Math.max(1,Math.round(width*scale)),h=Math.max(1,Math.round(height*scale));
       if(canvas.width===w&&canvas.height===h)return;
-      canvas.width=w;canvas.height=h;void apply();
+      // WebGL texture storage cannot be resized after its first upload.
+      // Release the old allocation and create a texture for the new dimensions.
+      background.dispose();canvas.width=w;canvas.height=h;
+      background=createBackground();void apply();
     },
     fit(model){
       hasModel=!!model;
