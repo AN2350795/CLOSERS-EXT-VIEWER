@@ -18,6 +18,15 @@ window.checkViewerLayout=async()=>{
   check(rect('#viewport').height===original.height,'settings preserves scene size');
   $('close-view-settings').click();
   check(!$('view-settings').open&&$('show-bones').checked,'settings retained');
+  check(!$('view-settings').contains($('stage-background')),'background separate from view settings');
+  $('open-stage-settings').click();
+  check($('stage-settings').open&&!$('view-settings').open,'background dialog opens independently');
+  check($('stage-settings').contains($('stage-background')),'background controls in dedicated dialog');
+  check(rect('#viewport').height===original.height,'background settings preserves scene size');
+  const settingsBounds=rect('#stage-settings');
+  check(settingsBounds.left>=0&&settingsBounds.right<=innerWidth,'background dialog fits screen');
+  $('close-stage-settings').click();await frame();
+  check(!$('stage-settings').open&&document.activeElement===$('open-stage-settings'),'background close restores focus');
   if(innerWidth>900){
     const before=rect('#viewport').width;
     const collapsed=document.querySelector('.model-layout').classList.contains('info-collapsed');
@@ -47,6 +56,8 @@ window.checkViewerLayout=async()=>{
   check(rect('#viewport').width>=original.width&&rect('#viewport').height>original.height,'expanded scene grows');
   $('open-view-settings').click();check($('view-settings').open,'settings works in expanded viewer');
   $('close-view-settings').click();
+  $('open-stage-settings').click();check($('stage-settings').open,'background settings works in expanded viewer');
+  $('close-stage-settings').click();
   $('viewer-dialog').close();await frame();
   check(document.querySelector('.model-layout').contains(canvas),'close restores canvas');
   check(document.activeElement===$('expand-viewer'),'close restores focus');

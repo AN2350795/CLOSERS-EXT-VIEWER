@@ -315,6 +315,9 @@ export function setupViewerLayout(){
   document.addEventListener('model-reveal-wardrobe',()=>selectPanel(false));
   $('open-view-settings').onclick=()=>$('view-settings').showModal();
   $('close-view-settings').onclick=()=>$('view-settings').close();
+  $('open-stage-settings').onclick=()=>$('stage-settings').showModal();
+  $('close-stage-settings').onclick=()=>$('stage-settings').close();
+  $('stage-settings').addEventListener('close',()=>$('open-stage-settings').focus());
 
   const panel=document.querySelector('.viewport-panel'),dialog=$('viewer-dialog');
   const anchor=document.createComment('viewer position');
