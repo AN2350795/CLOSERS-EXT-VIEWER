@@ -165,13 +165,17 @@ class Catalog:
     @contextmanager
     def session(self):
         """One connection per worker, without sharing it with HTTP threads."""
-        db = self.open_connection()
-        self.local.db = db
-        try:
+        if getattr(self.local, 'db', None) is not None:
             yield
-        finally:
-            self.local.db = None
-            db.close()
+            return
+        with self.game_names.session():
+            db = self.open_connection()
+            self.local.db = db
+            try:
+                yield
+            finally:
+                self.local.db = None
+                db.close()
 
     @contextmanager
     def connect(self):

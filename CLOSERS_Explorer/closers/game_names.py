@@ -1,6 +1,7 @@
 """Local, source-attributed item names; resource filenames remain unchanged."""
 from collections import defaultdict
 from contextlib import closing
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -28,16 +29,34 @@ class GameNames:
         self.frame_patterns=[]
         self.icons={}
         self.part_overrides={}
+        self.local=threading.local()
+
+    @contextmanager
+    def session(self):
+        """Validate names once per operation, with no cross-request TTL."""
+        if getattr(self.local,'active',False):
+            yield
+            return
+        self.refresh()
+        self.local.active=True
+        try:
+            yield
+        finally:
+            self.local.active=False
 
     def refresh(self):
+        if getattr(self.local,'active',False):return
         with self.lock:
             try:
                 stat=self.path.stat();version=(stat.st_mtime_ns,stat.st_size)
             except OSError:version=None
             stale=False
+            checked={}
             for source in self.sources:
                 try:
-                    current=Path(source['archive']).stat()
+                    archive=source['archive']
+                    if archive not in checked:checked[archive]=Path(archive).stat()
+                    current=checked[archive]
                     stale |= (current.st_size,current.st_mtime_ns)!=(source['size'],source['mtime'])
                 except FileNotFoundError:pass  # The saved index is usable offline.
                 except OSError:stale=True

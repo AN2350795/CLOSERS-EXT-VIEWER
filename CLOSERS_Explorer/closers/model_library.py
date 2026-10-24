@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 from pathlib import Path
 import threading
+from contextlib import contextmanager
 
 from .cmf import Archive
 from .library import saved_file
@@ -18,6 +19,16 @@ class Models:
         self.groups = ModelGroups(catalog)
         from .model_eyes import EyeAvatars
         self.eyes = EyeAvatars(catalog)
+        self.local = threading.local()
+
+    @contextmanager
+    def operation(self):
+        with self.gate, self.catalog.session():
+            self.local.matches = {}
+            try:
+                yield
+            finally:
+                del self.local.matches
 
     def read(self,entry_id,fmt):
         row = self.catalog.get(int(entry_id))
@@ -52,10 +63,16 @@ class Models:
 
     def matches(self,name):
         # Exact filename, all source variants. No substring guess for textures.
+        cache = getattr(self.local,'matches',None)
+        key = name.upper()
+        if cache is not None and key in cache:
+            return cache[key]
         with self.catalog.connect() as db:
             rows = db.execute('''SELECT e.id,e.name,e.ordinal,a.path archive,e.archive_id FROM entries e
                 JOIN archives a ON a.id=e.archive_id WHERE e.name=? COLLATE NOCASE LIMIT 101''',(name,)).fetchall()
-        return [dict(row) for row in rows]
+        result = [dict(row) for row in rows]
+        if cache is not None:cache[key] = result
+        return result
 
     def candidates(self,name,owner):
         values = self.matches(name)
@@ -93,7 +110,7 @@ class Models:
     def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None,items=None):
         if not 1<=len(entry_ids)<=16 or len(set(entry_ids))!=len(entry_ids):
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
-        with self.gate:
+        with self.operation():
             items=items or {}
             if not isinstance(items,dict) or len(items)>16 or any(str(i) not in {str(v) for v in entry_ids} or not isinstance(k,str) for i,k in items.items()):raise ValueError('아이템 선택 정보가 잘못되었습니다.')
             entry_ids,items=self.complete_items(entry_ids,items)
@@ -239,7 +256,7 @@ class Models:
             return scene
 
     def animations(self,skeleton_id,animation_id):
-        with self.gate:
+        with self.operation():
             body,_,source = self.read(skeleton_id,'x')
             scene = parse_x(body)
             body,_,animation_source = self.read(animation_id,'xmd')
@@ -248,7 +265,7 @@ class Models:
             return dict(clips=animation['clips'],mapping=mapping,skeleton_source=source,animation_source=animation_source)
 
     def clip(self,skeleton_id,animation_id,index,expected):
-        with self.gate:
+        with self.operation():
             body,_,source = self.read(skeleton_id,'x')
             scene = parse_x(body)
             body,_,animation_source = self.read(animation_id,'xmd')
