@@ -292,9 +292,11 @@ def create_server(catalog, port=0):
                     raise PermissionError('인증 토큰이 올바르지 않습니다. 화면을 새로고침해 주세요.')
 
         def respond(self, body, mime='application/json; charset=utf-8', status=200,
-                    cache_control='no-store', etag=None):
+                    cache_control='no-store', etag=None, preparation=None):
+            encoding_started=time.perf_counter()
             if not isinstance(body, bytes):
                 body = json.dumps(body, ensure_ascii=False).encode('utf-8')
+            encoding_seconds=time.perf_counter()-encoding_started
             if etag and self.headers.get('If-None-Match') == etag:
                 status = 304
             self.send_response(status)
@@ -302,6 +304,8 @@ def create_server(catalog, port=0):
             self.send_header('Content-Length', str(len(body)))
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('Cache-Control', cache_control)
+            if preparation is not None:
+                self.send_header('Server-Timing',f'prepare;dur={preparation*1000:.3f}, json;dur={encoding_seconds*1000:.3f}')
             if etag:
                 self.send_header('ETag', etag)
             self.send_header('Referrer-Policy', 'no-referrer')
@@ -331,13 +335,15 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / 'compose.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
                 elif url.path == '/model':
                     self.respond((STATIC / 'model.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
-                elif url.path in ('/avatar-navigation.js', '/resource-dates.js', '/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/particle-effects.js','/animation-png.js','/animation-loop.js','/compose.css','/model.js','/model-core.js','/model-materials.js','/face-preview.js','/model-picker.js','/model-memory.js','/model-preview.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
+                elif url.path in ('/avatar-navigation.js', '/resource-dates.js', '/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/particle-effects.js','/animation-png.js','/animation-loop.js','/compose.css','/model.js','/model-core.js','/model-materials.js','/model-texture-cache.js','/face-preview.js','/model-picker.js','/model-memory.js','/model-preview.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
                 elif url.path == '/api/model-scene':
+                    started=time.perf_counter()
                     ids = [int(v) for v in query.get('entries','').split(',') if v]
-                    self.respond(models.scene(ids,int(query['skeleton']) if query.get('skeleton') else None,
+                    result=models.scene(ids,int(query['skeleton']) if query.get('skeleton') else None,
                                               query.get('eye'),int(query['eye_face']) if query.get('eye_face') else None,
-                                              int(query['eye_texture']) if query.get('eye_texture') else None,json.loads(query.get('items','{}'))))
+                                              int(query['eye_texture']) if query.get('eye_texture') else None,json.loads(query.get('items','{}')))
+                    self.respond(result,preparation=time.perf_counter()-started)
                 elif url.path == '/api/model-eyes':
                     self.respond(models.eyes.browse(query))
                 elif url.path == '/api/model-facets':

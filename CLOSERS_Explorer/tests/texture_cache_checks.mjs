@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+// Import the pure browser module without requiring a package-wide Node setting.
+const source=fs.readFileSync(new URL('../web/model-texture-cache.js',import.meta.url),'utf8');
+const {TextureCache,limitedMap}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+let loads=0,disposed=0;
+const load=async()=>{loads++;return {dispose(){disposed++;}};};
+const cache=new TextureCache({maxPixels:16,maxEntries:3});
+const [a,b]=await Promise.all([cache.acquire('A:id:sha',8,load),cache.acquire('A:id:sha',8,load)]);
+assert.equal(a,b);assert.equal(loads,1);assert.equal(cache.pixels,8);
+await assert.rejects(cache.acquire('too-large',17,load));
+cache.release('A:id:sha');
+await cache.acquire('B:id:sha',8,load);
+await assert.rejects(cache.acquire('pinned',1,load));
+cache.release('A:id:sha');
+await cache.acquire('C:id:changed-sha',8,load);assert.equal(disposed,1);
+assert.equal(cache.pixels,16);cache.release('B:id:sha');cache.release('C:id:changed-sha');
+await assert.rejects(cache.acquire('failed',8,async()=>{throw Error('decode');}));
+assert.ok(!cache.entries.has('failed'));assert.equal(cache.pixels,8);
+cache.clear();assert.equal(cache.pixels,0);assert.equal(cache.entries.size,0);
+let active=0,peak=0,complete=0;
+await limitedMap(Array.from({length:12}),3,async()=>{peak=Math.max(peak,++active);await new Promise(r=>setTimeout(r,1));active--;complete++;});
+assert.equal(peak,3);assert.equal(complete,12);
+let finish;const pending=cache.acquire('pending',4,()=>new Promise(r=>finish=r));
+await Promise.resolve();cache.clear();finish({dispose(){disposed++;}});await pending;await Promise.resolve();
+assert.equal(cache.entries.size,0);assert.equal(cache.pixels,0);
+console.log('texture cache: sharing, source isolation, references, eviction, failures, concurrency, pending teardown passed');
