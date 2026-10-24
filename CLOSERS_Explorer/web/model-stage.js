@@ -45,6 +45,7 @@ export function setupModelStage({scene,root=document}){
   async function apply(){
     const version=++imageVersion;
     $('stage-background').value=settings.preset;$('stage-color').value=settings.color;$('stage-shadow').checked=settings.shadow;
+    $('stage-remove-shadow').disabled=!settings.shadow;
     $('stage-color-options').hidden=settings.preset!=='custom';$('stage-image-options').hidden=settings.preset!=='image';
     shadow.visible=hasModel&&settings.shadow;draw();scene.background=background;
     if(settings.preset==='image'&&settings.image){
@@ -64,6 +65,7 @@ export function setupModelStage({scene,root=document}){
   $('stage-background').onchange=()=>{uploadVersion++;settings.preset=$('stage-background').value;save();void apply();};
   $('stage-color').oninput=()=>{settings.color=$('stage-color').value;save();void apply();};
   $('stage-shadow').onchange=()=>{settings.shadow=$('stage-shadow').checked;save();void apply();};
+  $('stage-remove-shadow').onclick=()=>{settings.shadow=false;save();void apply();};
   let uploadVersion=0;
   $('stage-image').onchange=async()=>{
     const file=$('stage-image').files[0],version=++uploadVersion;if(!file)return;
