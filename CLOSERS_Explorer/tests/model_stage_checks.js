@@ -49,12 +49,12 @@ try{
   check($('stage-background').value==='image','image restored under production image CSP');
   imageRestored.fit({meshes:[mesh]});imageRestored.fit(null);check(!imageRestored.shadow.visible,'clear hides ground');
   $('stage-reset').click();check($('stage-background').value==='studio'&&$('stage-shadow').checked&&!JSON.parse(localStorage.getItem(key)).image,'reset clears image and restores defaults');
-  imageRestored.fit({meshes:[mesh]});check(imageRestored.shadow.visible&&!$('stage-remove-shadow').disabled,'shadow removal available when enabled');
-  $('stage-remove-shadow').click();check(!imageRestored.shadow.visible&&!$('stage-shadow').checked&&$('stage-remove-shadow').disabled,'remove button hides shadow and updates controls');
+  imageRestored.fit({meshes:[mesh]});check(imageRestored.shadow.visible,'checked shadow control displays shadow');
+  $('stage-shadow').checked=false;$('stage-shadow').dispatchEvent(new Event('change'));check(!imageRestored.shadow.visible,'unchecking shadow control hides shadow');
   check(!JSON.parse(localStorage.getItem(key)).shadow,'removed shadow state saved');
   imageRestored.dispose();check(scene.background===null&&!scene.children.length,'stage resources removed');
   const removed=setupModelStage({scene});removed.fit({meshes:[mesh]});check(!removed.shadow.visible&&!$('stage-shadow').checked,'removed shadow stays hidden after restoration');
-  $('stage-shadow').checked=true;$('stage-shadow').dispatchEvent(new Event('change'));check(removed.shadow.visible&&!$('stage-remove-shadow').disabled,'shadow can be enabled again');removed.dispose();
+  $('stage-shadow').checked=true;$('stage-shadow').dispatchEvent(new Event('change'));check(removed.shadow.visible,'checking shadow control displays shadow again');removed.dispose();
   localStorage.setItem(key,'{"preset":"custom","color":"invalid"}');const sanitized=setupModelStage({scene});check($('stage-color').value==='#687382','invalid saved color recovered');sanitized.dispose();
   localStorage.removeItem(key);renderer.dispose();mesh.geometry.dispose();mesh.material.dispose();
   document.body.dataset.checks='passed';
