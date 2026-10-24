@@ -8,11 +8,28 @@ from unittest.mock import patch
 from closers.catalog import Catalog
 from closers.game_names import GameNames
 from closers.model_library import Models
+from closers.model_cache import ModelParseCache,retained_bytes
 from test_explorer import fixture
 from test_model import binary_model
 
 
 class ModelPerformanceTests(unittest.TestCase):
+    def test_parse_cache_isolates_mutations_content_format_and_clip_and_bounds_memory(self):
+        value={'meshes':[{'material':['A'],'weights':[.1,.2,.3,.4]}]}
+        cache=ModelParseCache(max_bytes=retained_bytes(value)*2,max_entries=2)
+        first=cache.get(('x','sha',None),lambda:value)
+        first['meshes'][0]['material'][0]='B'
+        cached=cache.get(('x','sha',None),lambda:self.fail('reparsed'))
+        self.assertEqual(cached,value)
+        for key in [('x','changed',None),('xmd','sha',None),('xmd','sha',1)]:
+            self.assertEqual(cache.get(key,lambda:value),value)
+        self.assertLessEqual(cache.bytes,cache.max_bytes)
+        self.assertEqual(len(cache.entries),2)
+        self.assertNotIn(('x','sha',None),cache.entries)
+        tiny=ModelParseCache(max_bytes=1)
+        self.assertEqual(tiny.get(('x','sha'),lambda:value),value)
+        self.assertFalse(tiny.entries)
+
     def test_name_sources_checked_once_per_nested_operation_and_again_next_time(self):
         with tempfile.TemporaryDirectory() as temp:
             source=Path(temp)/'source';source.write_bytes(b'original')
@@ -38,11 +55,16 @@ class ModelPerformanceTests(unittest.TestCase):
             source=fixture(root/'source.cmf',[('one.X',binary_model(),0),('texture.png',b'image',0)])
             catalog.scan([source]);entry=catalog.entries({'format':'x'})['items'][0]['id']
             models=Models(catalog);original=models.candidates
+            statements=[];open_connection=catalog.open_connection
+            def traced():
+                db=open_connection();db.set_trace_callback(statements.append);return db
             def repeated(name,owner):
                 models.matches(name);models.matches(name)
                 return original(name,owner)
-            with patch.object(catalog,'open_connection',wraps=catalog.open_connection) as opened,patch.object(models,'candidates',side_effect=repeated):
+            with patch.object(catalog,'open_connection',side_effect=traced) as opened,patch.object(models,'candidates',side_effect=repeated):
                 models.scene([entry]);self.assertEqual(opened.call_count,1)
+                candidate_queries=[s for s in statements if 'SELECT e.id,e.name,e.ordinal' in s]
+                self.assertEqual(len(candidate_queries),2)  # One diffuse and one XMD lookup.
                 models.scene([entry]);self.assertEqual(opened.call_count,2)
             with catalog.session():
                 db=catalog.local.db

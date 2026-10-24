@@ -20,6 +20,12 @@ class Models:
         from .model_eyes import EyeAvatars
         self.eyes = EyeAvatars(catalog)
         self.local = threading.local()
+        from .model_cache import ModelParseCache
+        self.parsed = ModelParseCache()
+
+    def parse(self,body,source,fmt,selected=None):
+        key=(fmt,source['sha256'],selected)
+        return self.parsed.get(key,lambda:parse_x(body) if fmt=='x' else parse_xmd(body,selected=selected))
 
     @contextmanager
     def operation(self):
@@ -122,7 +128,7 @@ class Models:
             vertices = 0
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
-                part = parse_x(body)
+                part = self.parse(body,source,'x')
                 if str(entry_id) in items:
                     from .model_items import AvatarItems
                     if not hasattr(self.groups,'items'):self.groups.items=AvatarItems(self.catalog)
@@ -190,7 +196,7 @@ class Models:
             owner = rows[0]
             if skeleton_id is not None and skeleton_id!=entry_ids[0]:
                 body,owner,skeleton_source = self.read(skeleton_id,'x')
-                skeleton = parse_x(body)
+                skeleton = self.parse(body,skeleton_source,'x')
                 scene = dict(frames=list(skeleton['frames']),meshes=[],warnings=skeleton['warnings'])
             else:
                 scene = dict(frames=list(scene['frames']),meshes=[],warnings=scene['warnings'].copy())
@@ -258,21 +264,21 @@ class Models:
     def animations(self,skeleton_id,animation_id):
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
-            scene = parse_x(body)
+            scene = self.parse(body,source,'x')
             body,_,animation_source = self.read(animation_id,'xmd')
-            animation = parse_xmd(body)
+            animation = self.parse(body,animation_source,'xmd')
             mapping = bind_mapping(scene,animation)
             return dict(clips=animation['clips'],mapping=mapping,skeleton_source=source,animation_source=animation_source)
 
     def clip(self,skeleton_id,animation_id,index,expected):
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
-            scene = parse_x(body)
+            scene = self.parse(body,source,'x')
             body,_,animation_source = self.read(animation_id,'xmd')
             if expected != animation_source['sha256']:
                 raise ValueError('XMD 내용이 변경되었습니다. 동작 목록을 다시 불러오세요.')
-            mapping = bind_mapping(scene,parse_xmd(body))
-            animation = parse_xmd(body,selected=index)
+            mapping = bind_mapping(scene,self.parse(body,animation_source,'xmd'))
+            animation = self.parse(body,animation_source,'xmd',selected=index)
             if not animation['retained']:
                 raise ValueError('선택한 동작이 없습니다.')
             keys = animation['retained'][0]['keys']

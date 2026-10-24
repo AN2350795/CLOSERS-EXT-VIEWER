@@ -102,7 +102,7 @@ class ModelTests(unittest.TestCase):
                     patch.object(models, 'read', wraps=models.read) as read:
                 with self.assertRaisesRegex(ValueError, '250,000'):
                     models.scene(ids)
-                self.assertEqual(parse.call_count, 2)
+                self.assertEqual(parse.call_count, 1)  # Identical bytes share a neutral parse.
                 self.assertEqual(read.call_count, 2)
 
     def test_rigid_attachment_hierarchy_survives_shared_skeleton_merge(self):
