@@ -4,7 +4,7 @@ try{
   const {setupMotions}=await import('/model-motions.js');
   const $=id=>document.getElementById(id),element=(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;};
   const state={model:{},generation:1,ids:[1],data:{skeleton_source:{entry_id:1,sha256:'rig'},sources:[]},animation:null};
-  const clip=(index,name)=>({index,name,duration:1,secondary:name});
+  const clip=(index,name)=>({index,name,duration:1,secondary:name,...(name==='IDLE'?{display_name:'인사하기',game_names:['인사하기']}: {})});
   const pack=(id,name,category,clips)=>({id,name,category,clips,archive:'archive-'+id,ordinal:id,status:'ready',skeleton_id:1});
   const files=[pack(10,'MOTION_STRIKER.XMD','basic',[clip(0,'IDLE'),clip(1,'_DEFAULT')]),
     pack(11,'MOTION_STRIKER_SKILL.XMD','skill',Array.from({length:65},(_,i)=>clip(i,'SKILL_'+i))),
@@ -18,6 +18,10 @@ try{
     loadModel:async(ids,id)=>{rig=id;state.data.skeleton_source.entry_id=id;state.generation++;document.dispatchEvent(new Event('model-selection'));}});
   $('open-motions').click();await until(()=>$('motion-results').children.length);
   check($('motion-library').open,'library opens');
+  check($('motion-results').textContent.includes('인사하기 · IDLE'),'game name appears alongside original clip');
+  $('motion-search').value='인사하기';$('motion-search').dispatchEvent(new Event('input'));
+  check($('motion-results').children.length===1,'Korean game name is searchable across the library');
+  $('motion-search').value='';$('motion-search').dispatchEvent(new Event('input'));
   check($('motion-results').children.length===60,'large libraries use pagination');
   $('motion-next').click();check($('motion-results').textContent.includes('검증 실패'),'unreadable packs remain visible');
   check([...$('motion-results').querySelectorAll('button')].some(b=>b.disabled),'failed mappings cannot play');

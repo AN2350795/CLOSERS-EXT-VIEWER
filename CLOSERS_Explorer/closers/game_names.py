@@ -29,6 +29,7 @@ class GameNames:
         self.frame_patterns=[]
         self.icons={}
         self.part_overrides={}
+        self.motion_names={}
         self.local=threading.local()
 
     @contextmanager
@@ -62,9 +63,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={};model_rules={};frame_patterns=[];icons={};part_rules={}
+            labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -82,6 +83,9 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_icons'").fetchone():
                             for filename,name,digest in db.execute('SELECT filename,name,sha256 FROM model_icons'):
                                 icons[filename]=dict(name=name,sha256=digest)
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_names'").fetchone():
+                            motion_names={(character,clip):json.loads(details) for character,clip,details in
+                                          db.execute('SELECT character,clip,details_json FROM motion_names')}
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_part_overrides'").fetchone():
                             for filename,parts in db.execute('SELECT filename,parts_json FROM model_part_overrides'):
                                 part_rules[filename]=json.loads(parts)
@@ -90,11 +94,12 @@ class GameNames:
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
             self.part_overrides=part_rules
+            self.motion_names=motion_names
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -105,7 +110,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -157,11 +162,12 @@ def _build(workspace,executable,progress,cancel=None):
         candidates=db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
             FROM entries e JOIN archives a ON a.id=e.archive_id
             WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
-               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name='FRAME_UNIQUE_ID.LUA' ORDER BY e.id''').fetchall()
+               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name IN ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA')
+               OR e.name LIKE 'GUST_USER_%.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
         check_cancel()
-        if row['name']!='FRAME_UNIQUE_ID.LUA' and not re.fullmatch(r'(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF',row['name']):continue
+        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA)',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
             raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
@@ -182,12 +188,19 @@ def _build(workspace,executable,progress,cancel=None):
         sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
         selected.setdefault(row['name'],(dict(row),stored))
     strings={};items={};models=[];counts={};visibility=defaultdict(set);part_visibility=defaultdict(set);patterns=[]
+    emotion_strings={};emotion_skills={};emotion_rigs={}
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),kv[0])):
         check_cancel()
         body=ntf.restore(stored,row['size'],key,iv)
         if name=='FRAME_UNIQUE_ID.LUA':
             patterns=frame_patterns(body);counts[name]=len(patterns);continue
+        if name=='SKILL_TEMPLET.LUA' or name.startswith('GUST_USER_'):
+            from .lua_literals import tables
+            table=tables(body);counts[name]=len(table)
+            if name=='SKILL_TEMPLET.LUA':emotion_skills=table
+            else:emotion_rigs[name]=table
+            continue
         types,count,start=ntf.header(body)
         if name.startswith('STRING_TABLE'):
             if types!=(5,8,8):raise ValueError('미지원 한국어 문자열 NTF 열 구성입니다.')
@@ -201,6 +214,10 @@ def _build(workspace,executable,progress,cancel=None):
             counts[name]+=1
             if name.startswith('STRING_TABLE'):
                 text=values[2].strip()
+                if name in ('STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF'):
+                    if values[1] in emotion_strings and emotion_strings[values[1]][0]!=text:raise ValueError('이모션 이름 키가 충돌합니다: '+values[1])
+                    emotion_strings[values[1]]=(text,name)
+                    continue
                 if values[1] in strings and strings[values[1]][0]!=text:raise ValueError('한국어 이름 키가 충돌합니다: '+values[1])
                 strings[values[1]]=(text,name)
             elif name.startswith('ITEM_MODEL'):
@@ -228,6 +245,12 @@ def _build(workspace,executable,progress,cancel=None):
             db.execute('CREATE TABLE model_icons(filename TEXT PRIMARY KEY,name TEXT NOT NULL,sha256 TEXT NOT NULL)')
             db.execute('CREATE TABLE icon_images(sha256 TEXT PRIMARY KEY,data BLOB NOT NULL)')
             db.execute('CREATE TABLE model_part_overrides(filename TEXT PRIMARY KEY,parts_json TEXT NOT NULL)')
+            from .motion_names import join,character_layers
+            from .model_groups import CHARACTERS
+            layers={character:character_layers(character,emotion_rigs) for character in CHARACTERS}
+            motion_names=join(emotion_skills,layers,emotion_strings)
+            db.execute('CREATE TABLE motion_names(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
+            db.executemany('INSERT INTO motion_names VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in motion_names.items()])
             for filename,choices in part_visibility.items():
                 if len(choices)==1 and next(iter(choices))!='[]':
                     db.execute('INSERT INTO model_part_overrides VALUES(?,?)',(filename,next(iter(choices))))
@@ -262,7 +285,7 @@ def _build(workspace,executable,progress,cancel=None):
         check_cancel()
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
-    return dict(tables=len(selected),models=total,icons=icons,part_overrides=sum(len(v)==1 and next(iter(v))!='[]' for v in part_visibility.values()),rows=counts,index=str(workspace/'game-names.sqlite3'))
+    return dict(tables=len(selected),models=total,icons=icons,motion_names=len(motion_names),part_overrides=sum(len(v)==1 and next(iter(v))!='[]' for v in part_visibility.values()),rows=counts,index=str(workspace/'game-names.sqlite3'))
 
 
 def _build_icons(workspace,index,icon_names,sources,progress,check_cancel):

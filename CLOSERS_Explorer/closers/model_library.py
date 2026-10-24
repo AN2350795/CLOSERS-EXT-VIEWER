@@ -262,17 +262,20 @@ class Models:
             return scene
 
     def animations(self,skeleton_id,animation_id):
+        from .motion_names import decorate
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
             scene = self.parse(body,source,'x')
             body,_,animation_source = self.read(animation_id,'xmd')
             animation = self.parse(body,animation_source,'xmd')
             mapping = bind_mapping(scene,animation)
-            return dict(clips=animation['clips'],mapping=mapping,skeleton_source=source,animation_source=animation_source)
+            clips=decorate(animation['clips'],classify(source['name'])['character'],self.catalog.game_names.motion_names)
+            return dict(clips=clips,mapping=mapping,skeleton_source=source,animation_source=animation_source)
 
     def motion_library(self,skeleton_id,entry_ids):
         """Index every related pack, including failures and duplicate sources."""
         from .model_motions import CATEGORIES,category,related
+        from .motion_names import decorate
         if len(entry_ids)>16:raise ValueError('모델은 16개까지 선택해 주세요.')
         with self.operation():
             body,owner,source=self.read(skeleton_id,'x')
@@ -294,7 +297,7 @@ class Models:
                 try:
                     data,_,animation_source=self.read(row['id'],'xmd')
                     animation=self.parse(data,animation_source,'xmd')
-                    item['clips']=animation['clips']
+                    item['clips']=decorate(animation['clips'],character,self.catalog.game_names.motion_names)
                     item['sha256']=animation_source['sha256']
                     try:
                         bind_mapping(skeleton,animation)
@@ -319,9 +322,10 @@ class Models:
                     item['error']=str(exc)
                 files.append(item)
             return dict(character=character,skeleton_source=source,categories=CATEGORIES,files=files,
-                        evidence='파일명 기준 분류입니다. 아바타 착용 조건·공식 스킬명은 확정하지 않습니다.')
+                        evidence='종류는 파일명 기준입니다. 인게임 명칭은 게임 테이블에서 연결된 경우 표시하며, 착용·해금 조건은 확정하지 않습니다.')
 
     def clip(self,skeleton_id,animation_id,index,expected):
+        from .motion_names import decorate
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
             scene = self.parse(body,source,'x')
@@ -338,5 +342,6 @@ class Models:
                     if ti>=key['scale_count']:
                         tr[4:7] = mapping['scales'][mapping['frames'][ti]].copy()
                     xmd_matrix(tr)  # Validate every retained quaternion, not just DEFAULT.
+            decorate(animation['clips'],classify(source['name'])['character'],self.catalog.game_names.motion_names)
             return dict(keys=keys,mapping=mapping,clip=animation['clips'][index],
                         animation_source=animation_source,skeleton_source=source)

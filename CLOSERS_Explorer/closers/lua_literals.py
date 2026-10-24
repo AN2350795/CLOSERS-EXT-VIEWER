@@ -53,8 +53,13 @@ def tables(body):
         for word in code:
             op, a, b, c, bx = word & 63, (word >> 6) & 255, word >> 23, (word >> 14) & 511, word >> 14
             if op == 10: registers[a] = {}
+            elif op == 0: registers[a] = registers[b]
             elif op == 1: registers[a] = constants[bx]
             elif op == 5: registers[a] = result.get(constants[bx], constants[bx])
+            elif op == 6:
+                owner,key=registers[b],rk(c)
+                # Literal table lookup, or a symbolic external enum member.
+                registers[a]=owner.get(key) if isinstance(owner,dict) else str(owner)+'.'+str(key)
             elif op == 9: registers[a][rk(b)] = rk(c)
             elif op in (12, 13, 14, 15):
                 left, right = rk(b), rk(c)

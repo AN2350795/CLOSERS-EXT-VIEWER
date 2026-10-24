@@ -18,7 +18,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
       if(kind&&file.category!==kind)continue;
       for(const clip of file.clips.length?file.clips:[null]){
         if(!$('motion-defaults').checked&&clip?.name.startsWith('_DEFAULT'))continue;
-        if(query&&!`${file.name} ${clip?.name||''} ${clip?.secondary||''}`.toUpperCase().includes(query))continue;
+        if(query&&!`${file.name} ${clip?.name||''} ${clip?.secondary||''} ${clip?.display_name||''} ${(clip?.game_names||[]).join(' ')}`.toUpperCase().includes(query))continue;
         rows.push({file,clip});
       }
     }
@@ -28,7 +28,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
     $('motion-results').replaceChildren();
     for(const {file,clip} of rows.slice(page*limit,(page+1)*limit)){
       const row=element('div');row.className='motion-result';
-      const button=element('button',clip?clip.name:'동작 목록을 읽을 수 없음');
+      const button=element('button',clip?(clip.display_name?clip.display_name+' · '+clip.name:clip.name):'동작 목록을 읽을 수 없음');
       button.type='button';button.disabled=file.status!=='ready'||!clip||state.busy;
       button.title=file.error||'동작 선택 후 재생 버튼으로 재생합니다.';
       button.onclick=()=>operation(async()=>{
@@ -48,6 +48,11 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
       const source=element('small',`${file.archive} · 항목 ${file.ordinal}`);
       row.append(button,info,source);
       if(clip?.secondary&&clip.secondary!==clip.name)row.append(element('small',clip.secondary));
+      if(clip?.name_sources?.length){
+        const details=element('details'),summary=element('summary','인게임 명칭 출처');details.append(summary);
+        for(const source of clip.name_sources)details.append(element('small',`${source.label} · ${source.skill_id} → ${source.state} · ${source.state_table} · ${source.string_table}: ${source.string_key}`));
+        row.append(details);
+      }
       if(file.error)row.append(element('p',file.error));
       if(file.skeleton_name)row.append(element('small','선택 시 전용 뼈 연결: '+file.skeleton_name));
       $('motion-results').append(row);

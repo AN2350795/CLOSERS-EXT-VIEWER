@@ -18,6 +18,7 @@ let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDi
 let renderer,scene,camera,boneHelper,stage;
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
+function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
 let noticeTimer;
 function closeNotice(){clearTimeout(noticeTimer);$('model-status').classList.remove('is-notice');$('model-status').querySelector('.notice-close')?.remove();}
 function status(text,notice=false){
@@ -125,7 +126,7 @@ async function connectAnimation(id){
   const generation=state.generation,version=++animationVersion,skeleton=state.data.skeleton_source,started=performance.now(),timings=state.timings;
   const current=()=>state.generation===generation&&animationVersion===version;
   stop();clipVersion++;if(state.model)restorePose(state.model,state.data);state.clip=null;state.animation=null;state.time=0;updateTime();$('animation-clip').replaceChildren(element('option','연결 확인 중…'));
-  try{const data=await api('/api/model-animations?skeleton='+skeleton.entry_id+'&animation='+id);if(!current())return;if(data.skeleton_source.sha256!==skeleton.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.animation={...data,id};$('animation-clip').title=data.animation_source.name;$('animation-choice').querySelector('p').textContent='현재 동작 파일: '+data.animation_source.name;$('animation-clip').replaceChildren(element('option','동작을 선택하세요'));$('animation-clip').firstChild.value='';for(const clip of data.clips){const option=element('option',clip.name+' · '+clip.duration.toFixed(2)+'초');option.value=clip.index;$('animation-clip').append(option);}$('animation-verification').textContent=`${data.mapping.verified_bones}개 뼈 · 기본 자세 ${data.mapping.verified_keys}개 키 대조 · 최대 오차 ${data.mapping.maximum_error.toExponential(2)}. 게임 셰이더·효과와 화면 일치 검증은 별도입니다.`;}
+  try{const data=await api('/api/model-animations?skeleton='+skeleton.entry_id+'&animation='+id);if(!current())return;if(data.skeleton_source.sha256!==skeleton.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.animation={...data,id};$('animation-clip').title=data.animation_source.name;$('animation-choice').querySelector('p').textContent='현재 동작 파일: '+data.animation_source.name;$('animation-clip').replaceChildren(element('option','동작을 선택하세요'));$('animation-clip').firstChild.value='';for(const clip of data.clips){const option=element('option',clipLabel(clip)+' · '+clip.duration.toFixed(2)+'초');option.value=clip.index;$('animation-clip').append(option);}$('animation-verification').textContent=`${data.mapping.verified_bones}개 뼈 · 기본 자세 ${data.mapping.verified_keys}개 키 대조 · 최대 오차 ${data.mapping.maximum_error.toExponential(2)}. 게임 셰이더·효과와 화면 일치 검증은 별도입니다.`;}
   catch(e){if(!current())return;$('animation-clip').replaceChildren(element('option','동작 연결 검증 실패'));$('animation-verification').textContent=e.message;throw e;}
   finally{if(current()){timings.animationMs=performance.now()-started;setBusy(state.busy);}}
 }
@@ -168,7 +169,7 @@ async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntrie
 async function chooseClip(index){
   const generation=state.generation,version=++clipVersion;
   stop();state.clip=null;state.time=0;updateTime();const a=state.animation;
-  const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clip.clip.name);
+  const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clipLabel(clip.clip));
 }
 const motions=setupMotions({state,api,operation,connectAnimation,chooseClip,loadModel,element});
 const {search}=setupPicker({state,api,operation,loadModel,applyEye,element,previews:setupPreviews({api})});
