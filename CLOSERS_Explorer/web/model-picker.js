@@ -4,7 +4,7 @@ import {characters,slots,partLabels,replacePart} from './avatar-navigation.js';
 export function setupPicker({state,api,operation,loadModel,applyEye,element,previews}){
   const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant','costume_type'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
-  let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1,cardSerial=0;
+  let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1,cardSerial=0,searchController;
   const memory=pickerMemory();
   const settings=memory.data.settings;
   titles.push('\uBAA8\uB4E0 \uC544\uC774\uD15C \uD0C0\uC785');
@@ -163,6 +163,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
   }
   async function search(){
     const serial=++request;
+    searchController?.abort();searchController=new AbortController();previews?.reset();
     const p=filters(),mode=$('model-mode').value;
     const chosen=$('model-character').value;
     const browsing=!!chosen||mode==='files';
@@ -178,7 +179,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
     if(mode==='parts')p.set('variant','BASE');
     p.set('mode',mode);$('picker-status').textContent='목록 불러오는 중…';$('model-results').setAttribute('aria-busy','true');
     let data;
-    try{data=await api((mode==='eyes'?'/api/model-eyes?':'/api/model-browser?')+p);}catch(e){if(serial===request){state.page=displayedPage;updateNavigation();$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
+    try{data=await api((mode==='eyes'?'/api/model-eyes?':'/api/model-browser?')+p,searchController.signal);}catch(e){if(serial===request){state.page=displayedPage;updateNavigation();$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
     if(serial!==request)return;
     total=data.total;
     const pages=Math.max(1,Math.ceil(total/Number(p.get('limit'))));

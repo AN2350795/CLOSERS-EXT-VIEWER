@@ -1,11 +1,12 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel} from './model-core.js';
 
-// One offscreen renderer, one job at a time, and a bounded page-lifetime cache.
+// Four visible image jobs at a time. HTTP revalidation owns source freshness;
+// decoded images belong to the current DOM, with no retained page-lifetime copies.
 // A preview never changes the main viewer or makes an ambiguous source choice.
 export function setupPreviews({api}){
-  let renderer,running=false,stopped=false;
-  const queue=[],cache=new Map();
+  let renderer,running=0,stopped=false,generation=0;
+  const queue=[],active=new Set();
   const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);queue.push(entry.target);pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
   function placeholder(target,mode,missing=false){
     const shape=mode==='eyes'?'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>':mode==='accessories'?'<path d="m12 3 3 6 6 3-6 3-3 6-3-6-6-3 6-3Z"/>':'<path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8"/>';
@@ -13,16 +14,27 @@ export function setupPreviews({api}){
     target.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" aria-hidden="true">'+shape+'</svg>';
     if(missing){const caption=document.createElement('span');caption.className='preview-caption';caption.textContent='아이콘 없음';target.append(caption);}
   }
-  async function render(item,mode,saved){
+  async function image(src,signal){
+    const img=new Image();
+    let abort,timer;
+    const cancelled=new Promise((_,reject)=>{
+      abort=()=>{img.removeAttribute('src');reject(new DOMException('미리보기 요청 취소','AbortError'));};
+      signal.addEventListener('abort',abort,{once:true});
+      timer=setTimeout(abort,15000);
+    });
+    try{img.src=src;await Promise.race([img.decode(),cancelled]);return img;}
+    finally{clearTimeout(timer);signal.removeEventListener('abort',abort);}
+  }
+  async function render(item,mode,saved,signal){
     if(item.preview_entry){
       const token=document.querySelector('meta[name="explorer-token"]').content;
       const src='/api/media/'+item.preview_entry+'?'+new URLSearchParams({token});
-      try{const image=new Image();image.src=src;await image.decode();return src;}catch{return null;}
+      try{return await image(src,signal);}catch(e){if(signal.aborted)throw e;return null;}
     }
     if(item.item_icon?.sha256){
       const token=document.querySelector('meta[name="explorer-token"]').content;
       const src='/api/model-icon/'+encodeURIComponent(item.item_icon.sha256)+'?'+new URLSearchParams({token});
-      try{const image=new Image();image.src=src;await image.decode();return src;}catch{/* 아이콘을 불러오지 못하면 빈 상태를 표시합니다. */}
+      try{return await image(src,signal);}catch(e){if(signal.aborted)throw e;/* 아이콘을 불러오지 못하면 빈 상태를 표시합니다. */}
     }
     // 목록 로딩 비용을 줄이기 위해 아이콘이 없을 때의 3D 미리보기 생성을 사용하지 않습니다.
     // 나중에 다시 사용할 수 있도록 구현을 보존합니다. 재활성화 시 아래 호출을 복원하세요.
@@ -69,21 +81,25 @@ export function setupPreviews({api}){
       return renderer.domElement.toDataURL('image/png');
     }finally{model.dispose();textures.forEach(t=>t.dispose());renderer?.renderLists.dispose();}
   }
-  async function pump(){
-    if(running||stopped)return;running=true;
-    try{while(queue.length&&!stopped){
-      const target=queue.shift();if(!target.isConnected)continue;
+  function pump(){
+    while(queue.length&&running<4&&!stopped){
+      const target=queue.shift();if(!target.isConnected||target.preview.generation!==generation)continue;
+      running++;const controller=new AbortController();active.add(controller);
+      const current=()=>!controller.signal.aborted&&target.isConnected&&target.preview.generation===generation;
       const {item,mode,saved}=target.preview;
-      const key=JSON.stringify([mode,item.key||item.appearance_key||item.id,saved,item.preview_entry,item.item_icon?.sha256]);
+      void (async()=>{
       try{
-        let src=cache.get(key);if(!cache.has(key)){src=await render(item,mode,saved);cache.set(key,src);if(cache.size>80)cache.delete(cache.keys().next().value);}
-        if(!src){if(target.isConnected){placeholder(target,mode,true);target.title='표시할 아이템 아이콘이 없습니다.';}continue;}
-        if(target.isConnected){const icon=src.startsWith('/api/model-icon/')||item.preview_kind==='icon',img=document.createElement('img');img.src=src;img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.remove('is-placeholder');target.removeAttribute('role');target.removeAttribute('aria-label');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon?.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);}
-      }catch(e){if(target.isConnected){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
-    }}finally{running=false;}
+        const img=await render(item,mode,saved,controller.signal);
+        if(!current())return;
+        if(!img){placeholder(target,mode,true);target.title='표시할 아이템 아이콘이 없습니다.';return;}
+        const icon=img.src.includes('/api/model-icon/')||item.preview_kind==='icon';img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.remove('is-placeholder');target.removeAttribute('role');target.removeAttribute('aria-label');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon?.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);
+      }catch(e){if(current()){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
+      finally{active.delete(controller);running--;pump();}
+      })();
+    }
   }
-  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';placeholder(target,mode);target.title='인게임 아이템 아이콘';target.preview={item,mode,saved};row.prepend(target);observer.observe(target);}
-  function reset(){observer.disconnect();queue.length=0;}
-  window.addEventListener('pagehide',()=>{stopped=true;reset();cache.clear();renderer?.dispose();});
+  function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';placeholder(target,mode);target.title='인게임 아이템 아이콘';target.preview={item,mode,saved,generation};row.prepend(target);observer.observe(target);}
+  function reset(){generation++;observer.disconnect();queue.length=0;for(const controller of active)controller.abort();}
+  window.addEventListener('pagehide',()=>{stopped=true;reset();renderer?.dispose();});
   return {attach,reset};
 }
