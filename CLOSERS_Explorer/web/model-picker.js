@@ -283,6 +283,7 @@ export function setupViewerLayout(){
     const button=$(buttonId);
     button.setAttribute('aria-expanded',String(visible));
     button.setAttribute('aria-label',label+(visible?' 접기':' 펼치기'));
+    button.title=label+(visible?' 접기':' 펼치기');
     button.textContent=visible?'접기':'펼치기';
     updateCollapsedRow();
   }

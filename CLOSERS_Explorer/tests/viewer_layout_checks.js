@@ -38,6 +38,8 @@ window.checkViewerLayout=async()=>{
     const wardrobeWidth=rect('#viewport').width;
     $('toggle-wardrobe').click();await frame();
     check(!$('model-results').checkVisibility()&&$('toggle-wardrobe').checkVisibility(),'collapsed wardrobe keeps its toggle');
+    check(getComputedStyle($('toggle-wardrobe')).writingMode==='horizontal-tb'&&getComputedStyle($('toggle-wardrobe')).fontSize==='0px','collapsed desktop uses an arrow without vertical text');
+    check($('toggle-wardrobe').title===$('toggle-wardrobe').getAttribute('aria-label'),'arrow has a named tooltip and accessible label');
     check(rect('#viewport').width>wardrobeWidth,'wardrobe collapse widens viewer');
     if(!$('equipment-panel').classList.contains('is-collapsed'))$('toggle-model-info').click();await frame();
     check($('wardrobe-panel').classList.contains('is-collapsed')&&$('equipment-panel').classList.contains('is-collapsed'),'both panels collapse independently');
