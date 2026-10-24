@@ -19,7 +19,16 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
   // Every ordinary visit starts with an explicit character choice.
   $('model-character').value='';state.page=1;displayedPage=1;
   if($('model-mode').value==='files')$('model-mode').value='sets';
-  function renderParts(){const mode=$('model-mode').value,target=$('part-tabs');target.replaceChildren();target.hidden=mode!=='parts';if(mode!=='parts')return;for(const [value,label] of Object.entries({'':'전체 부위',...slots})){const b=element('button',label);b.type='button';b.disabled=!!value&&!Array.from($('model-part').options).some(o=>o.value===value);b.setAttribute('aria-pressed',String($('model-part').value===value));b.onclick=()=>{$('model-part').value=value;reset();};target.append(b);}}
+  const partFilter=$('model-part').parentElement,partFilterPosition=document.createComment('part filter position');
+  partFilter.before(partFilterPosition);
+  function renderParts(){
+    const inline=$('model-mode').value==='parts';
+    partFilter.classList.toggle('inline-part-control',inline);
+    partFilter.hidden=inline&&!$('model-character').value;
+    const tools=document.querySelector('.picker-tools');
+    if(inline){if(partFilter.parentElement!==tools)tools.prepend(partFilter);}
+    else if(partFilter.previousSibling!==partFilterPosition)partFilterPosition.after(partFilter);
+  }
   $('basic-avatar').onclick=()=>operation(()=>showBundle($('model-character').value+'|BASIC'));
   $('source-browser').onclick=()=>{$('picker-options').close();for(const key of keys)$('model-'+key).value='';$('model-mode').value='files';$('model-saved').value='';reset();};
   $('model-advanced').open=settings.advanced===true;
@@ -303,7 +312,7 @@ export function setupViewerLayout(){
   const filters=document.createElement('div');
   filters.className='mobile-picker-filters';
   $('model-advanced').before(filters);
-  const relocated=[$('part-tabs'),$('model-sort'),document.querySelector('.filter-summary')].map(node=>{
+  const relocated=[document.querySelector('.filter-summary')].map(node=>{
     const position=document.createComment((node.id||node.className)+' position');
     node.before(position);
     return {node,position};

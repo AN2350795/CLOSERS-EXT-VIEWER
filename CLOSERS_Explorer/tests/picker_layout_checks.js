@@ -2,7 +2,8 @@ import {setupPicker} from '/model-picker.js';
 const $=id=>document.getElementById(id),state={page:1,ids:[],busy:false};
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const check=(v,message)=>{if(!v)throw Error(message);};
-const api=async url=>({total:20,items:url.includes('/api/model-eyes')?[{key:'STRIKER:basic',label:'이세하 기본 눈동자',character:'STRIKER',basic:true,available:true,face_id:1,face_candidates:[{id:1,name:'FACE.X',archive:'fixture',ordinal:0}],texture_candidates:[]}]:Array.from({length:20},(_,i)=>({id:i+1,name:'Avatar '+i,display_name:'이세하 긴 이름의 아바타 헤어 [SP타입]',costume_type:'SP',label:'Outfit '+i,key:'STRIKER|BASIC',character:'STRIKER',archive:'fixture',parts:['HAIR'],count:1})),facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,k==='part'?[{value:'HAIR',label:'헤어',count:20}]:[]]))});
+const requests=[];
+const api=async url=>{requests.push(new URL(url,location.href));return ({total:20,items:url.includes('/api/model-eyes')?[{key:'STRIKER:basic',label:'이세하 기본 눈동자',character:'STRIKER',basic:true,available:true,face_id:1,face_candidates:[{id:1,name:'FACE.X',archive:'fixture',ordinal:0}],texture_candidates:[]}]:Array.from({length:20},(_,i)=>({id:i+1,name:'Avatar '+i,display_name:'이세하 긴 이름의 아바타 헤어 [SP타입]',costume_type:'SP',label:'Outfit '+i,key:'STRIKER|BASIC',character:'STRIKER',archive:'fixture',parts:['HAIR'],count:1})),facets:Object.fromEntries(['character','kind','family','part','variant'].map(k=>[k,k==='part'?[{value:'HAIR',label:'헤어',count:20}]:[]]))});};
 const picker=setupPicker({state,api,element,operation:async fn=>fn(),loadModel:async()=>{}});
 window.checkPickerLayout=async()=>{
  const rect=()=>$('model-results').getBoundingClientRect();
@@ -11,16 +12,19 @@ window.checkPickerLayout=async()=>{
  const fixed=message=>check(Math.abs(rect().top-top)<1&&Math.abs(rect().height-height)<1,message);
  for(const mode of ['parts','accessories','eyes','sets']){
   $('model-mode').value=mode;await picker.search();fixed('list moved after '+mode);
+  const modeBounds=$('wardrobe-tabs').getBoundingClientRect(),toolsBounds=document.querySelector('.picker-tools').getBoundingClientRect();
+  check(toolsBounds.top-modeBounds.bottom<=8,'no reserved blank row between mode and tools');
+  check(document.querySelector('.picker-tools').contains($('model-sort')),'sort remains directly available');
+  if(mode!=='parts')check(!document.querySelector('.picker-tools').contains($('model-part')),'other modes give toolbar space back to sorting');
   if(mode==='parts'){
-   const mobileFilters=innerWidth<=900;
-   if(mobileFilters)$('open-picker-options').click();
-   const tabs=$('part-tabs'),bounds=tabs.getBoundingClientRect(),header=(mobileFilters?$('picker-options'):document.querySelector('.picker-top')).getBoundingClientRect();
-   check(tabs.children.length===8,'all part filters exist');
-   check(tabs.scrollWidth<=tabs.clientWidth+1&&tabs.scrollHeight<=tabs.clientHeight+1,'part filters require scrolling');
-   for(const button of tabs.children){const b=button.getBoundingClientRect();check(button.checkVisibility()&&b.left>=bounds.left-1&&b.right<=bounds.right+1&&b.top>=bounds.top-1&&b.bottom<=bounds.bottom+1&&b.bottom<=header.bottom,'part filter button is clipped: '+button.textContent);}
-   [...tabs.children].find(b=>b.textContent==='헤어').click();await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
-   check([...tabs.children].find(b=>b.textContent==='헤어').getAttribute('aria-pressed')==='true','part selection is applied');
-   if(mobileFilters)$('close-picker-options').click();
+   const part=$('model-part'),sort=$('model-sort'),tools=document.querySelector('.picker-tools');
+   check(part.checkVisibility()&&tools.contains(part)&&tools.contains(sort),'part and sort controls share the toolbar');
+   const bounds=tools.getBoundingClientRect();
+   for(const control of [part,sort,$('open-picker-options')]){const b=control.getBoundingClientRect();check(b.left>=bounds.left&&b.right<=bounds.right+1&&Math.abs(b.top-bounds.top)<1,'toolbar controls fit on one row');}
+   check([...part.options].some(o=>o.value==='HAIR'),'available parts exist');
+   part.value='HAIR';part.dispatchEvent(new Event('change'));await new Promise(requestAnimationFrame);fixed('selecting a part moves list');
+   check(part.value==='HAIR','part selection is retained');
+   check(requests.at(-1).searchParams.get('part')==='HAIR','inline selection reaches the search API');
   }
   {
    const row=$('model-results').firstElementChild,name=row.querySelector('.model-open').getBoundingClientRect(),date=row.querySelector('.model-source-date').getBoundingClientRect(),actions=row.querySelector('.actions').getBoundingClientRect(),bounds=row.getBoundingClientRect();
