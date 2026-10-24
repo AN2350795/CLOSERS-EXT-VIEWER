@@ -1,3 +1,5 @@
+import {setupViewerLayout} from '/model-picker.js';
+setupViewerLayout();
 const $=id=>document.getElementById(id);
 const check=(value,message)=>{if(!value)throw Error(message+' at '+innerWidth+'×'+innerHeight);};
 const frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));

@@ -44,7 +44,10 @@ class PickerBrowserTests(unittest.TestCase):
                 self.send_response(200);self.send_header('Content-Type','image/webp');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
 
             def do_GET(self):
-                if self.path.startswith('/api/model-icon/'+'a'*64) or self.path.split('?')[0] in extra_images:
+                if self.path.split('?')[0]=='/model-layout.js':
+                    # Existing servers have a fixed asset allowlist from before UI updates.
+                    self.send_error(404)
+                elif self.path.startswith('/api/model-icon/'+'a'*64) or self.path.split('?')[0] in extra_images:
                     from test_composition import png
                     data=png(4,4,lambda x,y:(0,200,0,255))
                     self.send_response(200)
@@ -58,10 +61,13 @@ class PickerBrowserTests(unittest.TestCase):
                 elif self.path == '/checks':
                     html = (web / page_file).read_text(encoding='utf-8')
                     html = html.replace(entry_script,
-                        '<script type="module">' + script + '</script>')
+                        '<script type="module" nonce="explorer-test">' + script + '</script>')
                     data = html.encode('utf-8')
                     self.send_response(200)
                     self.send_header('Content-Type', 'text/html; charset=utf-8')
+                    # Allow only our injected checks inline; application code follows
+                    # the production policy that requires external script modules.
+                    self.send_header('Content-Security-Policy', "script-src 'self' 'nonce-explorer-test'")
                     self.send_header('Content-Length', str(len(data)))
                     self.end_headers()
                     self.wfile.write(data)
