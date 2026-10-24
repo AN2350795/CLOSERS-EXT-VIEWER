@@ -111,7 +111,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
     bundle=result;
     const name=bundleName(bundle.label,key);
     recent({key,label:name,character:bundle.character},'sets');
-    const panel=$('avatar-bundle');panel.hidden=false;const heading=element('div');heading.className='bundle-heading';const close=element('button','닫기');close.className='secondary';close.onclick=()=>{panel.hidden=true;};const headingTitle=element('h3',name);typeBadges(headingTitle,types);heading.append(headingTitle,close);panel.replaceChildren(heading);
+    const panel=$('avatar-bundle');panel.hidden=false;const heading=element('div');heading.className='bundle-heading';const close=element('button','닫기');close.className='secondary';close.onclick=()=>{panel.hidden=true;document.dispatchEvent(new Event('model-reveal-wardrobe'));};const headingTitle=element('h3',name);typeBadges(headingTitle,types);heading.append(headingTitle,close);panel.replaceChildren(heading);
     const metadata=element('details');metadata.className='bundle-metadata';metadata.append(element('summary','묶음 상세'));
     if(types.length)metadata.append(element('p','타입 · '+types.map(t=>t+'타입').join(', ')));
     metadata.append(element('p','세트 코드 · '+key.split('|').slice(1).join('|')),element('p',bundle.evidence));panel.append(metadata);
@@ -163,7 +163,47 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
       fillStatus.textContent=(added?'기본 아바타 '+added+'개 부위를 구성에 추가했습니다. 묶음 열기 또는 현재 모델에 적용을 눌러 반영하세요.':'추가할 기본 부위가 없습니다.')+(unavailable.length?' 기본 파일을 찾지 못한 부위: '+unavailable.join(', ')+'.':'')+(ambiguous.length?' 출처를 선택하세요: '+ambiguous.join(', ')+'.':'');
     };
     panel.append(fill,fillStatus);
-    const open=element('button','묶음 열기'),add=element('button','현재 모델에 적용');open.title='현재 모델을 이 의상으로 교체';add.title='같은 캐릭터의 선택한 부위만 교체';add.className='secondary';open.onclick=()=>operation(()=>equip(rows,motion,false));add.onclick=()=>operation(()=>equip(rows,motion,true));panel.append(open,add);panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+    const errors=new Map();let errorSerial=0;
+    function clearError(control){
+      const error=errors.get(control);if(!error)return;
+      error.note.remove();control.classList.remove('needs-selection');control.removeAttribute('aria-invalid');
+      if(error.description===null)control.removeAttribute('aria-describedby');else control.setAttribute('aria-describedby',error.description);
+      errors.delete(control);
+    }
+    function markRequired(control,message){
+      const note=element('p',message),description=control.getAttribute('aria-describedby');
+      note.id='bundle-selection-error-'+(++errorSerial);note.className='bundle-selection-error';
+      control.classList.add('needs-selection');control.setAttribute('aria-invalid','true');
+      control.setAttribute('aria-describedby',[description,note.id].filter(Boolean).join(' '));
+      (control.type==='checkbox'?control.closest('label'):control).after(note);
+      errors.set(control,{note,description});
+    }
+    slotsPanel.addEventListener('change',()=>{
+      for(const [control] of errors){
+        const row=rows.find(r=>r.select===control||r.components.some(c=>c.select===control));
+        if(!panel.contains(control)||(control.type==='checkbox'?rows.some(r=>r.check.checked):control.value||row&&!row.check.checked))clearError(control);
+      }
+    });
+    function validateSelection(){
+      for(const [control] of errors)clearError(control);
+      const selected=rows.filter(r=>r.check.checked);
+      if(!selected.length)markRequired(rows[0].check,'열 부위를 하나 이상 선택해 주세요.');
+      for(const row of selected){
+        for(const item of [row,...row.components]){
+          if(item.select.value)continue;
+          const available=item.select.options.length>1;
+          markRequired(item.select,available?item.label+': 사용할 모델을 선택해 주세요.':item.label+': 선택할 모델이 없습니다. 이 부위를 제외하거나 원본을 확인해 주세요.');
+        }
+      }
+      if(!errors.size)return true;
+      document.dispatchEvent(new Event('model-reveal-equipment'));
+      const first=errors.keys().next().value;
+      for(let parent=first.parentElement;parent&&parent!==panel;parent=parent.parentElement){if(parent.tagName==='DETAILS')parent.open=true;}
+      first.focus({preventScroll:true});
+      first.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
+      return false;
+    }
+    const open=element('button','묶음 열기'),add=element('button','현재 모델에 적용');open.title='현재 모델을 이 의상으로 교체';add.title='같은 캐릭터의 선택한 부위만 교체';add.className='secondary';open.onclick=()=>{if(validateSelection())return operation(()=>equip(rows,motion,false));};add.onclick=()=>{if(validateSelection())return operation(()=>equip(rows,motion,true));};panel.append(open,add);document.dispatchEvent(new Event('model-reveal-equipment'));panel.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
   async function search(){
     const serial=++request;
@@ -271,6 +311,8 @@ export function setupViewerLayout(){
   }
   $('show-wardrobe').onclick=()=>selectPanel(false);
   $('show-equipment').onclick=()=>selectPanel(true);
+  document.addEventListener('model-reveal-equipment',()=>{setEquipmentVisible(true);selectPanel(true);});
+  document.addEventListener('model-reveal-wardrobe',()=>selectPanel(false));
   $('open-view-settings').onclick=()=>$('view-settings').showModal();
   $('close-view-settings').onclick=()=>$('view-settings').close();
 
