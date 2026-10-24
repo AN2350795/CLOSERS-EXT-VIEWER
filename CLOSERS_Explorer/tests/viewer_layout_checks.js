@@ -12,6 +12,15 @@ window.checkViewerLayout=async()=>{
   check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');
   check(document.documentElement.scrollHeight<=innerHeight+1,'page stays within screen');
   const original={x:viewport.x,y:viewport.y,width:viewport.width,height:viewport.height};
+  check(document.querySelectorAll('.viewport-actions button').length===2,'toolbar contains only display settings');
+  check($('viewport').contains($('reset-camera'))&&$('viewport').contains($('expand-viewer')),'camera and expansion belong to the scene');
+  check(document.querySelector('.animation-controls').contains($('bind-pose')),'bind pose belongs to animation controls');
+  check($('equipment-panel').contains($('clear-model')),'clear belongs to equipment panel');
+  for(const id of ['reset-camera','expand-viewer']){
+    const bounds=rect('#'+id);
+    check(bounds.left>=viewport.left&&bounds.right<=viewport.right&&bounds.top>=viewport.top&&bounds.bottom<=viewport.bottom,'scene icon fits: '+id);
+    check($(id).title===$(id).getAttribute('aria-label'),'scene icon has a named tooltip: '+id);
+  }
   $('open-view-settings').click();
   check($('view-settings').open,'settings opens');
   $('show-bones').checked=true;
@@ -71,6 +80,7 @@ window.checkViewerLayout=async()=>{
   const canvas=$('model-canvas');
   $('expand-viewer').click();await frame();
   check($('viewer-dialog').open&&$('viewer-dialog').contains(canvas),'expand keeps canvas');
+  check($('expand-viewer').getAttribute('aria-expanded')==='true'&&$('expand-viewer').querySelector('svg'),'expanded state keeps icon and updates accessibility');
   check(rect('#viewport').width>=original.width&&rect('#viewport').height>original.height,'expanded scene grows');
   $('open-view-settings').click();check($('view-settings').open,'settings works in expanded viewer');
   $('close-view-settings').click();
@@ -79,6 +89,7 @@ window.checkViewerLayout=async()=>{
   $('viewer-dialog').close();await frame();
   check(document.querySelector('.model-layout').contains(canvas),'close restores canvas');
   check(document.activeElement===$('expand-viewer'),'close restores focus');
+  check($('expand-viewer').getAttribute('aria-expanded')==='false','close resets expansion state');
   for(const button of document.querySelectorAll('.viewport-actions button,.animation-controls button')){
     if(!button.checkVisibility())continue;
     const bounds=button.getBoundingClientRect();

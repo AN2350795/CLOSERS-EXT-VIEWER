@@ -336,16 +336,21 @@ export function setupViewerLayout(){
   const panel=document.querySelector('.viewport-panel'),dialog=$('viewer-dialog');
   const anchor=document.createComment('viewer position');
   panel.before(anchor);
+  function updateExpandButton(expanded){
+    const button=$('expand-viewer'),label=expanded?'원래 크기':'크게 보기';
+    button.setAttribute('aria-expanded',String(expanded));
+    button.setAttribute('aria-label',label);button.title=label;
+  }
   $('expand-viewer').onclick=()=>{
     if(dialog.open){dialog.close();return;}
     dialog.append(panel);
-    $('expand-viewer').textContent='원래 크기';
+    updateExpandButton(true);
     dialog.showModal();
     $('expand-viewer').focus();
   };
   dialog.addEventListener('close',()=>{
     anchor.after(panel);
-    $('expand-viewer').textContent='크게 보기';
+    updateExpandButton(false);
     $('expand-viewer').focus();
   });
 }
