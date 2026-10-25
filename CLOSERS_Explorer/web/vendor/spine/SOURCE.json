@@ -1,0 +1,14 @@
+[
+  {
+    "package": "@esotericsoftware/spine-threejs",
+    "version": "4.2.120",
+    "url": "https://registry.npmjs.org/@esotericsoftware/spine-threejs/-/spine-threejs-4.2.120.tgz",
+    "integrity": "sha512-Bsz6KmMCK0A5D0uPMP5eXPGReQwTHu/JcENj32PM1oEKjwk5X6W2ETfOleA7aRYHgyPjX5GCmjnDvfzNBoy23g=="
+  },
+  {
+    "package": "@esotericsoftware/spine-core",
+    "version": "4.2.120",
+    "url": "https://registry.npmjs.org/@esotericsoftware/spine-core/-/spine-core-4.2.120.tgz",
+    "integrity": "sha512-X62MPnfiZTWok4Wk5Q5DqaAUBUFypKpb94IVd1W/j4eLHhg0HH3tve4HvIlkgxDpls2NokHaAtzjxX12rJknOA=="
+  }
+]

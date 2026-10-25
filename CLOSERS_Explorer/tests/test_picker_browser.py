@@ -17,6 +17,7 @@ class PickerBrowserTests(unittest.TestCase):
     extra_images = ('/api/media/71','/api/media/72')
     animation_export = False
     responsive_checks = False
+    script_prefix = ''
 
     def test_picker(self):
         browser = next((p for p in [shutil.which('chromium'), shutil.which('google-chrome'),
@@ -28,7 +29,7 @@ class PickerBrowserTests(unittest.TestCase):
         if not node:
             self.skipTest('Node.js 22+ unavailable')
         web = Path(__file__).resolve().parents[1] / 'web'
-        script = (Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
+        script = self.script_prefix+(Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
         page_file, entry_script, extra_images = self.page_file, self.entry_script, self.extra_images
         animation_export = self.animation_export
 

@@ -89,7 +89,7 @@ def particle_rule(row,texanims=None):
     rule=tracks(values(row.get('m_vecEventList')))
     kind=row.get('m_ParticleType','PCT_3D_PLANE')
     model=row.get('m_MeshName')
-    models=[model] if isinstance(model,str) and model.upper().endswith('.X') else []
+    models=[model] if isinstance(model,str) and model.upper().endswith(('.X','.FBX')) else []
     texture=rule.get('texture') or row.get('m_TexName')
     frames=[]
     if rule.get('texanim'):
@@ -101,13 +101,17 @@ def particle_rule(row,texanims=None):
                     frames.append(dict(name=frame['m_TexName'],duration=duration if type(duration) in (int,float) and duration>0 else .033333))
         if not frames:rule['warnings'].append('텍스처 애니메이션 정의가 없어 기본 텍스처로 표시합니다.')
     if not frames and isinstance(texture,str):frames=[dict(name=texture,duration=1)]
-    if rule.get('spine'):raise ValueError('Spine 전용 연출입니다. SKEL·ATLAS 원본은 있으나 현재 렌더러에서 재생하지 못합니다.')
-    if kind=='PCT_MESH' and not models:raise ValueError('현재 X 형식만 표시하는 메시 파티클입니다: '+str(model or '원본 미지정'))
-    if kind!='PCT_MESH' and not frames:raise ValueError('평면 파티클의 텍스처 연결이 없습니다.')
+    if kind=='PCT_MESH' and not models:raise ValueError('메시 파티클의 원본 연결을 확인할 수 없습니다: '+str(model or '원본 미지정'))
+    if kind!='PCT_MESH' and not frames and not rule.get('spine'):raise ValueError('평면 파티클의 텍스처 연결이 없습니다.')
+    uv_offsets=[]
+    for entry in values(row.get('m_mapUVOffset')):
+        if isinstance(entry,dict) and isinstance(entry.get('m_TexName'),str):
+            uv_offsets.append(dict(name=entry['m_TexName'],offset=vec(entry.get('m_Offset'),2)))
+    if not frames and uv_offsets:frames=[dict(name=uv_offsets[0]['name'],duration=1)]
     maximum=span(row.get('m_iMaxParticleNum',1));maximum=sum(maximum)/2 if isinstance(maximum,list) else maximum
     life=span(row.get('m_LifeTime',1))
     if min(life if isinstance(life,list) else [life])<=0:life=1;rule['warnings'].append('0 이하의 입자 수명을 1초로 미리보기합니다.')
-    rule.update(type=kind,models=models,frames=frames,life=life,max_particles=min(256,max(1,int(maximum))),
+    rule.update(type=kind,models=models,frames=frames,uv_offsets=uv_offsets,life=life,max_particles=min(256,max(1,int(maximum))),
                 rate=span(row.get('m_EmitRate',0)),instant=span(row.get('m_EmitRateInstant',0)),
                 emitter_life=span(row.get('m_DieTime',100000)),deaths=span(row.get('m_DieCount',0)),
                 radius=vec(row.get('m_EmitRadius')),radius_min=vec(row.get('m_EmitRadiusMin')),

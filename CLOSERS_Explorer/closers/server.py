@@ -20,6 +20,7 @@ from .library import PreservationLinks, saved_file
 from .issues import issue
 
 STATIC = Path(__file__).resolve().parent.parent / 'web'
+EFFECT_MODULES={'/'+p.relative_to(STATIC).as_posix() for root in (STATIC/'vendor/spine',STATIC/'vendor/three/addons') for p in root.rglob('*.js')}
 MEDIA_LIMIT = 64 * 1024 * 1024
 
 
@@ -339,6 +340,12 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / 'model.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
                 elif url.path in ('/avatar-navigation.js', '/resource-dates.js', '/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/particle-effects.js','/animation-png.js','/animation-loop.js','/compose.css','/model.js','/model-core.js','/model-stage.js','/model-motions.js','/model-motion-extras.js','/effect-timeline.js','/particle-model.js','/motion-sequence-player.js','/model-materials.js','/model-texture-cache.js','/face-preview.js','/model-picker.js','/model-memory.js','/model-preview.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
+                elif url.path in EFFECT_MODULES or url.path=='/model-effect-formats.js':
+                    self.respond((STATIC/url.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
+                elif url.path == '/api/model-effect-resource':
+                    self.respond(models.effect_resource(int(query['entry'])))
+                elif url.path == '/api/model-spine-atlas':
+                    self.respond(models.spine_atlas(int(query['entry'])))
                 elif url.path == '/api/model-scene':
                     started=time.perf_counter()
                     ids = [int(v) for v in query.get('entries','').split(',') if v]

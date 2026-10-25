@@ -1,0 +1,8 @@
+{
+  "version": "r180",
+  "repository": "https://github.com/mrdoob/three.js/tree/r180/examples/jsm",
+  "license": "../LICENSE",
+  "modifications": [
+    "Local relative ES module imports; source maps omitted."
+  ]
+}

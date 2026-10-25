@@ -82,7 +82,7 @@ class Models:
 
     def candidates(self,name,owner):
         values = self.matches(name)
-        local = [v for v in values if v['archive_id']==owner['archive_id']]
+        local = [v for v in values if v['archive_id']==owner.get('archive_id')]
         preferred = local if local else values
         return dict(name=name,candidates=values[:100],selected=preferred[0]['id'] if len(preferred)==1 else None,
                     truncated=len(values)>100)
@@ -360,6 +360,11 @@ class Models:
                 particle=copy.deepcopy(self.catalog.game_names.motion_particles.get((item['particle_name'],'')))
                 if not particle:item.update(status='unavailable',error='파티클 인덱스를 갱신해 주세요.');continue
                 item['particle']=particle
+                if particle.get('spine'):
+                    name=particle['spine']['name']
+                    item['spine_sources']=[self.candidates(name+'.'+ext,{}) for ext in ('SKEL','ATLAS')]
+                    if any(not s['candidates'] for s in item['spine_sources']):
+                        item.update(status='unavailable',error='Spine SKEL 또는 ATLAS 원본이 없습니다.');continue
                 images=[]
                 for frame in particle['frames']:
                     filename=Path(frame['name'].replace('\\','/')).name
@@ -377,3 +382,27 @@ class Models:
             if any(not r['candidates'] for r in resources):item.update(status='unavailable',error='보조 모델 원본이 없습니다.')
             elif any(not r['selected'] for r in resources):item.setdefault('warnings',[]).append('모델 출처를 선택해 주세요.')
         return result
+
+    def effect_resource(self,entry_id):
+        """Only source-verified binary effect assets, never arbitrary disk paths."""
+        import base64
+        with self.operation():
+            row=self.catalog.get(int(entry_id));fmt=row['format']
+            if fmt not in ('fbx','skel'):raise ValueError('FBX 또는 SKEL 연출 원본을 선택해 주세요.')
+            body,_,source=self.read(entry_id,fmt)
+            if fmt=='fbx' and not body.startswith(b'Kaydara FBX Binary  \x00\x1a\x00'):raise ValueError('지원하지 않는 FBX 원본입니다.')
+            return dict(source=source,body=base64.b64encode(body).decode('ascii'))
+
+    def spine_atlas(self,entry_id):
+        with self.operation():
+            body,row,source=self.read(entry_id,'atlas')
+            if len(body)>1024*1024:raise ValueError('Spine ATLAS는 1 MiB까지 지원합니다.')
+            text=body.decode('utf-8-sig');pages=[];new_page=True
+            for line in text.splitlines():
+                name=line.strip()
+                if not name:new_page=True;continue
+                if new_page:
+                    if not name.lower().endswith(('.png','.dds','.tga','.jpg','.jpeg')) or '/' in name or '\\' in name:raise ValueError('ATLAS 이미지 이름이 올바르지 않습니다.')
+                    pages.append(self.candidates(name,row));new_page=False
+            if not pages or len(pages)>32:raise ValueError('Spine ATLAS 이미지 수가 올바르지 않습니다.')
+            return dict(source=source,text=text,images=pages)

@@ -43,7 +43,7 @@ export class ParticleTimeline{
     const p=this.rule,rng=random((p.seed+Math.imul(index+1,2654435761))>>>0),life=Math.max(.001,sample(p.life,rng));
     const radius=vector(p.radius,rng),minimum=Array.isArray(p.radius_min)?vector(p.radius_min,rng):[p.radius_min||0,p.radius_min||0,p.radius_min||0];
     for(let i=0;i<3;i++)if(Math.abs(radius[i])<Math.abs(minimum[i]))radius[i]=Math.sign(radius[i]||1)*Math.abs(minimum[i]);
-    const particle={life,radius,gravity:vector(p.gravity,rng),tracks:createTracks(p.tracks,(p.seed+index*31)>>>0,life)};
+    const particle={life,radius,uv:vector(p.uv_offsets?.[0]?.offset||[0,0],rng),gravity:vector(p.gravity,rng),tracks:createTracks(p.tracks,(p.seed+index*31)>>>0,life)};
     this.cache.set(index,particle);while(this.cache.size>1024)this.cache.delete(this.cache.keys().next().value);return particle;
   }
   at(time){
@@ -66,7 +66,7 @@ export class ParticleTimeline{
       const period=t.value('blinkPeriod',age)[0];if(period>0){const blink=t.value('blinkColor',age),factor=(Math.sin(age/period*Math.PI*2)+1)/2;color=color.map((v,i)=>v+(blink[i]-v)*factor);}
       let frame=0,elapsed=age;const frames=p.frames||[],duration=frames.reduce((n,f)=>n+f.duration,0);
       if(duration>0){elapsed%=duration;for(let i=0;i<frames.length;i++){frame=i;if(elapsed<frames[i].duration)break;elapsed-=frames[i].duration;}}
-      out.push({position,rotation,size:size.map(v=>v*scale),color,dualColor:dual,uv:t.value('uv',age),frame});
+      out.push({position,rotation,size:size.map(v=>v*scale),color,dualColor:dual,uv:t.value('uv',age).map((v,i)=>v+particle.uv[i]),frame});
     }return out;
   }
 }

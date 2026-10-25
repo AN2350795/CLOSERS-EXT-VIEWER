@@ -36,7 +36,12 @@ def tracks(events,mesh=False):
             speed=span(ev.get('VAL',1));speed=sum(speed)/2 if isinstance(speed,list) else speed
             if speed<=0:speed=1;warnings.append('0 이하의 애니메이션 속도는 1×로 미리보기합니다.')
             continue
-        if short=='SPINE':spine=ev.get('STR');continue
+        if short=='SPINE':
+            spine=dict(name=ev.get('STR'),clipping=ev.get('CLIPPING'),position=vec(ev.get('POS')),scale=vec(ev.get('SCALE'),default=1),rotation=vec(ev.get('ROTATE')),events=[])
+            continue
+        if short=='SPINE_ANIM':
+            if spine:spine['events'].append(dict(name=ev.get('STR'),at=span(ev.get(3,0)),speed=span(ev.get('TIME_SCALE',1))))
+            continue
         if short=='TEXTURE':texture=ev.get('STR');continue
         if short=='TEX_ANIM':texanim=ev.get('STR');continue
         if short not in PROPS:

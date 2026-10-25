@@ -19,6 +19,30 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_spine_and_fbx_particle_rules_preserve_settings(self):
+        rule=particle_rule(dict(m_SeqName='SPINE',m_vecEventList={
+            1:{1:'PCET_INITIAL',2:'PCET_SPINE','STR':'SPN_TEST','CLIPPING':'EMOTION','POS':{2:330},'SCALE':{1:.37,2:.37,3:1}},
+            2:{1:'PCET_AT',2:'PCET_SPINE_ANIM',3:.2,'STR':'MIX01','TIME_SCALE':1.5}}))
+        self.assertEqual(rule['spine']['name'],'SPN_TEST');self.assertEqual(rule['spine']['clipping'],'EMOTION')
+        self.assertEqual(rule['spine']['events'],[dict(name='MIX01',at=.2,speed=1.5)])
+        fbx=particle_rule(dict(m_ParticleType='PCT_MESH',m_MeshName='MODEL.FBX',m_mapUVOffset={1:dict(m_TexName='FX.PNG',m_Offset={1:.01,2:1})}))
+        self.assertEqual(fbx['models'],['MODEL.FBX']);self.assertEqual(fbx['frames'][0]['name'],'FX.PNG')
+        self.assertEqual(fbx['uv_offsets'][0]['offset'],[.01,1])
+
+    def test_binary_effect_sources_and_atlas_pages_are_verified(self):
+        import base64
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work')
+            binary=b'Kaydara FBX Binary  \x00\x1a\x00fixture'
+            catalog.scan([fixture(root/'one.cmf',[('FX.FBX',binary,0),('FX.SKEL',b'skel fixture',0),('FX.ATLAS',b'FX.PNG\nsize: 4,4\n\nFX2.PNG\nsize: 4,4\n',0),('FX.PNG',b'fixture',0),('BAD.ATLAS',b'../private.PNG\nsize: 4,4\n',0)])])
+            ids={r['name']:r['id'] for r in catalog.entries({})['items']};models=Models(catalog)
+            result=models.effect_resource(ids['FX.FBX']);self.assertEqual(base64.b64decode(result['body']),binary)
+            self.assertEqual(result['source']['entry_id'],ids['FX.FBX'])
+            atlas=models.spine_atlas(ids['FX.ATLAS']);self.assertEqual(atlas['images'][0]['selected'],ids['FX.PNG'])
+            self.assertIsNone(atlas['images'][1]['selected'])
+            with self.assertRaises(ValueError):models.effect_resource(ids['FX.PNG'])
+            with self.assertRaises(ValueError):models.spine_atlas(ids['BAD.ATLAS'])
+
     def test_empty_prop_override_removes_inherited_model(self):
         rig=layers()
         rig['STRIKER'].append(('override.LUA',{'GAME_UNIT_TEMPLET':{'m_vecAnimAddModelData':{1:dict(m_AnimName='MOVE',m_XFileName='')}}}))

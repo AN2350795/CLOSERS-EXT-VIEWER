@@ -3,8 +3,9 @@ import {buildModel,applyPose} from './model-core.js';
 import {TextureCache} from './model-texture-cache.js';
 import {createTracks,random,vector} from './effect-timeline.js';
 import {createParticleModel,applyBlend} from './particle-model.js';
+import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 
-export function setupMotionExtras({state,api,getScene,getCamera,element}){
+export function setupMotionExtras({state,api,getScene,getCamera,onVisible,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
   button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','motion-extras-dialog');
   document.querySelector('.animation-options').append(button);
@@ -31,7 +32,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
       row.append(element('small',entry.error||entry.loadError||(assets.has(entry.id)?'표시 준비됨':entry.status==='ready'?'선택한 표시 옵션에 따라 적용':'연결 확인 필요')));
       const warnings=[...(entry.warnings||[]),...(entry.loadWarnings||[])];if(warnings.length)row.append(element('small',warnings.join(' ')));
       if(Object.keys(entry.conditions||{}).length)row.append(element('small','조건 · '+JSON.stringify(entry.conditions)));
-      for(const resource of [...(entry.resources||[]),...(entry.images||[])])if(resource.candidates?.length>1){
+      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[])])if(resource.candidates?.length>1){
         const select=element('select');select.setAttribute('aria-label',resource.name+' 출처');select.append(element('option','출처 선택 · '+resource.name));select.firstChild.value='';
         for(const candidate of resource.candidates){const option=element('option',candidate.archive+' · '+candidate.ordinal);option.value=candidate.id;select.append(option);}select.value=resource.selected||'';
         select.onchange=()=>{resource.selected=Number(select.value)||null;void refresh();};row.append(select);
@@ -51,18 +52,27 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
   }
   async function load(entry,resource,current,signal){
     if(resource&&!resource.selected)throw Error('모델 출처를 선택해 주세요: '+resource.name);
-    const data=resource?await api('/api/model-scene?entries='+resource.selected,signal):null;
+    const fbx=resource?.name?.toUpperCase().endsWith('.FBX');
+    const data=resource&&!fbx?await api('/api/model-scene?entries='+resource.selected,signal):null;
     if(current!==version||disposed)throw Error('연출 선택이 변경되었습니다.');
     let model=data?buildModel(data):null;
     const anchor=new THREE.Group(),asset={model,anchor,textureKeys:[],owned:[],extraMeshes:[],begun:false,born:0,packet:entry.packet};
     anchor.visible=false;anchor.matrixAutoUpdate=false;
     try{
+      if(fbx){model=await createFBXModel(await api('/api/model-effect-resource?entry='+resource.selected,signal));asset.model=model;}
       if(model)for(const material of model.materials){
         const info=material.userData.input.image;if(!info)continue;
         const map=await image(info,current,signal,asset,entry);
         if(map){material.map=map;material.color.set(0xffffff);material.needsUpdate=true;}
       }
-      if(entry.kind==='particle'){
+      if(entry.particle?.spine){
+        const [skel,atlas]=entry.spine_sources;
+        if(!skel.selected||!atlas.selected)throw Error('Spine SKEL·ATLAS 출처를 선택해 주세요.');
+        const packet=await api('/api/model-effect-resource?entry='+skel.selected,signal),sheet=await api('/api/model-spine-atlas?entry='+atlas.selected,signal);
+        sheet.images=sheet.images.map(info=>{const previous=entry.images?.find(p=>p.name===info.name);return info.candidates?.some(c=>c.id===previous?.selected)?{...info,selected:previous.selected}:info;});entry.images=sheet.images;
+        const maps=[];for(const info of sheet.images)maps.push(await image(info,current,signal,asset,entry));
+        model=await createSpineModel(entry.particle,packet,sheet,maps);asset.model=model;asset.spine=true;
+      }else if(entry.kind==='particle'){
         const maps=[];
         for(const info of entry.images||[])maps.push(await image(info,current,signal,asset,entry));
         model=createParticleModel(entry.particle,model,maps);asset.model=model;asset.particle=true;
@@ -92,7 +102,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
       asset.gravity=vector(entry.gravity,rng);asset.life=entry.play_count&&asset.clip?asset.clip.clip.duration*entry.play_count/entry.speed:entry.life;
       asset.timeline=createTracks(entry.tracks||[],seed,asset.life);
       if(!entry.tracks?.length)asset.timeline=createTracks([{property:'color',mode:'initial',value:entry.color||[1,1,1,1]},...(entry.fades||[]).map(f=>({property:'color',mode:'fade',value:f.color,start:f.start,end:f.end}))],seed,asset.life);
-      getScene().add(anchor);asset.vertices=(data?data.meshes.reduce((n,m)=>n+m.vertices.length/3,0):4)*(asset.particle?entry.particle.max_particles*Math.max(1,entry.images?.length||0)*(entry.particle.dual?2:1):1);asset.transforms=asset.clip?.keys.reduce((n,k)=>n+k.transforms.length,0)||0;return asset;
+      getScene().add(anchor);asset.vertices=(model.vertices||(data?data.meshes.reduce((n,m)=>n+m.vertices.length/3,0):model.meshes.reduce((n,m)=>n+m.geometry.getAttribute('position').count,0)))*(asset.particle?entry.particle.max_particles*Math.max(1,entry.images?.length||0)*(entry.particle.dual?2:1):1);asset.transforms=asset.clip?.keys.reduce((n,k)=>n+k.transforms.length,0)||0;return asset;
     }catch(e){disposeAsset(asset);throw e;}
   }
   async function refresh(){
@@ -138,7 +148,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
     if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
     if(state.playing){const elapsed=delta*Number($('animation-speed').value);total+=elapsed;if(!changed)stageClock+=elapsed;}
     const wrapped=!changed&&state.time<lastTime-1e-6&&state.playing;lastTime=state.time;
-    const births=new Map();
+    const births=new Map();let frameNeeded=false;
+    const frame=asset=>{if(!asset.framed){asset.framed=true;frameNeeded=true;}};
     for(const entry of entries){
       const active=entry.packet===state.clip,group=assets.get(entry.id)||[];
       const parent=entry.parent_key?births.get(entry.id.split(':')[0]+':'+entry.parent_key):null;
@@ -161,7 +172,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
           asset.anchor.matrix.copy(target.matrixWorld).multiply(local);asset.anchor.matrixWorldNeedsUpdate=true;asset.frozen=true;
         }
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
-        if(asset.particle){asset.model.update(age,getCamera?.(),asset.anchor);continue;}
+        if(asset.spine||asset.particle){asset.model.update(age,getCamera?.(),asset.anchor);if(asset.spine?asset.model.vertices>0:asset.model.meshes.some(m=>m.count>0))frame(asset);continue;}
         const time=age*entry.speed;
         if(asset.clip){const duration=asset.clip.clip.duration;applyPose(asset.model,asset.clip,entry.loop&&duration>0?time%duration:Math.min(time,duration));}
         const timeline=asset.timeline,position=timeline.value('position',age,time),movement=timeline.integral('velocity',age),spin=timeline.integral('rotationSpeed',age);
@@ -175,8 +186,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,element}){
           const rgba=timeline.value(base.dual?'dualColor':'color',age,time),material=base.material;
           material.color.copy(base.color).multiply(new THREE.Color(...rgba.slice(0,3)));material.opacity=base.opacity*rgba[3];
         }
+        frame(asset);
       }
     }
+    if(frameNeeded)onVisible?.();
   }
 
   button.onclick=()=>{render();dialog.showModal();};dialog.querySelector('button').onclick=()=>dialog.close();

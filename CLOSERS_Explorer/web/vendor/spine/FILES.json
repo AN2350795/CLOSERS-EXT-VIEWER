@@ -1,0 +1,257 @@
+[
+  {
+    "file": "core/Animation.js",
+    "upstream_sha256": "23e5a86012167f3563d484d1a9d79540f0553735b542493e04a993466e0d6bff",
+    "sha256": "c0913a58a4b428038462c5d5145f353bb82b9b807ed46af2fc8e6830dd3f4b8f"
+  },
+  {
+    "file": "core/AnimationState.js",
+    "upstream_sha256": "ce82052b9cfe072a2ec5f9ca02f1070c7f1c6c9daa53c804d63e48fb61f74b6e",
+    "sha256": "703363e53c8d2f837cca1fbccfc587ce8c4e88522dac76d01c4a48979a8db839"
+  },
+  {
+    "file": "core/AnimationStateData.js",
+    "upstream_sha256": "1a35ec87bfc4a78db984fff64e78e2a181567df9cd14300a31acde43022a6f19",
+    "sha256": "2005a31786c092487a51965815683f3209396a9d05d5d037e026d08d6c41bc48"
+  },
+  {
+    "file": "core/AssetManagerBase.js",
+    "upstream_sha256": "cc33e1053a69a6970336c96be10e16a9f1a6400a915e357671e98361a09826e9",
+    "sha256": "dde86ac5d8050394a97f94288ee31b54df7dcc7dc3e231737105d5f3dbe0f4a2"
+  },
+  {
+    "file": "core/AtlasAttachmentLoader.js",
+    "upstream_sha256": "b99bf6def3c506f59cc847be4c1f0414c24909a5ea7ddf4b0346f54251bfefc5",
+    "sha256": "8c5ea94042259b54c4dc3143f06fcc9885f632a0a569be399d5cdee156bcb0de"
+  },
+  {
+    "file": "core/Bone.js",
+    "upstream_sha256": "f42d3c94e6fdf3092c510875705b881bf935ab3b870c2e00f2530c25e862f303",
+    "sha256": "3671649c74a522967bae121d046aeb7bbc9bd9767b3b2ac7560724449999625d"
+  },
+  {
+    "file": "core/BoneData.js",
+    "upstream_sha256": "a69b1d73585458063585228bf98ea94a49cbb0c5844d0701485e513f837d3fe0",
+    "sha256": "025b653b6cbae26ea18d14f72481f5c9bc1ca3408267d046ff6f0ba997fedded"
+  },
+  {
+    "file": "core/ConstraintData.js",
+    "upstream_sha256": "1af029f2ca727b2060bfabf7582f0df0445cbb390d9b4a84b3154a5b072a8487",
+    "sha256": "1af8d8844fa7790d887295c68c983a85dcac528e1e9b67cf0690600e5e9c5f01"
+  },
+  {
+    "file": "core/Event.js",
+    "upstream_sha256": "d9365befad1f2f0671ee3213df911a5355b73ed05fb9115d58cdcff43fc7633d",
+    "sha256": "178dedcdabba0316dfabda21e823a957b658ddca9c8aae2f19096e6332862636"
+  },
+  {
+    "file": "core/EventData.js",
+    "upstream_sha256": "16b9a1cb78a65ea85f9c7300db61b706d67f0a5828d07f2d1abab0acbb6a8792",
+    "sha256": "9bbe44ad6a32bb55b10464e8d235a5c638b867c8e1c4c480e358db9acd454ca5"
+  },
+  {
+    "file": "core/IkConstraint.js",
+    "upstream_sha256": "e798a94c9886ae214c96b1860f202f680b7d408ee64d40715dace51e157d9889",
+    "sha256": "cc316f9c877a415833bd17c3b9584b844af823a9a74080c8604f0e317da00837"
+  },
+  {
+    "file": "core/IkConstraintData.js",
+    "upstream_sha256": "9fe24ec3895487d0f3bfee0136b8d5d5e48fd0b5b7dad989f8dbaab230ad2146",
+    "sha256": "641f4af2f2b5b52ed4a950417f110c4016b0acfe005bff56c2c029b6abb5abc6"
+  },
+  {
+    "file": "core/index.js",
+    "upstream_sha256": "c1f13f11260a95219d054aa313e557cb6a695c85cabf760e3a015ba8cf3eb745",
+    "sha256": "2db27c5e68c07f4514616b18c59dda6f45339f8851a879dea70403dbb4ecc993"
+  },
+  {
+    "file": "core/PathConstraint.js",
+    "upstream_sha256": "1ac7e6f7fbaefb499fcb1e12d2050f8e31349f8c49494847fc485cba7f51bc27",
+    "sha256": "1d497001f4bc20abd635df3ca842b3cb75409bfd62acec9a870d6d0735e95cb2"
+  },
+  {
+    "file": "core/PathConstraintData.js",
+    "upstream_sha256": "5c5eb0fc4461e3e41388f3e051366cd23a1d5087299117b16cbfbacea443d7ab",
+    "sha256": "730e1276750800e7c70f796e321250094fecb399362eb60c9859c2fa88a3eaec"
+  },
+  {
+    "file": "core/PhysicsConstraint.js",
+    "upstream_sha256": "862ce7f65678375846decf270c0cebaddd125dbcd1d42ac946f406eb998e7aa6",
+    "sha256": "2408be9a1b1978c964735907c680a6d5fa46a2f2bcf286e92cfff60d42491e39"
+  },
+  {
+    "file": "core/PhysicsConstraintData.js",
+    "upstream_sha256": "890b3a564bf79a449484f2744a67ecdd5d4b6ab167113dc323b4ffa7915b7833",
+    "sha256": "9505ef564b127dcb75dce5c83a6df7649e3607ba0b32728ec45920d89af19db2"
+  },
+  {
+    "file": "core/polyfills.js",
+    "upstream_sha256": "87a96cd6ab05f30f584ce769a234537995a7b2df289632896d2aea7a88e9bc23",
+    "sha256": "b36eb4807ed8fd6b0ac2ac10216a9eba1714392331c107cf5b1a971211d93238"
+  },
+  {
+    "file": "core/Skeleton.js",
+    "upstream_sha256": "100d1a736f14c6d820c6c491df3699d4b94ae21b313d1659b7419d51d8cd49ef",
+    "sha256": "dad88b605d0079c90411b3b8a5643c649656c2eddc4b8de053c20136bf94a22d"
+  },
+  {
+    "file": "core/SkeletonBinary.js",
+    "upstream_sha256": "416499172205d6aa59ee2d8f431a19d5a7612e0d6890b4de1f761f2e25c4e4a5",
+    "sha256": "7d7333b4bb6662bb960fdf86dbaa79f50be298597f556fd0339ed20987d2892b"
+  },
+  {
+    "file": "core/SkeletonBounds.js",
+    "upstream_sha256": "92969697c9c28d04a55d4dcdfa674507d03ba3298a8e43f6da59541359e0fb57",
+    "sha256": "06ffd1e59d89bd3142a5577acf0dee8c95ddcbd1965a202782f6258330f92ec4"
+  },
+  {
+    "file": "core/SkeletonClipping.js",
+    "upstream_sha256": "2178d95270b854a73dab40dd12aacf48b019fa8ca864f1ffbce54f4f19ef2d84",
+    "sha256": "f578b7809fb52492ca7d5750c7f94ce2b8aa4c535cbe606525ac97ffbde8eecd"
+  },
+  {
+    "file": "core/SkeletonData.js",
+    "upstream_sha256": "cd03a11a6f8cf8391b201c6a1d1a8cd766496c2996475a39c1d9f44093dadfb2",
+    "sha256": "07fd0b6a8e14917ea0b139f1c53ddeeb63dfc110c1d941cf42a0f63712dc094a"
+  },
+  {
+    "file": "core/SkeletonJson.js",
+    "upstream_sha256": "c08a8a23b9145db1f9d979a2d2067f9fab8db9a414cf11dffd43989677ecf3db",
+    "sha256": "e3ade52bb13c6e0a56c9c354484a802eb10112298552ff1c727ec64fe5832019"
+  },
+  {
+    "file": "core/Skin.js",
+    "upstream_sha256": "4a05eadda04fb5eae863ce0d5b08a8d1e00c8426be984b618d8553c85c3ed036",
+    "sha256": "561d1522e8f46c1fb3ae8af0d234cfb4c12c67b40954cee54c80e9f4b0a2f64e"
+  },
+  {
+    "file": "core/Slot.js",
+    "upstream_sha256": "30009e054fc29f3bf0fa38d2a5f1caca6fe6cc6ae1e1ec79c1203ce24278c19d",
+    "sha256": "fee27fca5abfbd9f49ecb848282c7a2bfe03866769a252e96396ed232d6ed55a"
+  },
+  {
+    "file": "core/SlotData.js",
+    "upstream_sha256": "8fac8f81b033bfbccaba5eec9c7169fd919afc849f096f100edba4ba13dbe96f",
+    "sha256": "054d5907cf954313870a4f65935da304067474663d0480b308d4fc21c07e22a7"
+  },
+  {
+    "file": "core/Texture.js",
+    "upstream_sha256": "ec57997b8051bdd9907aa6832e5f785b2e3925b7e9fbb027fd7f2b4dba1d4006",
+    "sha256": "7cb850d7ffc4a65d555e6c0ffe939409cf2b977cea56dcdfd16f6d4ad905b1f7"
+  },
+  {
+    "file": "core/TextureAtlas.js",
+    "upstream_sha256": "74a4a4e43656f23c802ffbcc8dc3ba37c6c3bf5715b711adfda07563c9e890f1",
+    "sha256": "5678988d9140f30cede81bfe415554d14791f38551db126fbe944f6bc320dc1a"
+  },
+  {
+    "file": "core/TransformConstraint.js",
+    "upstream_sha256": "b24387782ab8eadcc3dc6b18ac448f9474b1d5434088439b3937f8a8c0e776b1",
+    "sha256": "770eb5d838a09f603167eabf424456b50344b895dbccc2b53b2d92137ce61943"
+  },
+  {
+    "file": "core/TransformConstraintData.js",
+    "upstream_sha256": "29cbe4317b32c2a1d9fe8ffbb0a6f556cee447aee1d98a90b831b98c13bdb1bd",
+    "sha256": "04c1123e0979748b3dd0b1e1d17ab29fc4d746a029a4f67ed53c889743f7df5c"
+  },
+  {
+    "file": "core/Triangulator.js",
+    "upstream_sha256": "c22110760657cd5303dc700adb28c444388a79d96a9c475308cfed9ed0d9317d",
+    "sha256": "39ea1976ef8dbdfe2d62e41e6a81bb97739c8ee69e20f4aeb1de1025af092597"
+  },
+  {
+    "file": "core/Updatable.js",
+    "upstream_sha256": "3ddb4edd9b4a0a942dc0321b98b61ded1d3b6f0e206d58c88de2c581e4beae57",
+    "sha256": "0f98a2e647614b00aa1a23cb84b3df39eb4a2a9928ee4f7986c762d85cab6e34"
+  },
+  {
+    "file": "core/Utils.js",
+    "upstream_sha256": "e57c614e39e61a636b14e269d554bb5d8e8c53a68fc06629c47cc282c7ab5e55",
+    "sha256": "8b88949d59c928ec21b8d9d955d055dfbc8175139de596a7959d7b374028ecf9"
+  },
+  {
+    "file": "threejs/AssetManager.js",
+    "upstream_sha256": "39806f960d5956093cf1ec868be56d16a5f9eae8976a963f61b317cb21eb45d7",
+    "sha256": "7ab2625665e59fc16277bbd3e64a40c0e001dcaa5ab149211b5cc29e17a5f272"
+  },
+  {
+    "file": "threejs/index.js",
+    "upstream_sha256": "b13f21a1b117914ed06e71578921d3dacac7063a0a2cc1f6824cc8fee3e3fab9",
+    "sha256": "7dc2805f2c63680fef0701ac7db6413990baa7c345e3197baefbc5c38e8c57ad"
+  },
+  {
+    "file": "threejs/MeshBatcher.js",
+    "upstream_sha256": "69274773b3b01aef0762c75a200d14a428e08065b7a77532cfb6680ca250b7ef",
+    "sha256": "88021d2f008ae0561d4470b97d486dee4c26bb36799f2191538e002aa2f92349"
+  },
+  {
+    "file": "threejs/require-shim.js",
+    "upstream_sha256": "1dd6c525ed6bebc5d5eaee314f197ca327ff0586dc1132e2942c38aa38d95255",
+    "sha256": "d2e4c7d5c159afad162f13616c00960faf6053c39fb33af08ee9d8b58ce3df77"
+  },
+  {
+    "file": "threejs/SkeletonMesh.js",
+    "upstream_sha256": "e794f706c3e7ae65ef0e112a42039d2e610e2fbad20801a532bf83aa36ded85c",
+    "sha256": "24eb606dc94567d063267425b567b0fd242488f15693e365d9b4067a7e8a073e"
+  },
+  {
+    "file": "threejs/ThreeJsTexture.js",
+    "upstream_sha256": "1ceaaf40360fa500ffed9302f2218a864b5fcfb5be0a4413d0b6c5f66be84127",
+    "sha256": "4995631773a21b66a7350ef3541fdfb9fa9b4210795f99e35c52e1d48f492468"
+  },
+  {
+    "file": "core/attachments/Attachment.js",
+    "upstream_sha256": "73e7fd8bb77242584da224d3d7e39da7ee7b4397180c82a43ca8d3841cd704d7",
+    "sha256": "c535f7e102c5130f9a987d23b379704e22deb1611dd473a47ef429b339d12e93"
+  },
+  {
+    "file": "core/attachments/AttachmentLoader.js",
+    "upstream_sha256": "6233960298e55e1bfa5a6c3f1747dd16c4dc8c1b54d0e6b5d76acff3a3ecc60b",
+    "sha256": "0f98a2e647614b00aa1a23cb84b3df39eb4a2a9928ee4f7986c762d85cab6e34"
+  },
+  {
+    "file": "core/attachments/BoundingBoxAttachment.js",
+    "upstream_sha256": "63ec8853e3263c3c3a2169e49fa75c3e11c00fe2ba5ec59f8d90709d931b63d6",
+    "sha256": "89368d7e5865347a7898b1f9a5cfe3f7c36781339f6053a3a024d4cbd80f879b"
+  },
+  {
+    "file": "core/attachments/ClippingAttachment.js",
+    "upstream_sha256": "c05659df9e15ad18dd5c330d02713723954bc7712de379b029bbf130222d32c3",
+    "sha256": "d2fa15f4130a01ce628959299cda5407cedf2167aa771aef883c13dc40431f5e"
+  },
+  {
+    "file": "core/attachments/HasTextureRegion.js",
+    "upstream_sha256": "b62b18c0db2dc4a8326fb445ad9ae7c26b048bedd04f58b1885eb24acc4d4fd8",
+    "sha256": "0f98a2e647614b00aa1a23cb84b3df39eb4a2a9928ee4f7986c762d85cab6e34"
+  },
+  {
+    "file": "core/attachments/index.js",
+    "upstream_sha256": "0bbbcf541ebf4426c66287464c0403a731d8522d6e139e9089a858ecd2b7f3a8",
+    "sha256": "152ee2a298283c3d91da21484d78674cc0d50efebe20a3c182ff0f4c0cf43934"
+  },
+  {
+    "file": "core/attachments/MeshAttachment.js",
+    "upstream_sha256": "a2fe6d52fb04fef73e681fdbeef1204eab4054328308f2ddecac205a258dc498",
+    "sha256": "b34064434fa884d64413b8c7a3838671de19c1891faa049c8cfa1b4b3821ea97"
+  },
+  {
+    "file": "core/attachments/PathAttachment.js",
+    "upstream_sha256": "d0d2ae626324e25bbe03053656c5fe3f1ca738363ad3817cf064858a95120518",
+    "sha256": "3e474c23c7f369e51868040b6c9a9c39bae8cdc87ab0cf2d672788194dcec9f7"
+  },
+  {
+    "file": "core/attachments/PointAttachment.js",
+    "upstream_sha256": "e88c3346684f5530f6d545df45d628e1f68d3f857d88fb8e1ac2707d30b64ee6",
+    "sha256": "abaff866c331b453315fd9d456c911bc3b24535726f424fbdf2823910cce7740"
+  },
+  {
+    "file": "core/attachments/RegionAttachment.js",
+    "upstream_sha256": "c414df9f7e8a930125475e33ea894cc348b4cf32ebc18ca450696599bef5758a",
+    "sha256": "754a1f33b4d6374c4f6a581b06cee005ccd7ffb19cf45a648982db5dbbd5cf45"
+  },
+  {
+    "file": "core/attachments/Sequence.js",
+    "upstream_sha256": "afce95426115afb2a3620c3d0e0ba10e0eedc8bd385df1159625679660acb2ea",
+    "sha256": "23043e5af7d5ca0075b476add783957526484bc4be8f79daf10f1ddd4a2f82e5"
+  }
+]
