@@ -346,5 +346,23 @@ class Models:
                         tr[4:7] = mapping['scales'][mapping['frames'][ti]].copy()
                     xmd_matrix(tr)  # Validate every retained quaternion, not just DEFAULT.
             decorate(animation['clips'],classify(source['name'])['character'],self.catalog.game_names.motion_names)
-            return dict(keys=keys,mapping=mapping,clip=animation['clips'][index],
+            extras=self.extra_sources(classify(source['name'])['character'],animation['clips'][index]['name'],{f['name'] for f in scene['frames']})
+            return dict(keys=keys,mapping=mapping,clip=animation['clips'][index],extras=extras,
+                        extras_index_available=bool(self.catalog.game_names.motion_extras),
                         animation_source=animation_source,skeleton_source=source)
+
+    def extra_sources(self,character,clip,bones):
+        import copy
+        result=copy.deepcopy(self.catalog.game_names.motion_extras.get((character,clip),[]))
+        for item in result:
+            if item['status']!='ready':continue
+            if item.get('bone') and item['bone'] not in bones:
+                item.update(status='unavailable',error='연출을 붙일 뼈가 현재 모델에 없습니다: '+item['bone']);continue
+            resources=[]
+            for name in item['models']:
+                filename=Path(name.replace('\\','/')).name
+                candidates=[r for r in self.matches(filename) if self.catalog.get(r['id'])['flag']!=2]
+                resources.append(dict(name=name,candidates=candidates,selected=candidates[0]['id'] if len(candidates)==1 else None))
+            item['resources']=resources
+            if any(not r['selected'] for r in resources):item.update(status='unavailable',error='보조 모델 파일이 없거나 출처가 중복됩니다.')
+        return result

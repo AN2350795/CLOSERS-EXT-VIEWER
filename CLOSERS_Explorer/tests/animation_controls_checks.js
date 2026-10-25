@@ -30,5 +30,13 @@ try{
   check($('current-motion').textContent==='기본 자세'&&$('animation-seek').disabled&&$('animation-speed').disabled&&$('animation-loop').disabled,'bind pose resets name and playback');
   await modelViewer.chooseClip(0);check($('current-motion').textContent==='인사하기'&&!$('play-animation').disabled,'motion can be selected again after bind pose');
   $('clear-model').click();check($('current-motion').textContent==='모델을 선택하세요'&&$('open-motions').disabled,'clear resets selection heading');
+  window.checkMotionLayout=async()=>{
+    const panel=document.querySelector('.viewport-panel').getBoundingClientRect();
+    for(const id of ['motion-extras-settings','animation-speed','play-animation','open-motions']){
+      const bounds=$(id).getBoundingClientRect();check(bounds.left>=panel.left&&bounds.right<=panel.right+1&&bounds.bottom<=panel.bottom+1,'animation controls stay visible: '+id);
+    }
+    const options=document.querySelector('.animation-options').getBoundingClientRect(),time=$('animation-time').getBoundingClientRect();
+    check(options.top>=time.bottom-1,'extras settings do not overlap the timeline');
+  };
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

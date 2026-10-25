@@ -241,6 +241,13 @@
 .motion-modes button{flex:1;padding:6px 10px;font-size:12px;background:transparent;color:var(--muted)}
 .motion-modes button[aria-pressed=true]{background:#293849;color:var(--text)}
 .sequence-controls{display:flex;align-items:center;gap:10px;margin-right:auto;flex-wrap:wrap}.sequence-controls[hidden]{display:none}
+#motion-extras-settings{font-size:10px;padding:4px 9px}
+@media(max-width:600px){.animation-options:has(#motion-extras-settings){margin-top:0;flex-wrap:wrap;row-gap:6px}}
+#motion-extras-dialog{width:min(640px,94vw);max-height:85dvh;padding:20px}
+.motion-extra-switches{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0}.motion-extra-switches label{display:flex;align-items:center;gap:6px;font-size:13px}
+#motion-extra-items{max-height:52dvh;overflow:auto}.motion-extra-row{padding:12px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.motion-extra-row>label{display:flex;align-items:center;gap:8px;font-size:12px}.motion-extra-row small{display:block;color:var(--muted);font-size:11px;margin-top:5px}
+.motion-extra-row details{margin-top:5px;font-size:11px}.motion-extra-row summary{cursor:pointer;color:var(--muted)}
 #finish-motion{font-size:11px;padding:5px 10px;border-color:#63748a;color:var(--accent)}
 #sequence-finish-mode{width:auto;padding:3px;font-size:10px}#sequence-phase{font-size:10px;color:var(--accent)}
 .animation-options:has(.sequence-controls:not([hidden])){flex-wrap:wrap;row-gap:6px}

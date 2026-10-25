@@ -61,7 +61,7 @@ try{
   document.querySelector('#motion-results .motion-select').click();await until(()=>modelViewer.state.sequence&&!modelViewer.state.busy);
   window.checkMotionLayout=async()=>{
     const panel=document.querySelector('.viewport-panel').getBoundingClientRect();
-    for(const id of ['finish-motion','sequence-finish-mode','play-animation','animation-speed']){
+    for(const id of ['finish-motion','sequence-finish-mode','play-animation','animation-speed','motion-extras-settings']){
       const bounds=$(id).getBoundingClientRect();
       check(bounds.left>=panel.left&&bounds.right<=panel.right+1&&bounds.bottom<=panel.bottom+1,'sequence control fits viewport: '+id);
     }
