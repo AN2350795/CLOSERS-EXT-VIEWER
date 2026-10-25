@@ -54,8 +54,14 @@ try{
   check(JSON.stringify(modelViewer.view)===sequenceView,'exit-stage effects preserve the user camera');
   $('reset-camera').click();check(JSON.stringify(modelViewer.view)!==sequenceView,'manual camera reset remains available during sequences');
   $('play-animation').click();await until(()=>modelViewer.state.sequence?.phase==='반복');
-  $('sequence-finish-mode').value='bind';$('finish-motion').click();await until(()=>!modelViewer.state.sequence);
-  check(!modelViewer.state.clip&&!modelViewer.state.playing&&$('current-motion').textContent==='기본 자세'&&$('play-animation').disabled,'finish can return to bind pose');
+  const restartView=JSON.stringify(modelViewer.view);
+  $('sequence-finish-mode').value='start';$('finish-motion').click();await until(()=>modelViewer.state.sequence?.index===0&&!modelViewer.state.playing);
+  check(modelViewer.state.clip.clip.index===0&&modelViewer.state.time===definition.steps[0].start_time&&$('current-motion').textContent===definition.label&&!$('play-animation').disabled&&!$('finish-motion').disabled,'finish restores the initially selected sequence and stops ready to replay');
+  check(!modelViewer.state.sequence.finishRequested&&modelViewer.extras.assets.size===3&&JSON.stringify(modelViewer.view)===restartView,'returning to the start resets sequence timing and effects while preserving the camera');
+  check([...modelViewer.extras.assets.values()].every(group=>group.every(asset=>asset.anchor.visible===(asset.packet===modelViewer.state.clip))),'starting effects are restored and ending effects are hidden');
+  $('play-animation').click();await until(()=>modelViewer.state.sequence?.phase==='반복');
+  $('finish-motion').click();await until(()=>modelViewer.state.sequence?.index===0&&!modelViewer.state.playing);
+  check(!modelViewer.state.sequence.completed,'the same sequence can finish and replay repeatedly without selecting it again');
   $('open-motions').click();document.querySelector('#motion-results .motion-select').click();await until(()=>modelViewer.state.sequence&&!modelViewer.state.busy);
   $('model-canvas').dispatchEvent(new WheelEvent('wheel',{deltaY:200,cancelable:true}));const beforeIndividual=JSON.stringify(modelViewer.view);
   $('open-motions').click();document.querySelector('.motion-modes [data-motion-mode="clips"]').click();document.querySelector('#motion-results .motion-select').click();await until(()=>!modelViewer.state.sequence&&!modelViewer.state.busy);

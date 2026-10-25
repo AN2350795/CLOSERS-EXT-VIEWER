@@ -15,7 +15,7 @@ const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,c
 const textureCache=new TextureCache();
 let sequenceController;
 const sequenceControls=element('div');sequenceControls.className='sequence-controls';sequenceControls.hidden=true;
-sequenceControls.innerHTML='<button id="finish-motion" type="button" class="secondary">종료하기</button><label>종료 후 <select id="sequence-finish-mode"><option value="bind">기본 자세</option><option value="hold">마지막 자세 유지</option></select></label><span id="sequence-phase" role="status"></span>';
+sequenceControls.innerHTML='<button id="finish-motion" type="button" class="secondary">종료하기</button><label>종료 후 <select id="sequence-finish-mode"><option value="start">처음 선택 상태</option><option value="hold">마지막 자세 유지</option></select></label><span id="sequence-phase" role="status"></span>';
 document.querySelector('.animation-options').prepend(sequenceControls);
 const preserveViewKey='closers-model-preserve-view-v1';
 try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}catch{}
@@ -57,7 +57,10 @@ function advanceAnimation(delta){
     applyPose(state.model,state.clip,state.time);
     if(sequence.completed){
       stop();
-      if($('sequence-finish-mode').value==='bind'){restorePose(state.model,state.data);state.sequence=null;state.clip=null;state.time=0;extras.reset();}
+      if($('sequence-finish-mode').value==='start'){
+        sequence.restart();extras.seek();state.clip=sequence.clip;state.time=sequence.time;
+        restorePose(state.model,state.data);applyPose(state.model,state.clip,state.time);
+      }
       setBusy(state.busy);
     }
   }else{
