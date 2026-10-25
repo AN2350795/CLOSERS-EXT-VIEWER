@@ -19,6 +19,25 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_inherited_equipment_hide_is_scoped_to_game_state(self):
+        rig=layers();base=rig['STRIKER'][0][1]['GAME_UNIT_TEMPLET']['m_mapUnitStateData'][1]
+        base['m_EventEquipHide']={1:dict(m_bAnimTime='FALSE',m_fEventTimeMin=.1,m_fEventTimeMax=30,m_HideEquipPosition='EP_AVATAR_WEAPON')}
+        refs=references(rig);hide=next(item for item in refs['STRIKER']['MOVE'] if item['kind']=='equipment')
+        self.assertEqual(hide['row']['source'],'base.LUA')
+        compiled=compile_extras(refs,{},{} )['STRIKER','MOVE'];event=next(item for item in compiled if item['kind']=='equipment')
+        self.assertEqual(event['state'],'USN_EMOTION_TEST');self.assertEqual(event['part'],'WEAPON');self.assertFalse(event['anim_time'])
+        self.assertEqual((event['at'],event['until']),(.1,30));self.assertEqual(event['models'],[])
+
+    def test_cube_dissolve_and_parent_effect_scale_are_preserved(self):
+        rule=mesh_rule(dict(m_vecMeshName='CUBE.X',m_DissolveTexName='MASK.PNG',m_vecEventList={
+            1:{1:'MPETT_GLOBAL',2:'MPET_INITIAL',3:'MPET_DISSOLVE','RGBA':{1:1,2:1,3:1,4:0},'WIDTH':.05,'THRESHOLD':1},
+            2:{1:'MPETT_GLOBAL',2:'MPET_FADE',3:'MPET_DISSOLVE',4:0,5:.4,'RGBA':{1:1,2:1,3:1,4:1},'WIDTH':.1,'THRESHOLD':{1:0,2:1}}}))
+        self.assertEqual(rule['dissolve_texture'],'MASK.PNG');self.assertEqual(len(rule['tracks']),6);self.assertFalse(rule['warnings'])
+        self.assertEqual(rule['tracks'][0]['property'],'dissolveColor');self.assertEqual(rule['tracks'][3]['value'][-1],1)
+        rig=layers();rig['STRIKER'][0][1]['GAME_UNIT_TEMPLET']['m_mapUnitStateData'][1]['m_EventDamageEffect'][1]['m_fScale']=.4
+        item=compile_extras(references(rig),{},{} )['STRIKER','MOVE'][1]
+        self.assertEqual(item['scale'],.4)
+
     def test_spine_and_fbx_particle_rules_preserve_settings(self):
         rule=particle_rule(dict(m_SeqName='SPINE',m_vecEventList={
             1:{1:'PCET_INITIAL',2:'PCET_SPINE','STR':'SPN_TEST','CLIPPING':'EMOTION','POS':{2:330},'SCALE':{1:.37,2:.37,3:1}},

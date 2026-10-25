@@ -1,11 +1,12 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose} from './model-core.js';
 import {TextureCache} from './model-texture-cache.js';
-import {createTracks,random,vector} from './effect-timeline.js';
+import {createTracks,random,vector,sample} from './effect-timeline.js';
 import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST} from './particle-model.js';
 import {createFBXModel,createSpineModel} from './model-effect-formats.js';
+import {installDissolve} from './model-effect-dissolve.js';
 
-export function setupMotionExtras({state,api,getScene,getCamera,onVisible,element}){
+export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
   button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','motion-extras-dialog');
   document.querySelector('.animation-options').append(button);
@@ -16,11 +17,17 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
   const conditional=element('label'),conditionCheck=element('input');conditionCheck.type='checkbox';conditionCheck.id='show-conditional-extras';conditional.append(conditionCheck,element('span','조건부 연출도 미리보기'));dialog.querySelector('.motion-extra-switches').append(conditional);
   const stateChoice=element('select');stateChoice.id='motion-extra-state';stateChoice.setAttribute('aria-label','연출 상태 선택');stateChoice.hidden=true;dialog.querySelector('.motion-extra-switches').after(stateChoice);
   let entries=[],assets=new Map(),version=0,controller,packets=[],lastPacket=null,lastTime=0,total=0,stageClock=0,disposed=false;
-  const excluded=new Set(),token=document.querySelector('meta[name="explorer-token"]').content;
+  const excluded=new Set(),hiddenEquipment=new Map(),token=document.querySelector('meta[name="explorer-token"]').content;
   try{const saved=JSON.parse(localStorage.getItem('closers-motion-extras')||'{}');$('show-motion-props').checked=saved.models===true;$('show-motion-effects').checked=saved.effects===true;}catch{}
-  const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked);
+  const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
+  function equipment(parts=new Set()){
+    let changed=false;
+    for(const [mesh,visible] of hiddenEquipment)if(!parts.has(mesh.userData.part)){mesh.userData.motionHidden=false;mesh.visible=visible;hiddenEquipment.delete(mesh);changed=true;}
+    for(const mesh of state.model?.meshes||[])if(parts.has(mesh.userData.part)&&!hiddenEquipment.has(mesh)){hiddenEquipment.set(mesh,mesh.visible);mesh.userData.motionHidden=true;mesh.visible=false;changed=true;}
+    if(changed)onEquipmentVisibility?.();
+  }
   function disposeAsset(asset){asset.anchor.removeFromParent();asset.model?.dispose();asset.owned?.forEach(v=>v.dispose());asset.extraMeshes?.forEach(v=>v.removeFromParent());for(const key of asset.textureKeys)cache.release(key);}
-  function release(){for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
+  function release(){equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
   function reset(){version++;controller?.abort();release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
   function render(){
     const container=$('motion-extra-items');container.replaceChildren();
@@ -29,10 +36,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
       const label=element('label'),check=element('input');check.type='checkbox';check.checked=entry.status==='ready'&&!excluded.has(entry.id);check.disabled=entry.status!=='ready';
       check.onchange=()=>{if(check.checked)excluded.delete(entry.id);else excluded.add(entry.id);void refresh();};
       label.append(check,element('span',entry.label));row.append(label);
-      row.append(element('small',entry.error||entry.loadError||(assets.has(entry.id)?'표시 준비됨':entry.status==='ready'?'선택한 표시 옵션에 따라 적용':'연결 확인 필요')));
+      row.append(element('small',entry.error||entry.loadError||(entry.kind==='equipment'?'지정된 구간에서 무기를 숨깁니다.':assets.has(entry.id)?'표시 준비됨':entry.status==='ready'?'선택한 표시 옵션에 따라 적용':'연결 확인 필요')));
       const warnings=[...(entry.warnings||[]),...(entry.loadWarnings||[])];if(warnings.length)row.append(element('small',warnings.join(' ')));
       if(Object.keys(entry.conditions||{}).length)row.append(element('small','조건 · '+JSON.stringify(entry.conditions)));
-      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[])])if(resource.candidates?.length>1){
+      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[]),...(entry.dissolve_image?[entry.dissolve_image]:[])])if(resource.candidates?.length>1){
         const select=element('select');select.setAttribute('aria-label',resource.name+' 출처');select.append(element('option','출처 선택 · '+resource.name));select.firstChild.value='';
         for(const candidate of resource.candidates){const option=element('option',candidate.archive+' · '+candidate.ordinal);option.value=candidate.id;select.append(option);}select.value=resource.selected||'';
         select.onchange=()=>{resource.selected=Number(select.value)||null;void refresh();};row.append(select);
@@ -96,9 +103,14 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
           const copy=mesh.clone(false);copy.material=mesh.material.map(original=>{const m=original.clone();m.onBeforeCompile=original.onBeforeCompile;m.customProgramCacheKey=original.customProgramCacheKey;applyBlend(m,['SRCALPHA','DESTALPHA']);m.transparent=true;asset.owned.push(m);asset.base.push({color:m.color.clone(),opacity:m.opacity,material:m,dual:true});return m;});
           mesh.parent.add(copy);asset.extraMeshes.push(copy);
         }
+        if(entry.dissolve_texture){
+          const map=await image(entry.dissolve_image,current,signal,asset,entry);
+          if(map){const mask=map.clone();mask.colorSpace=THREE.NoColorSpace;mask.needsUpdate=true;asset.owned.push(mask);asset.dissolve=asset.base.map(base=>installDissolve(base.material,mask));}
+        }
       }
+      if(current!==version||signal.aborted||disposed)throw Error('연출 선택이 변경되었습니다.');
       const seed=[...entry.id].reduce((n,c)=>((n*31)^c.charCodeAt(0))>>>0,1),rng=random(seed);
-      asset.offset=vector(entry.offset,rng);asset.rotation=vector(entry.rotation,rng);
+      asset.offset=vector(entry.offset,rng);asset.rotation=vector(entry.rotation,rng);asset.scale=sample(entry.scale??1,rng);
       asset.gravity=vector(entry.gravity,rng);asset.life=entry.play_count&&asset.clip?asset.clip.clip.duration*entry.play_count/entry.speed:entry.life;
       asset.timeline=createTracks(entry.tracks||[],seed,asset.life);
       if(!entry.tracks?.length)asset.timeline=createTracks([{property:'color',mode:'initial',value:entry.color||[1,1,1,1]},...(entry.fades||[]).map(f=>({property:'color',mode:'fade',value:f.color,start:f.start,end:f.end}))],seed,asset.life);
@@ -111,6 +123,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
     $('motion-extras-status').textContent='선택한 연출을 준비하고 있습니다…';
     for(const entry of entries){
       entry.loadError='';entry.loadWarnings=[];if(entry.status!=='ready'||!enabled(entry))continue;
+      if(entry.kind==='equipment')continue;
       const group=[];
       try{
         for(const resource of (entry.resources.length?entry.resources:entry.kind==='particle'?[null]:[])){
@@ -143,12 +156,12 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
   }
   function seek(){lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
   function update(delta=0){
-    if(!state.clip||!state.model){for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
+    if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
     if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
     if(state.playing){const elapsed=delta*Number($('animation-speed').value);total+=elapsed;if(!changed)stageClock+=elapsed;}
     const wrapped=!changed&&state.time<lastTime-1e-6&&state.playing;lastTime=state.time;
-    const births=new Map();let frameNeeded=false;
+    const births=new Map(),hiddenParts=new Set();let frameNeeded=false;
     const frame=asset=>{if(!asset.framed){asset.framed=true;frameNeeded=true;}};
     for(const entry of entries){
       const active=entry.packet===state.clip,group=assets.get(entry.id)||[];
@@ -156,6 +169,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
       // Child event clocks are relative to their damage effect, even if its mesh is unavailable.
       const clock=entry.parent_key?(parent===undefined?-1:parent):entry.anim_time?state.time:stageClock;
       const since=clock-entry.at;
+      if(entry.kind==='equipment'){if(active&&enabled(entry)&&clock>=entry.at&&clock<entry.until)hiddenParts.add(entry.part);continue;}
       if(active&&since>=0)births.set(entry.id,since);
       for(const asset of group){
         if(!enabled(entry)||entry.loadError||(!active&&(entry.kind==='model'||entry.state_end||!asset.begun))){asset.anchor.visible=false;continue;}
@@ -168,7 +182,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
         const target=parentAsset?.model.root||(entry.bone?state.model.bones.find(b=>b.name===entry.bone):state.model.root);
         if(!target){asset.anchor.visible=false;continue;}
         if(entry.follow||!asset.frozen){
-          const local=new THREE.Matrix4().compose(new THREE.Vector3(...asset.offset),new THREE.Quaternion().setFromEuler(new THREE.Euler(...asset.rotation.map(THREE.MathUtils.degToRad))),new THREE.Vector3(1,1,1));
+          const local=new THREE.Matrix4().compose(new THREE.Vector3(...asset.offset),new THREE.Quaternion().setFromEuler(new THREE.Euler(...asset.rotation.map(THREE.MathUtils.degToRad))),new THREE.Vector3(asset.scale,asset.scale,asset.scale));
           asset.anchor.matrix.copy(target.matrixWorld).multiply(local);asset.anchor.matrixWorldNeedsUpdate=true;asset.frozen=true;
         }
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
@@ -186,10 +200,11 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
           const rgba=timeline.value(base.dual?'dualColor':'color',age,time),material=base.material;
           material.color.copy(base.color).multiply(new THREE.Color(...rgba.slice(0,3)));material.opacity=base.opacity*rgba[3];
         }
+        for(const dissolve of asset.dissolve||[])dissolve.update(timeline.value('dissolveColor',age,time),timeline.value('dissolveWidth',age,time)[0],timeline.value('dissolveThreshold',age,time)[0]);
         frame(asset);
       }
     }
-    if(frameNeeded)onVisible?.();
+    equipment(hiddenParts);if(frameNeeded)onVisible?.();
   }
 
   button.onclick=()=>{render();dialog.showModal();};dialog.querySelector('button').onclick=()=>dialog.close();

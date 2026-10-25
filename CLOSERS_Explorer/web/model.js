@@ -22,7 +22,7 @@ try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}
 $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage;
-const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
+const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
 function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
@@ -32,7 +32,7 @@ function status(text,notice=false){
   closeNotice();$('model-status').textContent=text;
   if(notice){const close=element('button','×');close.type='button';close.className='notice-close';close.setAttribute('aria-label','알림 닫기');close.onclick=closeNotice;$('model-status').append(close);$('model-status').classList.add('is-notice');noticeTimer=setTimeout(closeNotice,6000);}
 }
-function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);}
+function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);}
 async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
 function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=value||!state.clip;$('animation-loop').disabled=value||!state.clip||!!state.sequence;updateSequenceControls();updateMotionName();}
 async function operation(fn,replace=false){if(state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}

@@ -1,6 +1,7 @@
 import * as THREE from '/vendor/three/three.module.min.js';
 import {setupMotionExtras} from '/model-motion-extras.js';
 import {createParticleModel} from '/particle-model.js';
+import {installDissolve} from '/model-effect-dissolve.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 const until=async fn=>{for(let i=0;i<300;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('Timed out');};
 try{
@@ -31,5 +32,13 @@ try{
   scene.remove(particles.root);particles.dispose();
   const faded=createParticleModel({...rule,tracks:[...rule.tracks,{property:'color',mode:'initial',value:[1,1,1,0]}]},null,[texture]);faded.meshes.forEach(m=>m.renderOrder=1);scene.add(faded.root);faded.update(.1,camera,anchor);renderer.render(scene,camera);
   check(pixel(40)[0]>240&&pixel(40)[1]<5,'per-particle zero alpha does not write depth');
-  faded.dispose();texture.dispose();background.geometry.dispose();background.material.dispose();extras.dispose();renderer.dispose();document.body.dataset.checks='passed';
+  scene.remove(faded.root);faded.dispose();
+  const noise=new THREE.DataTexture(new Uint8Array([0,0,0,255,255,255,255,255]),2,1);noise.magFilter=noise.minFilter=THREE.NearestFilter;noise.needsUpdate=true;
+  const dissolveMaterial=new THREE.MeshBasicMaterial({color:0x00ff00}),dissolvePlane=new THREE.Mesh(new THREE.PlaneGeometry(2,2),dissolveMaterial);dissolvePlane.renderOrder=1;scene.add(dissolvePlane);
+  let shaderError=false;renderer.debug.onShaderError=()=>shaderError=true;
+  const dissolve=installDissolve(dissolveMaterial,noise);dissolve.update([1,1,1,0],.05,1);renderer.render(scene,camera);
+  check(pixel()[0]>240&&pixel(40)[0]>240&&!shaderError,'zero dissolve coverage hides the full cube without writing depth');
+  dissolve.update([1,1,1,.5],.05,1);renderer.render(scene,camera);check(pixel()[0]>240&&pixel(40)[1]>240,'dissolve mask reveals geometry progressively');
+  dissolve.update([1,1,1,1],.05,1);renderer.render(scene,camera);check(pixel()[1]>240&&pixel(40)[1]>240,'full dissolve coverage restores the complete cube');
+  dissolvePlane.geometry.dispose();dissolveMaterial.dispose();noise.dispose();texture.dispose();background.geometry.dispose();background.material.dispose();extras.dispose();renderer.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

@@ -91,7 +91,7 @@ export function buildModel(data){
         mesh=new THREE.SkinnedMesh(g,mats);const skeleton=new THREE.Skeleton(bones,inverses);mesh.bind(skeleton,new THREE.Matrix4());skeletons.push(skeleton);root.add(mesh);
         if(extended)extendSkinning(mesh,weights,textures);
       }else{mesh=new THREE.Mesh(g,mats);(m.frame<0?root:bones[m.frame]).add(mesh);}
-      mesh.name=m.name;mesh.userData.helper=m.helper;mesh.userData.equipmentHidden=!!m.equipment_hidden;mesh.visible=!m.helper&&!m.equipment_hidden;mesh.frustumCulled=false;meshes.push(mesh);
+      mesh.name=m.name;mesh.userData.helper=m.helper;mesh.userData.equipmentHidden=!!m.equipment_hidden;mesh.userData.part=data.sources?.find(s=>s.entry_id===m.source_id)?.model_group?.part;mesh.visible=!m.helper&&!m.equipment_hidden;mesh.frustumCulled=false;meshes.push(mesh);
     }
   }catch(e){geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());skeletons.forEach(s=>s.dispose());textures.forEach(t=>t.dispose());throw e;}
   root.scale.z=-1;root.updateMatrixWorld(true);skeletons.forEach(s=>s.update());

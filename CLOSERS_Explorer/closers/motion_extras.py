@@ -44,7 +44,7 @@ def references(rigs):
             for row in values(game.get('m_mapUnitStateData')):
                 if isinstance(row,dict) and isinstance(row.get('m_StateName'),str):
                     name=row['m_StateName'];previous=states.get(name,{})
-                    origins={**previous.get('_event_sources',{}),**{key:filename for key in ('m_EventDamageEffect','m_EventParticle') if key in row}}
+                    origins={**previous.get('_event_sources',{}),**{key:filename for key in ('m_EventDamageEffect','m_EventParticle','m_EventEquipHide') if key in row}}
                     states[name]={**previous,**row,'source':filename,'_event_sources':origins}
         clips=defaultdict(list)
         for clip,items in props.items():
@@ -52,6 +52,8 @@ def references(rigs):
         for state,row in states.items():
             clip=row.get('m_AnimName')
             if not isinstance(clip,str):continue
+            for event in values(row.get('m_EventEquipHide')):
+                if isinstance(event,dict) and event.get('m_HideEquipPosition')=='EP_AVATAR_WEAPON':clips[clip].append(dict(kind='equipment',row=dict(event,source=row['_event_sources']['m_EventEquipHide']),state=state))
             for event in values(row.get('m_EventDamageEffect')):
                 if isinstance(event,dict) and isinstance(event.get('m_DamageEffectName'),str):
                     clips[clip].append(dict(kind='effect',row=dict(event,source=row['_event_sources']['m_EventDamageEffect']),state=state))
@@ -77,7 +79,7 @@ def mesh_rule(row):
     fades=[dict(start=t['start'],end=t['end'],color=t['value']) for t in rule['tracks'] if t['property']=='color' and t['mode']=='fade']
     rule.update(models=meshes,life=life if life>0 and lifetime=='MPLT_TIME' else 100000,
                 play_count=max(1,int(row.get('m_iPlayCount',1))) if lifetime=='MPLT_PLAY_COUNT' else None,
-                color=color,fades=fades,gravity=vec(row.get('m_vGravity')),billboard=row.get('m_BillBoardType','BBT_NONE'),
+                color=color,fades=fades,dissolve_texture=row.get('m_DissolveTexName'),gravity=vec(row.get('m_vGravity')),billboard=row.get('m_BillBoardType','BBT_NONE'),
                 blend=blend(row),dual=row.get('m_bDualBlending','FALSE') in (True,'TRUE'),additive=blend(row)[1]=='ONE',
                 depth_test=row.get('m_bZEnable','TRUE') in (True,'TRUE'),depth_write=row.get('m_bZWriteEnable','TRUE') in (True,'TRUE'))
     return rule
@@ -124,18 +126,25 @@ def particle_rule(row,texanims=None):
 
 
 def compile_extras(refs,damage,meshes,particles=None):
-    from .effect_tracks import vec
+    from .effect_tracks import vec,span
     particles=particles or {}
     result={}
     for character,clips in refs.items():
         for clip,items in clips.items():
             out=[]
             def add(row,kind,state,key,parent=None):
+                if kind=='equipment':
+                    try:start=float(row.get('m_fEventTimeMin',0));end=float(row.get('m_fEventTimeMax',100000))
+                    except (TypeError,ValueError):return
+                    if not math.isfinite(start) or not math.isfinite(end) or start<0 or end<start:return
+                    out.append(dict(key=key,kind='equipment',label='무기 숨김',state=state,source=row.get('source',''),status='ready',error='',models=[],at=start,until=end,anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),part='WEAPON'))
+                    return
                 name=(row.get('m_ParticleName') if kind=='model' else None) or row.get('m_XFileName') or row.get('m_DamageEffectName') or row.get('m_ParticleName') or row.get('m_SeqName') or '연출'
                 if row.get('m_ParticleName'):kind='particle'
                 entry=dict(key=key,kind=kind,label=name,state=state,source=row.get('source',''),status='ready',error='',warnings=[])
                 try:
                     entry.update(bone=row.get('m_BoneName',''),offset=vec(row.get('m_Offset')),rotation=vec(row.get('m_OffsetRotate')),
+                                 scale=span(row.get('m_fScale',1)),
                                  at=float(row.get('m_fEventTime',0)),anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),
                                  follow=kind=='model' or row.get('m_bHold','FALSE') in (True,'TRUE'),state_end=row.get('m_bStateEndDie','TRUE') in (True,'TRUE'),
                                  conditions={k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID') if k in row})

@@ -44,6 +44,15 @@ def tracks(events,mesh=False):
             continue
         if short=='TEXTURE':texture=ev.get('STR');continue
         if short=='TEX_ANIM':texanim=ev.get('STR');continue
+        if short=='DISSOLVE':
+            prefix='MPET_' if mesh else 'PCET_';property_key=3 if mesh else 2
+            for target,proxy,field in [('dissolveColor','COLOR','RGBA'),('dissolveWidth','SCALE','WIDTH'),('dissolveThreshold','SCALE','THRESHOLD')]:
+                source=dict(ev);source[property_key]=prefix+proxy
+                if field!='RGBA':source['VAL']=ev.get(field,.05 if field=='WIDTH' else 1)
+                normalized=tracks([source],mesh)
+                for track in normalized['tracks']:track['property']=target
+                result.extend(normalized['tracks']);warnings.extend(normalized['warnings'])
+            continue
         if short not in PROPS:
             warnings.append(str(prop)+' 게임 로직은 적용하지 않고 나머지 시각 요소를 표시합니다.');continue
         name,field,count,default=PROPS[short]

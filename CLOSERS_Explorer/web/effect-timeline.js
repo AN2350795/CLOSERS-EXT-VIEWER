@@ -2,7 +2,7 @@ export function random(seed){let n=seed>>>0;return ()=>{n=(n+0x6d2b79f5)|0;let x
 export const sample=(value,rng)=>Array.isArray(value)?value[0]+(value[1]-value[0])*rng():Number(value||0);
 export const vector=(value,rng,fallback=[0,0,0])=>(value||fallback).map(v=>sample(v,rng));
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
-const defaults={color:[1,1,1,1],dualColor:[1,1,1,1],size:[1,1,1],scale:[1],rotation:[0,0,0],rotationSpeed:[0,0,0],velocity:[0,0,0],position:[0,0,0],uv:[0,0],directionSpeed:[0],drag:[0,0,0],blinkColor:[0,0,0,0],blinkPeriod:[0],crash:[0,0,0],crashPeriod:[0]};
+const defaults={color:[1,1,1,1],dualColor:[1,1,1,1],size:[1,1,1],scale:[1],rotation:[0,0,0],rotationSpeed:[0,0,0],velocity:[0,0,0],position:[0,0,0],uv:[0,0],directionSpeed:[0],drag:[0,0,0],blinkColor:[0,0,0,0],blinkPeriod:[0],crash:[0,0,0],crashPeriod:[0],dissolveColor:[1,1,1,1],dissolveWidth:[.05],dissolveThreshold:[1]};
 export function createTracks(definitions=[],seed=1,life=1){
   const rng=random(seed),tracks={};
   for(const [name,value] of Object.entries(defaults))tracks[name]={initial:[...value],events:[]};
