@@ -30,6 +30,8 @@ class GameNames:
         self.icons={}
         self.part_overrides={}
         self.motion_names={}
+        self.motion_sequences={}
+        self.sequence_index_available=False
         self.local=threading.local()
 
     @contextmanager
@@ -63,9 +65,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.sequence_index_available=False;self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={}
+            labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};sequence_index_available=False
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -86,6 +88,9 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_names'").fetchone():
                             motion_names={(character,clip):json.loads(details) for character,clip,details in
                                           db.execute('SELECT character,clip,details_json FROM motion_names')}
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_sequences'").fetchone():
+                            motion_sequences={character:json.loads(details) for character,details in db.execute('SELECT character,details_json FROM motion_sequences')}
+                            sequence_index_available=True
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_part_overrides'").fetchone():
                             for filename,parts in db.execute('SELECT filename,parts_json FROM model_part_overrides'):
                                 part_rules[filename]=json.loads(parts)
@@ -94,12 +99,13 @@ class GameNames:
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};sequence_index_available=False;self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
             self.part_overrides=part_rules
             self.motion_names=motion_names
+            self.motion_sequences=motion_sequences;self.sequence_index_available=sequence_index_available
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -110,7 +116,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -249,6 +255,10 @@ def _build(workspace,executable,progress,cancel=None):
             from .model_groups import CHARACTERS
             layers={character:character_layers(character,emotion_rigs) for character in CHARACTERS}
             motion_names=join(emotion_skills,layers,emotion_strings)
+            from .motion_sequences import build as build_sequences
+            motion_sequences=build_sequences(emotion_skills,layers,emotion_strings)
+            db.execute('CREATE TABLE motion_sequences(character TEXT PRIMARY KEY,details_json TEXT NOT NULL)')
+            db.executemany('INSERT INTO motion_sequences VALUES(?,?)',[(character,json.dumps(details,ensure_ascii=False)) for character,details in motion_sequences.items()])
             db.execute('CREATE TABLE motion_names(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
             db.executemany('INSERT INTO motion_names VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in motion_names.items()])
             for filename,choices in part_visibility.items():
@@ -285,7 +295,7 @@ def _build(workspace,executable,progress,cancel=None):
         check_cancel()
         os.replace(temp,workspace/'game-names.sqlite3')
     finally:temp.unlink(missing_ok=True)
-    return dict(tables=len(selected),models=total,icons=icons,motion_names=len(motion_names),part_overrides=sum(len(v)==1 and next(iter(v))!='[]' for v in part_visibility.values()),rows=counts,index=str(workspace/'game-names.sqlite3'))
+    return dict(tables=len(selected),models=total,icons=icons,motion_names=len(motion_names),motion_sequences=sum(map(len,motion_sequences.values())),part_overrides=sum(len(v)==1 and next(iter(v))!='[]' for v in part_visibility.values()),rows=counts,index=str(workspace/'game-names.sqlite3'))
 
 
 def _build_icons(workspace,index,icon_names,sources,progress,check_cancel):

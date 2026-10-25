@@ -58,14 +58,20 @@ class MotionNameTests(unittest.TestCase):
                ('ITEM_MODEL_TEMPLET.NTF',table(model_types,[model])),('ITEM_TEMPLET.NTF',table(item_types,[item])),
                ('STRING_TABLE_CHAR_KOREA.NTF',strings([(1,'ST_SI_COMMON_EMOTION_HELLO_NAME','인사하기')])),
                ('SKILL_TEMPLET.LUA',literal_table('SKILL_TEMPLET',{'1':{'m_SkillID':'SI_COMMON_EMOTION_HELLO','m_UnitStateName':'USN_EMOTION_HELLO'}})),
-               ('GUST_USER_CHARACTER_BASE_TOWN.LUA',literal_table('GAME_UNIT_TEMPLET',{'m_mapUnitStateData':{'1':{'m_StateName':'USN_EMOTION_HELLO','m_AnimName':'MOVE'}}})),
+               ('GUST_USER_CHARACTER_BASE_TOWN.LUA',literal_table('GAME_UNIT_TEMPLET',{'m_mapUnitStateData':{
+                   '1':{'m_StateName':'USN_EMOTION_HELLO','m_AnimName':'MOVE','m_PlayType':'XAP_ONE_WAIT','m_AnimEndChangeState':'USN_EMOTION_HELLO_LOOP'},
+                   '2':{'m_StateName':'USN_EMOTION_HELLO_LOOP','m_AnimName':'LOOP','m_PlayType':'XAP_LOOP','m_CancelState':'USN_EMOTION_HELLO_END'},
+                   '3':{'m_StateName':'USN_EMOTION_HELLO_END','m_AnimName':'END','m_PlayType':'XAP_ONE_WAIT','m_AnimEndChangeState':'USN_ASTAND'}}})),
                ('GUST_USER_BASE_STRIKER.LUA',literal_table('BASE_TEMPLATE',{'m_GameUnitSubType':'GUST_USER_CHARACTER_BASE_TOWN'}))]
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work');exe=root/'CW.EXE';exe.write_bytes(b'fixture')
             source=fixture(root/'one.cmf',[(n,b,1,encrypt(zlib.compress(b))) for n,b in files]);catalog.scan([source])
             with patch.object(ntf,'script_keys',return_value=(key,iv)):result=build_index(catalog.workspace,exe)
             self.assertEqual(result['motion_names'],1)
+            self.assertEqual(result['motion_sequences'],1)
             catalog.game_names.refresh()
+            self.assertTrue(catalog.game_names.sequence_index_available)
+            self.assertEqual([s['name'] for s in catalog.game_names.motion_sequences['STRIKER'][0]['steps']],['MOVE','LOOP','END'])
             name=catalog.game_names.motion_names['STRIKER','MOVE'][0]
             self.assertEqual(name['label'],'인사하기')
             self.assertEqual(name['state_table'],'GUST_USER_CHARACTER_BASE_TOWN.LUA')
@@ -106,6 +112,7 @@ class MotionNameTests(unittest.TestCase):
             catalog.process([source],root/'assets')
             ids={r['name']:r['id'] for r in catalog.entries({})['items']}
             names=GameNames(catalog.workspace);names.refresh();self.assertEqual(names.motion_names,{})
+            self.assertFalse(names.sequence_index_available)
             details=[dict(label='인사하기',skill_id='SI_COMMON_EMOTION_HELLO',state='USN_EMOTION_HELLO',
                           string_key='ST_SI_COMMON_EMOTION_HELLO_NAME',state_table='state.LUA',string_table='string.NTF')]
             with closing(sqlite3.connect(names.path)) as db,db:

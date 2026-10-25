@@ -321,7 +321,10 @@ class Models:
                 except (ValueError,OSError) as exc:
                     item['error']=str(exc)
                 files.append(item)
-            return dict(character=character,skeleton_source=source,categories=CATEGORIES,files=files,
+            from .motion_sequences import resolve
+            sequences=resolve(self.catalog.game_names.motion_sequences.get(character,[]),files)
+            return dict(character=character,skeleton_source=source,categories=CATEGORIES,files=files,sequences=sequences,
+                        sequence_index_available=self.catalog.game_names.sequence_index_available,
                         evidence='종류는 파일명 기준입니다. 인게임 명칭은 게임 테이블에서 연결된 경우 표시하며, 착용·해금 조건은 확정하지 않습니다.')
 
     def clip(self,skeleton_id,animation_id,index,expected):

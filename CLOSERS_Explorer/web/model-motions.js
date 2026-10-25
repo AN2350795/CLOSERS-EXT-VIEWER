@@ -1,11 +1,17 @@
 // Search across packs and clips without downloading their keyframes.
-export function setupMotions({state,api,operation,connectAnimation,chooseClip,loadModel,element}){
+export function setupMotions({state,api,operation,connectAnimation,chooseClip,chooseSequence,loadModel,element}){
   const $=id=>document.getElementById(id),dialog=$('motion-library');
   let data=null,generation=-1,page=0,request=0;
   const limit=60;
   const bindRow=element('div');bindRow.className='motion-bind motion-result';
   const bindButton=element('button','기본 자세');bindButton.id='bind-pose';bindButton.type='button';bindButton.className='motion-select';
   bindRow.append(bindButton,element('span','동작 없이 모델 보기'));dialog.querySelector('.view-settings-heading').after(bindRow);
+  let mode='clips';const modes=element('div');modes.className='motion-modes';modes.setAttribute('role','group');modes.setAttribute('aria-label','동작 목록 방식');
+  for(const [key,label] of [['clips','개별 동작'],['sequences','묶음 동작']]){
+    const button=element('button',label);button.type='button';button.dataset.motionMode=key;
+    button.onclick=()=>{mode=key;page=0;render();};modes.append(button);
+  }
+  bindRow.after(modes);
   function updateBind(){
     bindButton.disabled=!state.model||state.busy;
     bindRow.classList.toggle('is-selected',!!state.model&&!state.clip);
@@ -43,6 +49,9 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
   }
   function render(){
     if(!data)return;
+    for(const button of modes.children)button.setAttribute('aria-pressed',String(button.dataset.motionMode===mode));
+    categories.hidden=mode==='sequences';
+    if(mode==='sequences'){renderSequences();return;}
     const query=$('motion-search').value.trim().toUpperCase(),kind=$('motion-category').value;
     const rows=[];
     for(const file of data.files){
@@ -103,6 +112,37 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
     if(!rows.length)$('motion-results').append(element('p','조건에 맞는 동작이 없습니다.'));
     $('motion-page').textContent=`${page+1} / ${Math.max(1,Math.ceil(rows.length/limit))}`;
     $('motion-prev').disabled=page===0;$('motion-next').disabled=(page+1)*limit>=rows.length;
+    $('motion-results').scrollTop=0;
+  }
+  function renderSequences(){
+    const query=$('motion-search').value.trim().toUpperCase();
+    const sequences=(data.sequences||[]).filter(s=>`${s.label} ${s.key} ${s.steps.map(v=>v.name).join(' ')}`.toUpperCase().includes(query));
+    page=Math.min(page,Math.max(0,Math.ceil(sequences.length/limit)-1));
+    $('motion-summary').textContent=`${sequences.length}개 묶음 동작`;$('motion-results').replaceChildren();
+    for(const sequence of sequences.slice(page*limit,(page+1)*limit)){
+      const row=element('div');row.className='motion-result';
+      row.classList.toggle('is-selected',state.sequence?.definition.key===sequence.key);
+      const button=element('button');button.type='button';button.className='motion-select';
+      const icon=element('span','▷');icon.className='motion-select-icon';icon.setAttribute('aria-hidden','true');
+      const name=element('span',sequence.label);name.className='motion-name';button.append(icon,name);
+      button.disabled=sequence.status!=='ready'||state.busy;
+      button.onclick=()=>operation(async()=>{
+        if(generation!==state.generation)return;
+        try{await chooseSequence(sequence);dialog.close();}
+        catch(e){$('motion-summary').textContent=e.message;}
+      });
+      const meta=element('div',sequence.status==='ready'?(sequence.loop_index===0?'반복 → 종료':'시작 → 반복 → 종료'):'구성 확인 필요');meta.className='motion-row-meta';
+      const details=element('details');details.className='motion-details';
+      const summary=element('summary','정보');summary.setAttribute('aria-label',sequence.label+' 구성 정보');details.append(summary);
+      const body=element('div');body.className='motion-detail-body';
+      sequence.steps.forEach((step,i)=>body.append(element('small',`${i<sequence.loop_index?'시작':i===sequence.loop_index?'반복':'종료'} · ${step.name} · ${step.speed}× · ${step.source}`)));
+      body.append(element('small',sequence.skill_table+' · '+sequence.key));
+      if(sequence.error)body.append(element('p',sequence.error));
+      details.append(body);row.append(button,meta,details);$('motion-results').append(row);
+    }
+    if(!sequences.length)$('motion-results').append(element('p',data.sequence_index_available?'연결이 확인된 묶음 동작이 없습니다.':'묶음 동작 정보를 추가하려면 라이브러리에서 후처리만 실행해 주세요.'));
+    $('motion-page').textContent=`${page+1} / ${Math.max(1,Math.ceil(sequences.length/limit))}`;
+    $('motion-prev').disabled=page===0;$('motion-next').disabled=(page+1)*limit>=sequences.length;
     $('motion-results').scrollTop=0;
   }
   async function open(){
