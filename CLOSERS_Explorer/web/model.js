@@ -213,7 +213,7 @@ async function chooseClip(index){
   stop();state.clip=null;state.time=0;updateTime();const a=state.animation;
   const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;extras.select([clip]);$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clipLabel(clip.clip));
 }
-async function chooseSequence(definition){
+async function chooseSequence(definition,onProgress){
   if(definition.status!=='ready')throw Error(definition.error||'묶음 동작을 연결할 수 없습니다.');
   cancelSequence();stop();
   if(definition.skeleton_id!==state.data.skeleton_source.entry_id){
@@ -227,6 +227,7 @@ async function chooseSequence(definition){
   const controller=new AbortController();sequenceController=controller;
   const clips=[];let transforms=0;
   for(const step of definition.steps){
+    onProgress?.(`묶음 동작을 준비하는 중입니다. (${clips.length+1}/${definition.steps.length})`);
     const clip=await api('/api/model-clip?'+new URLSearchParams({skeleton:skeleton.entry_id,animation:step.animation_id,clip:step.clip_index,sha256:step.sha256}),controller.signal);
     if(generation!==state.generation||version!==animationVersion||controller.signal.aborted)return;
     if(clip.skeleton_source.sha256!==skeleton.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');

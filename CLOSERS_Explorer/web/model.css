@@ -227,6 +227,16 @@
 #motion-library{width:min(820px,94vw);height:min(760px,90dvh);max-height:90dvh;padding:24px;overflow:hidden;background:#141a24;color:var(--text);border:1px solid #344054;border-radius:18px;box-shadow:0 24px 100px #0008}
 #motion-library[open]{display:flex;flex-direction:column;gap:14px}
 #motion-library::backdrop{background:#070b12b8;backdrop-filter:blur(5px)}
+#motion-progress{display:flex;align-items:center;gap:12px;flex-shrink:0;padding:14px;border:1px solid #42675e;border-radius:10px;background:#1c302d}
+#motion-progress[hidden]{display:none}#motion-progress>div{min-width:0;flex:1}#motion-progress strong{display:block;font-size:13px;overflow-wrap:anywhere}#motion-progress span:not(.motion-progress-spinner){display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.5}
+.motion-progress-spinner{width:20px;height:20px;flex-shrink:0;border:2px solid #42675e;border-top-color:var(--accent);border-radius:50%;animation:motion-loading-spin .8s linear infinite}
+#motion-progress[data-state=error]{background:#30251c;border-color:#71543c}#motion-progress[data-state=error] .motion-progress-spinner{display:none}
+#motion-progress button{font-size:11px;white-space:normal}
+#motion-library[data-loading=list] #motion-results{min-height:100px;background:repeating-linear-gradient(180deg,#202b3a 0 12px,transparent 12px 24px);opacity:.45;animation:motion-loading-pulse 1.5s ease-in-out infinite}
+#motion-library[data-loading=apply] .motion-result:not(:has(.is-loading)){opacity:.45}.motion-select.is-loading .motion-select-icon{border:2px solid #42675e;border-top-color:var(--accent);background:none;color:transparent;animation:motion-loading-spin .8s linear infinite}
+.motion-select.is-loading:disabled{opacity:1;cursor:progress}
+@keyframes motion-loading-spin{to{transform:rotate(360deg)}}@keyframes motion-loading-pulse{50%{opacity:.2}}
+@media(prefers-reduced-motion:reduce){.motion-progress-spinner,.motion-select.is-loading .motion-select-icon,#motion-library[data-loading=list] #motion-results{animation:none}}
 #motion-library .view-settings-heading{flex-shrink:0;margin:0;align-items:center}
 #motion-title{font-size:22px;font-weight:650;letter-spacing:-.7px}
 #close-motions{padding:6px 12px;font-size:12px}

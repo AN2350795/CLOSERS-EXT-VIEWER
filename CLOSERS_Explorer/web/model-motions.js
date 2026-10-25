@@ -1,11 +1,48 @@
 // Search across packs and clips without downloading their keyframes.
 export function setupMotions({state,api,operation,connectAnimation,chooseClip,chooseSequence,loadModel,element}){
   const $=id=>document.getElementById(id),dialog=$('motion-library');
-  let data=null,generation=-1,page=0,request=0;
+  let data=null,generation=-1,page=0,request=0,pending=null,application=null,listController;
+  const disabledControls=new Map(),openLabel=$('open-motions').textContent;
+  const progress=element('div');progress.id='motion-progress';progress.hidden=true;progress.setAttribute('role','status');progress.setAttribute('aria-live','polite');progress.setAttribute('aria-atomic','true');
+  const spinner=element('span');spinner.className='motion-progress-spinner';spinner.setAttribute('aria-hidden','true');
+  const progressText=element('div'),progressTitle=element('strong'),progressDetail=element('span'),retry=element('button','다시 불러오기');retry.type='button';retry.className='secondary';retry.hidden=true;
+  progressText.append(progressTitle,progressDetail);progress.append(spinner,progressText,retry);dialog.querySelector('.view-settings-heading').after(progress);
+  function showProgress(kind,title,detail){
+    pending=kind;progress.hidden=false;progress.dataset.state=kind;progressTitle.textContent=title;progressDetail.textContent=detail;retry.hidden=true;
+    dialog.dataset.loading=kind;$('motion-results').setAttribute('aria-busy','true');$('open-motions').setAttribute('aria-busy','true');$('open-motions').textContent=kind==='list'?'목록 불러오는 중…':'동작 적용 중…';
+    for(const control of dialog.querySelectorAll('button,input,select')){
+      if(control.id==='close-motions'||control===retry||(kind==='list'&&control.id==='bind-pose'))continue;
+      if(!disabledControls.has(control))disabledControls.set(control,control.disabled);control.disabled=true;
+    }
+  }
+  function clearProgress(){
+    pending=null;progress.hidden=true;delete dialog.dataset.loading;$('motion-results').setAttribute('aria-busy','false');$('open-motions').removeAttribute('aria-busy');$('open-motions').textContent=openLabel;
+    for(const [control,disabled] of disabledControls)control.disabled=disabled;disabledControls.clear();
+  }
+  function showError(title,error,canRetry=false){
+    progress.hidden=false;progress.dataset.state='error';progressTitle.textContent=title;progressDetail.textContent=error.message;retry.hidden=!canRetry;
+  }
+  const paint=()=>new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+  async function applySelection(button,label,work){
+    if(pending||state.busy||generation!==state.generation)return;
+    const active={changingModel:false,cancelled:false};application=active;let error;
+    showProgress('apply',label+' 적용 중…','선택한 동작을 준비하고 있습니다.');button.classList.add('is-loading');button.setAttribute('aria-busy','true');
+    try{
+      await operation(async()=>{
+        await paint();if(active.cancelled)return;
+        try{await work(active);if(!active.cancelled)dialog.close();}catch(e){error=e;}
+      });
+    }finally{
+      if(application===active){
+        application=null;clearProgress();button.classList.remove('is-loading');button.removeAttribute('aria-busy');
+        if(!active.cancelled){updateBind();render();if(error)showError('동작을 적용하지 못했습니다',error);}
+      }
+    }
+  }
   const limit=60;
   const bindRow=element('div');bindRow.className='motion-bind motion-result';
   const bindButton=element('button','기본 자세');bindButton.id='bind-pose';bindButton.type='button';bindButton.className='motion-select';
-  bindRow.append(bindButton,element('span','동작 없이 모델 보기'));dialog.querySelector('.view-settings-heading').after(bindRow);
+  bindRow.append(bindButton,element('span','동작 없이 모델 보기'));progress.after(bindRow);
   let mode='clips';const modes=element('div');modes.className='motion-modes';modes.setAttribute('role','group');modes.setAttribute('aria-label','동작 목록 방식');
   for(const [key,label] of [['clips','개별 동작'],['sequences','묶음 동작']]){
     const button=element('button',label);button.type='button';button.dataset.motionMode=key;
@@ -13,7 +50,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
   }
   bindRow.after(modes);
   function updateBind(){
-    bindButton.disabled=!state.model||state.busy;
+    bindButton.disabled=!state.model||state.busy||pending==='apply';
     bindRow.classList.toggle('is-selected',!!state.model&&!state.clip);
     bindButton.setAttribute('aria-pressed',String(!!state.model&&!state.clip));
   }
@@ -39,12 +76,15 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
     return /_LOOP$/.test(clip.name)?'반복':/_END$/.test(clip.name)?'마무리':/_START$/.test(clip.name)?'시작':'';
   }
   function reset(){
-    if(dialog.open)dialog.close();
+    const keepApplication=application?.changingModel&&!application.cancelled;
+    if(!keepApplication){if(application)application.cancelled=true;application=null;clearProgress();if(dialog.open)dialog.close();}
+    listController?.abort();
     request++;data=null;generation=-1;page=0;
     categories.replaceChildren();
     $('motion-search').value='';$('motion-category').value='';
-    $('motion-results').replaceChildren();$('motion-summary').textContent='모델을 선택한 뒤 모든 동작을 탐색하세요.';
-    $('open-motions').disabled=!state.model;
+    $('motion-results').replaceChildren();$('motion-summary').textContent=keepApplication?'':'모델을 선택한 뒤 모든 동작을 탐색하세요.';
+    $('open-motions').disabled=!state.model||state.busy;
+    $('motion-prev').disabled=$('motion-next').disabled=true;
     updateBind();
   }
   function render(){
@@ -76,18 +116,20 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
       button.append(icon,name);button.setAttribute('aria-label',title(clip)+' 선택');
       button.type='button';button.disabled=file.status!=='ready'||!clip||state.busy;
       button.title=file.error||'동작 선택 후 재생 버튼으로 재생합니다.';
-      button.onclick=()=>operation(async()=>{
-        if(generation!==state.generation)return;
+      button.onclick=()=>applySelection(button,title(clip),async active=>{
         if(file.skeleton_id!==state.data.skeleton_source.entry_id){
+          progressDetail.textContent='이 동작에 필요한 전용 모델을 불러오는 중입니다.';active.changingModel=true;
           const items=Object.fromEntries(state.data.sources.filter(s=>s.appearance_key).map(s=>[s.entry_id,s.appearance_key]));
-          await loadModel(state.ids,file.skeleton_id,state.eye,items);
+          try{await loadModel(state.ids,file.skeleton_id,state.eye,items);}finally{active.changingModel=false;}
         }
+        if(active.cancelled)return;
         const current=state.generation;
+        progressDetail.textContent='동작 파일을 연결하는 중입니다.';
         if(state.animation?.id!==file.id)await connectAnimation(file.id);
-        if(current!==state.generation)return;
+        if(current!==state.generation||active.cancelled)return;
         if(!state.animation||state.animation.id!==file.id)throw Error('동작 연결을 다시 시도해 주세요.');
+        progressDetail.textContent='선택한 동작을 적용하는 중입니다.';
         await chooseClip(clip.index);
-        dialog.close();
       });
       const meta=element('div');meta.className='motion-row-meta';
       if(phase(clip))meta.append(element('span',phase(clip)));
@@ -126,10 +168,10 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
       const icon=element('span','▷');icon.className='motion-select-icon';icon.setAttribute('aria-hidden','true');
       const name=element('span',sequence.label);name.className='motion-name';button.append(icon,name);
       button.disabled=sequence.status!=='ready'||state.busy;
-      button.onclick=()=>operation(async()=>{
-        if(generation!==state.generation)return;
-        try{await chooseSequence(sequence);dialog.close();}
-        catch(e){$('motion-summary').textContent=e.message;}
+      button.onclick=()=>applySelection(button,sequence.label,async active=>{
+        active.changingModel=sequence.skeleton_id!==state.data.skeleton_source.entry_id;
+        try{await chooseSequence(sequence,message=>{if(application===active&&!active.cancelled)progressDetail.textContent=message;});}
+        finally{active.changingModel=false;}
       });
       const meta=element('div',sequence.status==='ready'?(sequence.loop_index===0?'반복 → 종료':'시작 → 반복 → 종료'):'구성 확인 필요');meta.className='motion-row-meta';
       const details=element('details');details.className='motion-details';
@@ -146,14 +188,17 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
     $('motion-results').scrollTop=0;
   }
   async function open(){
-    if(!state.model)return;
-    dialog.showModal();
+    if(!state.model||pending)return;
+    clearProgress();if(!dialog.open)dialog.showModal();
     updateBind();
     if(data&&generation===state.generation){render();return;}
     const version=++request,current=state.generation;
-    $('motion-results').replaceChildren();$('motion-summary').textContent='캐릭터의 동작 파일과 개별 동작을 정리하고 있습니다…';
+    listController?.abort();listController=new AbortController();
+    $('motion-results').replaceChildren();$('motion-summary').textContent='';
+    showProgress('list','동작 목록을 불러오는 중…','캐릭터의 개별 동작과 묶음 정보를 정리하고 있습니다.');
     try{
-      const result=await api('/api/model-motion-library?'+new URLSearchParams({skeleton:state.data.skeleton_source.entry_id,entries:state.ids.join(',')}));
+      await paint();if(version!==request)return;
+      const result=await api('/api/model-motion-library?'+new URLSearchParams({skeleton:state.data.skeleton_source.entry_id,entries:state.ids.join(',')}),listController.signal);
       if(version!==request||current!==state.generation)return;
       if(result.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');
       data=result;generation=current;
@@ -169,9 +214,11 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
         const button=element('button',option.value?result.categories[option.value]:'전체');button.type='button';button.dataset.category=option.value;
         button.onclick=()=>{$('motion-category').value=option.value;page=0;render();};categories.append(button);
       }
-      render();
-    }catch(e){if(version===request)$('motion-summary').textContent=e.message;}
+      clearProgress();render();updateBind();
+    }catch(e){if(version===request){clearProgress();showError('동작 목록을 불러오지 못했습니다',e,true);updateBind();}}
   }
+  retry.onclick=open;
+  dialog.addEventListener('close',()=>{if(!dialog.open&&pending==='list'){request++;listController?.abort();clearProgress();updateBind();}});
   $('open-motions').onclick=open;$('close-motions').onclick=()=>dialog.close();
   $('motion-search').oninput=$('motion-category').onchange=$('motion-defaults').onchange=()=>{page=0;render();};
   $('motion-prev').onclick=()=>{page--;render();};$('motion-next').onclick=()=>{page++;render();};

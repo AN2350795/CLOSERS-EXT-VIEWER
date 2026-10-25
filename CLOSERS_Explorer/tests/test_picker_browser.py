@@ -128,7 +128,7 @@ if(value.status==='passed'&&process.argv[2]==='viewer-layout'){
 }
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
-''',port,'motion-layout' if self.checks_script in ('motion_library_checks.js','motion_sequence_checks.js','animation_controls_checks.js') else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
+''',port,'motion-layout' if self.checks_script in ('motion_library_checks.js','motion_sequence_checks.js','motion_loading_checks.js','animation_controls_checks.js') else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
                     self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
                 finally:
                     if process.poll() is None:
