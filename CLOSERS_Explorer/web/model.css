@@ -89,14 +89,21 @@
 #viewport{flex:1;min-height:0;height:auto;margin:0;border-radius:8px;overflow:hidden;background:#111823}
 .viewport-panel #model-status:not(.is-loading):not(.is-notice){position:absolute;top:10px;left:10px;right:56px;margin:0;padding:7px 10px;max-height:64px;overflow:auto;background:#151a24dd;font-size:11px;font-weight:400;line-height:1.5}
 .viewport-hint{position:absolute;bottom:12px;left:56px;right:10px;text-align:center;color:var(--muted);font-size:10px!important;margin:0;pointer-events:none;text-shadow:0 1px 3px #000}
-.animation-controls{flex-shrink:0;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:7px 10px;padding-top:10px}
-.animation-controls>label{color:var(--muted)}
-.animation-controls>select{padding:5px 8px;min-height:32px;font-size:12px}
-.animation-controls>.model-controls,.animation-controls>input{grid-column:1/-1}
-.animation-controls .model-controls{gap:8px}
-.animation-controls .model-controls button{padding:5px 12px;min-height:32px}
-.animation-controls .model-controls select{padding:4px}
-.animation-controls #animation-time{margin-left:auto;font-size:11px}
+.animation-controls{flex-shrink:0;display:grid;grid-template-columns:minmax(0,1fr);align-items:center;gap:9px;padding-top:10px}
+.animation-selection{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0}
+.animation-current{display:grid;gap:2px;min-width:0}.animation-current>span{font-size:10px;color:var(--muted)}
+#current-motion{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#open-motions{flex-shrink:0;padding:6px 12px;font-size:11px}
+.animation-playback{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;min-width:0}
+#play-animation{padding:6px 11px;font-size:11px;min-width:72px}#play-animation::before{content:'▶';margin-right:6px;font-size:9px}
+#play-animation[aria-pressed=true]::before{content:'Ⅱ'}
+.animation-playback #animation-seek{width:100%;padding:0;min-width:0;accent-color:var(--accent)}
+.animation-playback #animation-time{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:10px}
+.animation-options{display:flex;align-items:center;justify-content:flex-end;gap:16px;color:var(--muted)}
+.animation-options label{display:flex;align-items:center;gap:6px;font-size:10px}.animation-options #animation-speed{width:auto;padding:3px 7px;font-size:10px}
+.motion-bind{flex-shrink:0;padding:0 12px!important;min-height:48px!important;background:#101821;border:1px solid var(--line);border-radius:10px}
+.motion-bind>span{color:var(--muted);font-size:11px}.motion-bind .motion-select{font-size:13px}
+@media(max-width:600px){.animation-playback{gap:8px;grid-template-columns:auto minmax(0,1fr)}.animation-playback #animation-time{grid-column:2;justify-self:end;margin-top:-6px}.animation-options{margin-top:-22px;justify-content:flex-start}#current-motion{font-size:13px}.motion-bind>span{font-size:10px}}
 #animation-seek{margin:0;min-height:16px;padding:0;accent-color:var(--accent)}
 .workspace-switch{display:none}
 #view-settings,#stage-settings{width:min(440px,calc(100% - 24px));padding:20px}
@@ -154,7 +161,6 @@
   .model-layout.show-equipment>.model-info{display:block}
 
   .animation-controls{padding-top:6px;gap:4px 8px}
-  .animation-controls .model-controls{gap:6px}
   .viewport-hint{font-size:9px!important}
 }
 @media(max-height:650px) and (min-width:901px){

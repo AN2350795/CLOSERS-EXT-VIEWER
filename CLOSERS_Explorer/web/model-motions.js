@@ -3,6 +3,14 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
   const $=id=>document.getElementById(id),dialog=$('motion-library');
   let data=null,generation=-1,page=0,request=0;
   const limit=60;
+  const bindRow=element('div');bindRow.className='motion-bind motion-result';
+  const bindButton=element('button','기본 자세');bindButton.id='bind-pose';bindButton.type='button';bindButton.className='motion-select';
+  bindRow.append(bindButton,element('span','동작 없이 모델 보기'));dialog.querySelector('.view-settings-heading').after(bindRow);
+  function updateBind(){
+    bindButton.disabled=!state.model||state.busy;
+    bindRow.classList.toggle('is-selected',!!state.model&&!state.clip);
+    bindButton.setAttribute('aria-pressed',String(!!state.model&&!state.clip));
+  }
   const filters=dialog.querySelector('.motion-filters'),categories=element('div');
   categories.className='motion-categories';categories.setAttribute('role','group');categories.setAttribute('aria-label','동작 종류');
   filters.after(categories);
@@ -31,6 +39,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
     $('motion-search').value='';$('motion-category').value='';
     $('motion-results').replaceChildren();$('motion-summary').textContent='모델을 선택한 뒤 모든 동작을 탐색하세요.';
     $('open-motions').disabled=!state.model;
+    updateBind();
   }
   function render(){
     if(!data)return;
@@ -99,6 +108,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,lo
   async function open(){
     if(!state.model)return;
     dialog.showModal();
+    updateBind();
     if(data&&generation===state.generation){render();return;}
     const version=++request,current=state.generation;
     $('motion-results').replaceChildren();$('motion-summary').textContent='캐릭터의 동작 파일과 개별 동작을 정리하고 있습니다…';

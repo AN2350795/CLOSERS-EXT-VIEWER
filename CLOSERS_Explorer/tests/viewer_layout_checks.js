@@ -14,7 +14,9 @@ window.checkViewerLayout=async()=>{
   const original={x:viewport.x,y:viewport.y,width:viewport.width,height:viewport.height};
   check(document.querySelectorAll('.viewport-actions button').length===2,'toolbar contains only display settings');
   check($('viewport').contains($('reset-camera'))&&$('viewport').contains($('expand-viewer')),'camera and expansion belong to the scene');
-  check(document.querySelector('.animation-controls').contains($('bind-pose')),'bind pose belongs to animation controls');
+  check(document.querySelector('.animation-selection').contains($('open-motions')),'motion selection has its own area');
+  check(document.querySelector('.animation-playback').contains($('play-animation')),'playback has its own area');
+  check(!document.querySelector('.animation-controls #bind-pose'),'bind pose is absent from playback controls');
   check($('equipment-panel').contains($('clear-model')),'clear belongs to equipment panel');
   for(const id of ['reset-camera','expand-viewer']){
     const bounds=rect('#'+id);
