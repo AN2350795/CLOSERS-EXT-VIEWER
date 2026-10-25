@@ -36,7 +36,10 @@ def references(rigs):
             game=table.get('GAME_UNIT_TEMPLET',{})
             local=defaultdict(list)
             for item in values(game.get('m_vecAnimAddModelData')):
-                if isinstance(item,dict) and isinstance(item.get('m_AnimName'),str):local[item['m_AnimName']].append(dict(item,source=filename))
+                if isinstance(item,dict) and isinstance(item.get('m_AnimName'),str):
+                    target=local[item['m_AnimName']]
+                    # An empty override explicitly removes an inherited prop.
+                    if item.get('m_XFileName') or item.get('m_ParticleName'):target.append(dict(item,source=filename))
             props.update(local)
             for row in values(game.get('m_mapUnitStateData')):
                 if isinstance(row,dict) and isinstance(row.get('m_StateName'),str):
@@ -59,76 +62,109 @@ def references(rigs):
 
 
 def mesh_rule(row):
-    """Only literal mesh playback and color tracks; no fabricated particle rendering."""
+    from .effect_tracks import tracks,blend,vec,span
     meshes=row.get('m_vecMeshName')
     meshes=[meshes] if isinstance(meshes,str) else values(meshes)
     if not meshes or any(not isinstance(n,str) or not n.upper().endswith('.X') for n in meshes):raise ValueError('효과 모델 파일 연결을 확인할 수 없습니다.')
-    if row.get('m_BillBoardType','BBT_NONE')!='BBT_NONE':raise ValueError('빌보드 효과는 아직 지원하지 않습니다.')
-    if any(vector(row.get('m_vGravity'))):raise ValueError('중력이 있는 효과는 아직 지원하지 않습니다.')
-    if row.get('m_bDualBlending','FALSE')=='TRUE':raise ValueError('이중 블렌딩 효과는 아직 지원하지 않습니다.')
-    if row.get('m_LifeType','MPLT_TIME')!='MPLT_TIME':raise ValueError('시간 이외의 효과 수명 조건은 아직 지원하지 않습니다.')
-    life=row.get('m_fLifeTime',9999)
-    if type(life) not in (int,float) or not math.isfinite(life) or not 0<life<=100000:raise ValueError('효과 수명이 올바르지 않습니다.')
-    animation=None;speed=1;color=[1,1,1,1];fades=[];loop=False
-    for event in values(row.get('m_vecEventList')):
-        if not isinstance(event,dict):raise ValueError('효과 이벤트 형식을 확인할 수 없습니다.')
-        prop=event.get(3);mode=event.get(2)
-        if prop=='MPET_ANIM_NAME' and mode=='MPET_INITIAL':
-            animation=event.get('STR');loop=event.get('PLAY_TYPE')=='XAP_LOOP'
-        elif prop=='MPET_ANIM_SPEED' and mode=='MPET_INITIAL':speed=event.get('VAL',1)
-        elif prop=='MPET_COLOR' and mode in ('MPET_INITIAL','MPET_FADE'):
-            rgba=event.get('RGBA',{});target=[rgba.get(i,1) for i in (1,2,3,4)]
-            if any(type(v) not in (int,float) or not math.isfinite(v) or not 0<=v<=1 for v in target):raise ValueError('효과 색상 범위를 확인할 수 없습니다.')
-            if mode=='MPET_INITIAL':color=target
-            else:
-                start,end=event.get(4,0),event.get(5,0)
-                if any(type(v) not in (int,float) or not math.isfinite(v) for v in (start,end)) or not 0<=start<=end:raise ValueError('효과 색상 시간 범위를 확인할 수 없습니다.')
-                fades.append(dict(start=start,end=end,color=target))
-        else:raise ValueError('아직 지원하지 않는 효과 이벤트입니다: '+str(prop))
-    if type(speed) not in (int,float) or not math.isfinite(speed) or speed<=0:raise ValueError('효과 재생 속도가 올바르지 않습니다.')
-    blend=[row.get('m_SrcBlend','CON_D3DBLEND_SRCALPHA'),row.get('m_DestBlend','CON_D3DBLEND_INVSRCALPHA')]
-    if blend not in [['CON_D3DBLEND_SRCALPHA','CON_D3DBLEND_INVSRCALPHA'],['CON_D3DBLEND_SRCALPHA','CON_D3DBLEND_ONE']]:raise ValueError('지원하지 않는 효과 블렌딩입니다.')
-    fades.sort(key=lambda v:v['start'])
-    if any(b['start']<a['end'] for a,b in zip(fades,fades[1:])):raise ValueError('겹치는 색상 전환 이벤트는 아직 지원하지 않습니다.')
-    return dict(models=meshes,animation=animation,speed=speed,loop=loop,life=life,color=color,fades=fades,
-                additive=blend[1]=='CON_D3DBLEND_ONE',depth_test=row.get('m_bZEnable','TRUE')=='TRUE',depth_write=row.get('m_bZWriteEnable','TRUE')=='TRUE')
+    rule=tracks(values(row.get('m_vecEventList')),mesh=True)
+    try:
+        life=span(row.get('m_fLifeTime',0))
+        if isinstance(life,list):life=sum(life)/2;rule['warnings'].append('효과 수명 범위는 중간값으로 미리보기합니다.')
+    except ValueError:
+        life=0;rule['warnings'].append('게임에서 계산하는 효과 수명은 상태 종료까지 표시합니다.')
+    lifetime=row.get('m_LifeType','MPLT_TIME')
+    color=next((t['value'] for t in rule['tracks'] if t['property']=='color' and t['mode']=='initial'),[1,1,1,1])
+    fades=[dict(start=t['start'],end=t['end'],color=t['value']) for t in rule['tracks'] if t['property']=='color' and t['mode']=='fade']
+    rule.update(models=meshes,life=life if life>0 and lifetime=='MPLT_TIME' else 100000,
+                play_count=max(1,int(row.get('m_iPlayCount',1))) if lifetime=='MPLT_PLAY_COUNT' else None,
+                color=color,fades=fades,gravity=vec(row.get('m_vGravity')),billboard=row.get('m_BillBoardType','BBT_NONE'),
+                blend=blend(row),dual=row.get('m_bDualBlending','FALSE') in (True,'TRUE'),additive=blend(row)[1]=='ONE',
+                depth_test=row.get('m_bZEnable','TRUE') in (True,'TRUE'),depth_write=row.get('m_bZWriteEnable','TRUE') in (True,'TRUE'))
+    return rule
 
 
-def compile_extras(refs,damage,meshes):
+def particle_rule(row,texanims=None):
+    from .effect_tracks import tracks,blend,vec,span
+    import zlib
+    rule=tracks(values(row.get('m_vecEventList')))
+    kind=row.get('m_ParticleType','PCT_3D_PLANE')
+    model=row.get('m_MeshName')
+    models=[model] if isinstance(model,str) and model.upper().endswith('.X') else []
+    texture=rule.get('texture') or row.get('m_TexName')
+    frames=[]
+    if rule.get('texanim'):
+        definition=(texanims or {}).get(rule['texanim'])
+        if definition:
+            for frame in values(definition.get('m_vecFrame')):
+                if isinstance(frame,dict) and isinstance(frame.get('m_TexName'),str):
+                    duration=frame.get('m_fTime',.033333)
+                    frames.append(dict(name=frame['m_TexName'],duration=duration if type(duration) in (int,float) and duration>0 else .033333))
+        if not frames:rule['warnings'].append('텍스처 애니메이션 정의가 없어 기본 텍스처로 표시합니다.')
+    if not frames and isinstance(texture,str):frames=[dict(name=texture,duration=1)]
+    if rule.get('spine'):raise ValueError('Spine 전용 연출입니다. SKEL·ATLAS 원본은 있으나 현재 렌더러에서 재생하지 못합니다.')
+    if kind=='PCT_MESH' and not models:raise ValueError('현재 X 형식만 표시하는 메시 파티클입니다: '+str(model or '원본 미지정'))
+    if kind!='PCT_MESH' and not frames:raise ValueError('평면 파티클의 텍스처 연결이 없습니다.')
+    maximum=span(row.get('m_iMaxParticleNum',1));maximum=sum(maximum)/2 if isinstance(maximum,list) else maximum
+    life=span(row.get('m_LifeTime',1))
+    if min(life if isinstance(life,list) else [life])<=0:life=1;rule['warnings'].append('0 이하의 입자 수명을 1초로 미리보기합니다.')
+    rule.update(type=kind,models=models,frames=frames,life=life,max_particles=min(256,max(1,int(maximum))),
+                rate=span(row.get('m_EmitRate',0)),instant=span(row.get('m_EmitRateInstant',0)),
+                emitter_life=span(row.get('m_DieTime',100000)),deaths=span(row.get('m_DieCount',0)),
+                radius=vec(row.get('m_EmitRadius')),radius_min=vec(row.get('m_EmitRadiusMin')),
+                gravity=vec(row.get('m_vGravity')),billboard=row.get('m_BillBoardType','BBT_NONE'),
+                blend=blend(row),dual=row.get('m_bDualBlending','FALSE') in (True,'TRUE'),
+                depth_test=row.get('m_bZEnable','TRUE') in (True,'TRUE'),depth_write=row.get('m_bZWriteEnable','FALSE') in (True,'TRUE'),
+                seed=zlib.crc32(str(row.get('m_SeqName','')).encode()),source=row.get('source',''))
+    if maximum>256:rule['warnings'].append('입자는 이미터마다 최대 256개를 표시합니다.')
+    return rule
+
+
+def compile_extras(refs,damage,meshes,particles=None):
+    from .effect_tracks import vec
+    particles=particles or {}
     result={}
     for character,clips in refs.items():
         for clip,items in clips.items():
             out=[]
-            for index,item in enumerate(items):
-                row=item['row'];kind=item['kind'];name=row.get('m_XFileName') or row.get('m_DamageEffectName') or row.get('m_ParticleName') or row.get('m_SeqName') or '파티클'
-                entry=dict(key=f'{character}|{clip}|{index}',kind=kind,label=name,state=item['state'],source=row['source'],status='ready',error='')
+            def add(row,kind,state,key,parent=None):
+                name=(row.get('m_ParticleName') if kind=='model' else None) or row.get('m_XFileName') or row.get('m_DamageEffectName') or row.get('m_ParticleName') or row.get('m_SeqName') or '연출'
+                if row.get('m_ParticleName'):kind='particle'
+                entry=dict(key=key,kind=kind,label=name,state=state,source=row.get('source',''),status='ready',error='',warnings=[])
                 try:
-                    if kind=='particle' or row.get('m_ParticleName'):raise ValueError('파티클 효과는 아직 지원하지 않습니다.')
-                    if any(k in row for k in ('m_SetID','m_SetCount','m_ItemID')):raise ValueError('장비 조건이 있는 연출입니다. 적용 조건 확인이 필요합니다.')
-                    offset=vector(row.get('m_Offset'));rotation=vector(row.get('m_OffsetRotate'))
-                    if any(rotation):raise ValueError('회전 오프셋이 있는 연출은 아직 지원하지 않습니다.')
-                    at=row.get('m_fEventTime',0)
-                    if type(at) not in (int,float) or not math.isfinite(at) or at<0:raise ValueError('효과 생성 시간이 올바르지 않습니다.')
-                    entry.update(bone=row.get('m_BoneName',''),offset=offset,at=at,anim_time=row.get('m_bAnimTime','TRUE')=='TRUE',
-                                 follow=kind=='model' or row.get('m_bHold','FALSE')=='TRUE',state_end=row.get('m_bStateEndDie','TRUE')=='TRUE')
+                    entry.update(bone=row.get('m_BoneName',''),offset=vec(row.get('m_Offset')),rotation=vec(row.get('m_OffsetRotate')),
+                                 at=float(row.get('m_fEventTime',0)),anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),
+                                 follow=kind=='model' or row.get('m_bHold','FALSE') in (True,'TRUE'),state_end=row.get('m_bStateEndDie','TRUE') in (True,'TRUE'),
+                                 conditions={k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID') if k in row})
+                    if not math.isfinite(entry['at']) or entry['at']<0:raise ValueError('효과 생성 시간이 올바르지 않습니다.')
+                    if parent:entry['parent_key']=parent
                     if kind=='model':
                         if not isinstance(row.get('m_XFileName'),str) or not row['m_XFileName'].upper().endswith('.X'):raise ValueError('보조 모델 파일 연결을 확인할 수 없습니다.')
-                        entry.update(models=[row['m_XFileName']],animation=None,speed=1,loop=False,life=100000,color=[1,1,1,1],fades=[],additive=False,depth_test=True,depth_write=True)
+                        entry.update(models=[row['m_XFileName']],animation=None,speed=1,loop=False,life=100000,color=[1,1,1,1],fades=[],tracks=[],blend=['SRCALPHA','INVSRCALPHA'],dual=False,depth_test=True,depth_write=True)
+                    elif kind=='particle':
+                        rule=particles.get(name)
+                        if rule and rule.get('error'):raise ValueError(rule['error'])
+                        if not rule:raise ValueError('파티클 정의가 없거나 출처가 중복됩니다.')
+                        entry.update(particle_name=name,models=rule['models'],life=100000,speed=1,animation=None,loop=False,color=[1,1,1,1],fades=[])
+                        entry['warnings']=rule.get('warnings',[])
                     else:
                         definition=damage.get(name)
                         if not definition:raise ValueError('효과 정의가 없거나 출처가 중복됩니다.')
-                        mesh=meshes.get(definition.get('m_MainEffectName'))
-                        if not mesh:raise ValueError('메시 효과 정의가 없거나 파티클 전용 효과입니다.')
-                        entry.update(mesh_rule(mesh));entry['effect_source']=definition['source'];entry['mesh_source']=mesh['source']
-                        entry['notes']='파티클·게임 셰이더·사운드는 포함하지 않는 메시 효과 미리보기입니다.'
-                except (ValueError,KeyError) as exc:entry.update(status='unavailable',error=str(exc))
+                        seq=definition.get('m_MainEffectName')
+                        if seq in meshes:
+                            entry.update(mesh_rule(meshes[seq]));entry['mesh_source']=meshes[seq]['source']
+                        elif seq in particles:
+                            if particles[seq].get('error'):raise ValueError(particles[seq]['error'])
+                            entry.update(kind='particle',particle_name=seq,warnings=list(particles[seq].get('warnings',[])),models=particles[seq]['models'],life=100000,speed=1,animation=None,loop=False,color=[1,1,1,1],fades=[])
+                        else:raise ValueError('효과의 메시 또는 파티클 정의를 찾을 수 없습니다.')
+                        entry['effect_source']=definition['source']
+                    if entry['conditions']:entry['warnings'].append('장비 조건부 연출입니다. 조건부 표시 옵션으로 선택할 수 있습니다.')
+                except (ValueError,KeyError,TypeError) as exc:entry.update(status='unavailable',error=str(exc))
                 out.append(entry)
                 if kind=='effect' and name in damage:
                     for pi,particle in enumerate(values(damage[name].get('m_EventParticle'))):
                         if not isinstance(particle,dict):continue
-                        out.append(dict(key=entry['key']+f':particle:{pi}',kind='particle',label=particle.get('m_SeqName','파티클'),state=item['state'],source=damage[name]['source'],status='unavailable',error='파티클 효과는 아직 지원하지 않습니다.'))
-            if len(out)>128:
-                out=out[:128]+[dict(key=character+'|'+clip+'|limit',kind='effect',label='추가 연출',state='',source='',status='unavailable',error='한 동작의 연출 정보는 128개까지 표시합니다.')]
+                        add(dict(particle,source=damage[name]['source']),'particle',state,key+f':particle:{pi}',key)
+            for index,item in enumerate(items):add(item['row'],item['kind'],item['state'],f'{character}|{clip}|{index}')
             result[character,clip]=out
     return result
 

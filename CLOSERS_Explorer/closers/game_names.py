@@ -31,7 +31,7 @@ class GameNames:
         self.part_overrides={}
         self.motion_names={}
         self.motion_sequences={}
-        self.motion_extras={}
+        self.motion_extras={};self.motion_particles={}
         self.sequence_index_available=False
         self.local=threading.local()
 
@@ -66,9 +66,9 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.sequence_index_available=False;self.version=(version,'stale')
+                    self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
-            labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};sequence_index_available=False
+            labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -95,6 +95,9 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_extras'").fetchone():
                             from .motion_extras import ExtraIndex
                             motion_extras=ExtraIndex(db.execute('SELECT character,clip,details_json FROM motion_extras'))
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_particles'").fetchone():
+                            from .motion_extras import ExtraIndex
+                            motion_particles=ExtraIndex(db.execute("SELECT name,'' AS clip,details_json FROM motion_particles"))
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_part_overrides'").fetchone():
                             for filename,parts in db.execute('SELECT filename,parts_json FROM model_part_overrides'):
                                 part_rules[filename]=json.loads(parts)
@@ -103,14 +106,14 @@ class GameNames:
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};sequence_index_available=False;self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False;self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
             self.part_overrides=part_rules
             self.motion_names=motion_names
             self.motion_sequences=motion_sequences;self.sequence_index_available=sequence_index_available
-            self.motion_extras=motion_extras
+            self.motion_extras=motion_extras;self.motion_particles=motion_particles
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -121,7 +124,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -174,11 +177,11 @@ def _build(workspace,executable,progress,cancel=None):
             FROM entries e JOIN archives a ON a.id=e.archive_id
             WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
                OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name IN ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA')
-               OR e.name LIKE 'GUST_USER_%.LUA' OR e.name LIKE 'DAMAGE_EFFECT_DATA%.LUA' OR e.name LIKE 'X_MESH_PLAYER_GAME%.LUA' ORDER BY e.id''').fetchall()
+               OR e.name LIKE 'GUST_USER_%.LUA' OR e.name LIKE 'DAMAGE_EFFECT_DATA%.LUA' OR e.name LIKE 'X_MESH_PLAYER_GAME%.LUA' OR e.name LIKE 'PARTICLE_SYSTEM_MAIN%.LUA' OR e.name LIKE 'TEX_ANIM_DATA%.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
         check_cancel()
-        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME)(?:_[A-Z0-9]+)*\.LUA)',row['name']):continue
+        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|(?:(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME|PARTICLE_SYSTEM_MAIN)(?:[A-Z0-9_])*|TEX_ANIM_DATA[A-Z0-9_]*)\.LUA)',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
             raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
@@ -200,12 +203,12 @@ def _build(workspace,executable,progress,cancel=None):
         selected.setdefault(row['name'],(dict(row),stored))
     strings={};items={};models=[];counts={};visibility=defaultdict(set);part_visibility=defaultdict(set);patterns=[]
     emotion_strings={};emotion_skills={};emotion_rigs={}
-    extra_damage={};extra_meshes={};extra_refs=None;extra_errors={};wanted_damage=set();wanted_meshes=set()
+    extra_damage={};extra_meshes={};extra_particle_tables={};extra_tex_tables={};wanted_particles=set();wanted_tex=set();extra_refs=None;extra_errors={};wanted_damage=set();wanted_meshes=set()
     # Strings first to keep only the item columns used by the join.
-    for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),2 if kv[0].startswith('X_MESH_PLAYER_GAME') else 1 if kv[0].startswith('DAMAGE_EFFECT_DATA') else 0,kv[0])):
+    for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),4 if kv[0].startswith('TEX_ANIM_DATA') else 3 if kv[0].startswith('PARTICLE_SYSTEM_MAIN') else 2 if kv[0].startswith('X_MESH_PLAYER_GAME') else 1 if kv[0].startswith('DAMAGE_EFFECT_DATA') else 0,kv[0])):
         check_cancel()
         body=ntf.restore(stored,row['size'],key,iv)
-        if name.startswith(('DAMAGE_EFFECT_DATA','X_MESH_PLAYER_GAME')):
+        if name.startswith(('DAMAGE_EFFECT_DATA','X_MESH_PLAYER_GAME','PARTICLE_SYSTEM_MAIN','TEX_ANIM_DATA')):
             from .motion_names import character_layers
             from .motion_extras import references,unique_rows,values
             from .model_groups import CHARACTERS
@@ -217,11 +220,23 @@ def _build(workspace,executable,progress,cancel=None):
             except ValueError as exc:extra_errors[name]=str(exc);counts[name]=0;continue
             if name.startswith('DAMAGE_EFFECT_DATA'):
                 extra_damage[name]={'m_mapDamageEffectData':dict(enumerate(v for v in values(table.get('m_mapDamageEffectData')) if isinstance(v,dict) and v.get('m_DamageEffectName') in wanted_damage))}
-            else:
+            elif name.startswith('X_MESH_PLAYER_GAME'):
                 if not wanted_meshes:
                     damage=unique_rows(extra_damage,'m_mapDamageEffectData','m_DamageEffectName',wanted_damage)
                     wanted_meshes={v['m_MainEffectName'] for v in damage.values() if isinstance(v.get('m_MainEffectName'),str)}
                 extra_meshes[name]={'X_MESH_PLAYER':dict(enumerate(v for v in values(table.get('X_MESH_PLAYER')) if isinstance(v,dict) and v.get('m_SeqName') in wanted_meshes))}
+            elif name.startswith('PARTICLE_SYSTEM_MAIN'):
+                if not wanted_particles:
+                    damage=unique_rows(extra_damage,'m_mapDamageEffectData','m_DamageEffectName',wanted_damage)
+                    wanted_particles={v.get('m_ParticleName',v.get('m_SeqName')) for clips in extra_refs.values() for items in clips.values() for item in items for v in [item['row']] if isinstance(v.get('m_ParticleName',v.get('m_SeqName')),str)}
+                    wanted_particles.update(v.get('m_MainEffectName') for v in damage.values() if isinstance(v.get('m_MainEffectName'),str))
+                    wanted_particles.update(p.get('m_SeqName') for v in damage.values() for p in values(v.get('m_EventParticle')) if isinstance(p,dict) and isinstance(p.get('m_SeqName'),str))
+                extra_particle_tables[name]={'PARTICLE_SYSTEM':dict(enumerate(v for v in values(table.get('PARTICLE_SYSTEM')) if isinstance(v,dict) and v.get('m_SeqName') in wanted_particles))}
+            else:
+                if not wanted_tex:
+                    particle_defs=unique_rows(extra_particle_tables,'PARTICLE_SYSTEM','m_SeqName',wanted_particles)
+                    wanted_tex={e.get('STR') for v in particle_defs.values() for e in values(v.get('m_vecEventList')) if isinstance(e,dict) and e.get(2)=='PCET_TEX_ANIM' and isinstance(e.get('STR'),str)}
+                extra_tex_tables[name]={'m_mapTexAnimData':dict(enumerate(v for v in values(table.get('m_mapTexAnimData')) if isinstance(v,dict) and v.get('m_AnimName') in wanted_tex))}
             counts[name]=len(table);progress(current=name,rows=counts[name]);continue
         if name=='FRAME_UNIQUE_ID.LUA':
             patterns=frame_patterns(body);counts[name]=len(patterns);continue
@@ -283,7 +298,17 @@ def _build(workspace,executable,progress,cancel=None):
             if extra_refs is None:extra_refs=references(layers)
             damage=unique_rows(extra_damage,'m_mapDamageEffectData','m_DamageEffectName',wanted_damage)
             mesh=unique_rows(extra_meshes,'X_MESH_PLAYER','m_SeqName',wanted_meshes)
-            motion_extras=compile_extras(extra_refs,damage,mesh)
+            from .motion_extras import particle_rule
+            particle_defs=unique_rows(extra_particle_tables,'PARTICLE_SYSTEM','m_SeqName',wanted_particles)
+            tex_defs=unique_rows(extra_tex_tables,'m_mapTexAnimData','m_AnimName',wanted_tex)
+            motion_particles={}
+            for name,row in particle_defs.items():
+                try:motion_particles[name]=particle_rule(row,tex_defs)
+                except (ValueError,TypeError,KeyError) as exc:
+                    extra_errors['particle:'+name]=str(exc);motion_particles[name]={'error':str(exc),'source':row.get('source','')}
+            motion_extras=compile_extras(extra_refs,damage,mesh,motion_particles)
+            db.execute('CREATE TABLE motion_particles(name TEXT PRIMARY KEY,details_json TEXT NOT NULL)')
+            db.executemany('INSERT INTO motion_particles VALUES(?,?)',[(name,json.dumps(details,ensure_ascii=False)) for name,details in motion_particles.items()])
             db.execute('CREATE TABLE motion_extras(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
             db.executemany('INSERT INTO motion_extras VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in motion_extras.items()])
             from .motion_sequences import build as build_sequences

@@ -55,6 +55,7 @@ def tables(body):
             if op == 10: registers[a] = {}
             elif op == 0: registers[a] = registers[b]
             elif op == 1: registers[a] = constants[bx]
+            elif op == 2 and c == 0: registers[a] = bool(b)
             elif op == 5: registers[a] = result.get(constants[bx], constants[bx])
             elif op == 6:
                 owner,key=registers[b],rk(c)

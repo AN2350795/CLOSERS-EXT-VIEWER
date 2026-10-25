@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from closers.motion_extras import references,compile_extras,mesh_rule,unique_rows,ExtraIndex
+from closers.motion_extras import references,compile_extras,mesh_rule,particle_rule,unique_rows,ExtraIndex
 from closers.catalog import Catalog
 from closers.model_library import Models
 from test_explorer import fixture
@@ -19,6 +19,28 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_empty_prop_override_removes_inherited_model(self):
+        rig=layers()
+        rig['STRIKER'].append(('override.LUA',{'GAME_UNIT_TEMPLET':{'m_vecAnimAddModelData':{1:dict(m_AnimName='MOVE',m_XFileName='')}}}))
+        items=references(rig)['STRIKER']['MOVE']
+        self.assertFalse(any(i['kind']=='model' for i in items))
+
+    def test_particle_index_resolves_textures_without_mutating_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work')
+            catalog.scan([fixture(root/'one.cmf',[('SMOKE.PNG',b'fixture',0)])])
+            rule=particle_rule(dict(m_SeqName='STEAM',m_vecEventList={1:{1:'PCET_INITIAL',2:'PCET_TEXTURE','STR':'SMOKE.PNG'}}))
+            entry=dict(key='steam',kind='particle',status='ready',models=[],particle_name='STEAM',bone='')
+            with closing(sqlite3.connect(catalog.game_names.path)) as db,db:
+                db.executescript('PRAGMA user_version=1;CREATE TABLE metadata(key TEXT,value TEXT);CREATE TABLE names(filename TEXT,label TEXT,priority INTEGER);CREATE TABLE motion_extras(character TEXT,clip TEXT,details_json TEXT);CREATE TABLE motion_particles(name TEXT,details_json TEXT);')
+                db.execute('INSERT INTO motion_extras VALUES(?,?,?)',('STRIKER','MOVE',json.dumps([entry])))
+                db.execute('INSERT INTO motion_particles VALUES(?,?)',('STEAM',json.dumps(rule)))
+            catalog.game_names.refresh()
+            item=Models(catalog).extra_sources('STRIKER','MOVE',set())[0]
+            self.assertEqual(item['images'][0]['selected'],catalog.entries({})['items'][0]['id'])
+            self.assertEqual(item['particle']['max_particles'],1)
+            self.assertNotIn('particle',catalog.game_names.motion_extras['STRIKER','MOVE'][0])
+
     def test_index_decodes_only_recent_motion_entries(self):
         index=ExtraIndex(('STRIKER',str(i),json.dumps([dict(label=str(i))])) for i in range(40))
         self.assertEqual(len(index),40);self.assertEqual(len(index.cache),0)
@@ -39,13 +61,29 @@ class MotionExtrasTests(unittest.TestCase):
         self.assertTrue(items[1]['follow']);self.assertEqual(items[1]['fades'][0]['color'][-1],0)
         self.assertEqual(items[2]['status'],'unavailable');self.assertEqual(items[2]['kind'],'particle')
 
-    def test_unsupported_conditions_and_effect_rules_are_explicit(self):
+    def test_conditions_and_mesh_tracks_can_be_previewed(self):
         rig=layers();rig['STRIKER'][0][1]['GAME_UNIT_TEMPLET']['m_mapUnitStateData'][1]['m_EventDamageEffect'][1]['m_SetID']=42
-        items=compile_extras(references(rig),{},{} )['STRIKER','MOVE']
-        self.assertEqual(items[1]['status'],'unavailable');self.assertIn('장비',items[1]['error'])
-        for row in [dict(m_vecMeshName='E.X',m_BillBoardType='BBT_SCREEN'),dict(m_vecMeshName='E.X',m_vGravity={2:-1}),
-                    dict(m_vecMeshName='E.X',m_vecEventList={1:{3:'MPET_UNKNOWN'}})]:
-            with self.assertRaises(ValueError):mesh_rule(row)
+        damage={'DE_TEST':dict(m_MainEffectName='XE',source='damage.LUA')}
+        meshes={'XE':dict(m_vecMeshName='E.X',source='mesh.LUA',m_BillBoardType='BBT_SCREEN',m_vGravity={2:-1},m_bDualBlending='TRUE',m_vecEventList={
+            1:{1:'MPETT_GLOBAL',2:'MPET_INITIAL',3:'MPET_SIZE','XYZ':{1:2,2:3,3:4}},
+            2:{1:'MPETT_GLOBAL',2:'MPET_FADE',3:'MPET_UNKNOWN'}})}
+        item=compile_extras(references(rig),damage,meshes)['STRIKER','MOVE'][1]
+        self.assertEqual(item['status'],'ready');self.assertEqual(item['conditions'],{'m_SetID':42})
+        self.assertEqual(item['gravity'],[0,-1,0]);self.assertTrue(item['dual']);self.assertTrue(item['warnings'])
+        self.assertEqual(item['tracks'][0]['value'],[2,3,4])
+
+    def test_particles_frames_ranges_and_parent_event(self):
+        rule=particle_rule(dict(m_SeqName='STEAM',m_LifeTime={1:.5,2:1},m_EmitRate=8,m_iMaxParticleNum=32,m_vecEventList={
+            1:{1:'PCET_INITIAL',2:'PCET_TEX_ANIM','STR':'TEX'},
+            2:{1:'PCET_INITIAL',2:'PCET_COLOR','RGBA_255':{1:255,2:128,3:0,4:255}},
+            3:{1:'PCET_FADE_FINAL',2:'PCET_SIZE',3:0,'XYZ':{1:2,2:2,3:2}}}),
+            {'TEX':{'m_vecFrame':{1:dict(m_TexName='A.DDS',m_fTime=.1),2:dict(m_TexName='B.DDS',m_fTime=.2)}}})
+        self.assertEqual(rule['life'],[.5,1]);self.assertEqual(len(rule['frames']),2)
+        self.assertAlmostEqual(rule['tracks'][0]['value'][1],128/255)
+        damage={'DE_TEST':dict(m_MainEffectName='MISSING',source='damage.LUA',m_EventParticle={1:dict(m_SeqName='STEAM',m_fEventTime=.1)})}
+        items=compile_extras(references(layers()),damage,{}, {'STEAM':rule})['STRIKER','MOVE']
+        self.assertEqual(items[-1]['status'],'ready');self.assertEqual(items[-1]['parent_key'],items[1]['key'])
+        self.assertEqual(items[-1]['at'],.1)
 
     def test_duplicate_definitions_do_not_get_guessed(self):
         row=dict(m_SeqName='XE',m_vecEventList={1:{1:'value','STR':'test'}})
@@ -70,4 +108,5 @@ class MotionExtrasTests(unittest.TestCase):
             self.assertNotIn('resources',catalog.game_names.motion_extras['STRIKER','MOVE'][0])
             self.assertEqual(models.clip(rig,anim,1,metadata['animation_source']['sha256'])['extras'],[])
             duplicate=fixture(root/'two.cmf',[('PROP.X',binary_model(),0)]);catalog.scan([duplicate])
-            self.assertEqual(models.extra_sources('STRIKER','MOVE',{'CHILD'})[0]['status'],'unavailable')
+            ambiguous=models.extra_sources('STRIKER','MOVE',{'CHILD'})[0]
+            self.assertEqual(ambiguous['status'],'ready');self.assertIsNone(ambiguous['resources'][0]['selected']);self.assertEqual(len(ambiguous['resources'][0]['candidates']),2)

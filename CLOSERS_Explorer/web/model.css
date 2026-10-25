@@ -248,6 +248,7 @@
 #motion-extra-items{max-height:52dvh;overflow:auto}.motion-extra-row{padding:12px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
 .motion-extra-row>label{display:flex;align-items:center;gap:8px;font-size:12px}.motion-extra-row small{display:block;color:var(--muted);font-size:11px;margin-top:5px}
 .motion-extra-row details{margin-top:5px;font-size:11px}.motion-extra-row summary{cursor:pointer;color:var(--muted)}
+#motion-extra-state,.motion-extra-row select{max-width:100%;margin:6px 0;font-size:12px}
 #finish-motion{font-size:11px;padding:5px 10px;border-color:#63748a;color:var(--accent)}
 #sequence-finish-mode{width:auto;padding:3px;font-size:10px}#sequence-phase{font-size:10px;color:var(--accent)}
 .animation-options:has(.sequence-controls:not([hidden])){flex-wrap:wrap;row-gap:6px}

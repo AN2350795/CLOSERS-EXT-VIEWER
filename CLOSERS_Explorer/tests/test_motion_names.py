@@ -36,6 +36,13 @@ def literal_table(name,value):
 
 
 class MotionNameTests(unittest.TestCase):
+    def test_boolean_literal_opcode_without_running_lua(self):
+        body=bytearray(literal_table('BOOL','unused'))
+        offset=12+8+len('@fixture')+1+12+4
+        # LOADBOOL replaces LOADK; external functions remain unsupported.
+        struct.pack_into('<I',body,offset,2|(1<<23))
+        self.assertIs(tables(bytes(body))['BOOL'],True)
+
     def test_build_publishes_join_with_common_state_inheritance(self):
         import base64,zlib
         from unittest.mock import patch
