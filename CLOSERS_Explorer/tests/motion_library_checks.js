@@ -14,11 +14,17 @@ try{
   let selected=null,rig=null,release=null,delay=false;
   const api=async()=>{if(delay)await new Promise(r=>release=r);return {files,categories:{basic:'기본',skill:'스킬',emotion:'이모션',other:'기타'},skeleton_source:{sha256:'rig'},evidence:'파일명 기준'};};
   setupMotions({state,api,element,operation:async fn=>fn(),
-    connectAnimation:async id=>{state.animation={id};},chooseClip:async index=>{selected=[state.animation.id,index];},
+    connectAnimation:async id=>{state.animation={id};},chooseClip:async index=>{state.clip={clip:{index}};selected=[state.animation.id,index];},
     loadModel:async(ids,id)=>{rig=id;state.data.skeleton_source.entry_id=id;state.generation++;document.dispatchEvent(new Event('model-selection'));}});
   $('open-motions').click();await until(()=>$('motion-results').children.length);
   check($('motion-library').open,'library opens');
-  check($('motion-results').textContent.includes('인사하기 · IDLE'),'game name appears alongside original clip');
+  check(document.querySelector('.motion-name').textContent==='인사하기','game name is the clear primary title');
+  check(!document.querySelector('.motion-detail-body').checkVisibility(),'source metadata starts collapsed');
+  check(!document.querySelector('.motion-details').open,'details are optional for each item');
+  document.querySelector('.motion-details summary').click();
+  check(document.querySelector('.motion-detail-body').checkVisibility()&&document.querySelector('.motion-detail-body').textContent.includes('archive-10'),'source is available when requested');
+  document.querySelector('.motion-details summary').click();
+  check(document.querySelectorAll('.motion-categories button').length===5,'categories appear as compact tabs');
   $('motion-search').value='인사하기';$('motion-search').dispatchEvent(new Event('input'));
   check($('motion-results').children.length===1,'Korean game name is searchable across the library');
   $('motion-search').value='';$('motion-search').dispatchEvent(new Event('input'));
@@ -29,11 +35,13 @@ try{
   check($('motion-results').children.length===1,'search spans packs');
   document.querySelector('#motion-results button').click();await until(()=>selected);
   check(selected[0]===12&&selected[1]===0&&!$('motion-library').open,'duplicate pack keeps exact source ID');
-  $('open-motions').click();$('motion-search').value='';$('motion-search').dispatchEvent(new Event('input'));
-  $('motion-category').value='basic';$('motion-category').dispatchEvent(new Event('change'));
+  $('open-motions').click();check(document.querySelector('.motion-result.is-selected'),'selected motion is highlighted on return');$('motion-search').value='';$('motion-search').dispatchEvent(new Event('input'));
+  document.querySelector('.motion-categories [data-category="basic"]').click();
+  check(document.querySelector('.motion-categories [data-category="basic"]').getAttribute('aria-pressed')==='true','active category is announced');
   check($('motion-results').children.length===1,'default verification poses hidden initially');
   $('motion-defaults').checked=true;$('motion-defaults').dispatchEvent(new Event('change'));
   check($('motion-results').children.length===2,'verification poses can be included');
+  check([...document.querySelectorAll('.motion-result')].every(row=>row.getBoundingClientRect().height<=64),'motion rows remain compact with details closed');
   $('motion-category').value='emotion';$('motion-category').dispatchEvent(new Event('change'));
   check($('motion-results').textContent.includes('전용 뼈'),'alternate rig is explained before selection');
   selected=null;document.querySelector('#motion-results button').click();await until(()=>selected);
@@ -42,5 +50,13 @@ try{
   delay=true;$('open-motions').click();await until(()=>release);
   state.generation++;document.dispatchEvent(new Event('model-selection'));release();await new Promise(r=>setTimeout(r,20));
   check(!$('motion-results').children.length&&!$('motion-library').open,'old responses cannot populate a different model');
+  delay=false;$('open-motions').click();await until(()=>$('motion-results').children.length);
+  window.checkMotionLayout=async()=>{
+    const bounds=$('motion-library').getBoundingClientRect(),results=$('motion-results');
+    check(bounds.left>=0&&bounds.right<=innerWidth+1,'motion dialog stays inside viewport');
+    check(results.scrollWidth<=results.clientWidth+1,'motion list has no horizontal overflow');
+    check($('close-motions').getBoundingClientRect().right<=bounds.right,'close button stays visible');
+    check(document.querySelector('.motion-result').getBoundingClientRect().height<=70,'rows stay compact at every viewport');
+  };
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}

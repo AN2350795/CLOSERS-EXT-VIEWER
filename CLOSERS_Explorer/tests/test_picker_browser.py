@@ -111,10 +111,10 @@ if(value.status==='passed'&&process.argv[2]==='responsive'){
   if(layout.overflow||!ordered||layout.menu.x<0||layout.menu.right>width+1){value={status:'failed',errors:'Responsive layout '+JSON.stringify(layout)};break;}
  }
 }
-if(value.status==='passed'&&['picker-layout','viewer-layout'].includes(process.argv[2])){
+if(value.status==='passed'&&['picker-layout','viewer-layout','motion-layout'].includes(process.argv[2])){
  for(const [width,height] of [[1920,1080],[1512,1000],[1440,900],[1280,720],[1024,900],[390,844],[320,800],[844,390]]){
   await call('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<760});
-  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return await '+(process.argv[2]==='viewer-layout'?'checkViewerLayout':'checkPickerLayout')+'();})()',awaitPromise:true,returnByValue:true});
+  const result=await call('Runtime.evaluate',{expression:'(async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return await '+(process.argv[2]==='motion-layout'?'checkMotionLayout':process.argv[2]==='viewer-layout'?'checkViewerLayout':'checkPickerLayout')+'();})()',awaitPromise:true,returnByValue:true});
   if(result.exceptionDetails){value={status:'failed',errors:JSON.stringify(result.exceptionDetails)};break;}
  }
 }
@@ -127,7 +127,7 @@ if(value.status==='passed'&&process.argv[2]==='viewer-layout'){
 }
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
-''',port,'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
+''',port,'motion-layout' if self.checks_script=='motion_library_checks.js' else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
                     self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
                 finally:
                     if process.poll() is None:
