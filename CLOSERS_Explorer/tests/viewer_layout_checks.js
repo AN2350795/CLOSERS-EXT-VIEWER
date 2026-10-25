@@ -12,12 +12,13 @@ window.checkViewerLayout=async()=>{
   check(document.documentElement.scrollWidth<=innerWidth+1,'no horizontal overflow');
   check(document.documentElement.scrollHeight<=innerHeight+1,'page stays within screen');
   const original={x:viewport.x,y:viewport.y,width:viewport.width,height:viewport.height};
-  check(document.querySelectorAll('.viewport-actions button').length===2,'toolbar contains only display settings');
+  check(document.querySelectorAll('.viewport-actions button').length===3,'toolbar includes display settings and reset');
   check($('viewport').contains($('reset-camera'))&&$('viewport').contains($('expand-viewer')),'camera and expansion belong to the scene');
   check(document.querySelector('.animation-selection').contains($('open-motions')),'motion selection has its own area');
   check(document.querySelector('.animation-playback').contains($('play-animation')),'playback has its own area');
   check(!document.querySelector('.animation-controls #bind-pose'),'bind pose is absent from playback controls');
-  check($('equipment-panel').contains($('clear-model')),'clear belongs to equipment panel');
+  check(document.querySelector('.viewport-toolbar').contains($('clear-model'))&&$('clear-model').textContent==='초기화','reset is visible in the viewer toolbar');
+  check($('clear-model').checkVisibility(),'reset is visible without opening equipment');
   for(const id of ['reset-camera','expand-viewer']){
     const bounds=rect('#'+id);
     check(bounds.left>=viewport.left&&bounds.right<=viewport.right&&bounds.top>=viewport.top&&bounds.bottom<=viewport.bottom,'scene icon fits: '+id);

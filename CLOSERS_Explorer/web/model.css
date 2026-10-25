@@ -83,9 +83,8 @@
 .viewport-camera{bottom:10px;left:10px}
 .viewport-expand .restore-icon,.viewport-expand[aria-expanded=true] .expand-icon{display:none}
 .viewport-expand[aria-expanded=true] .restore-icon{display:block}
-.equipment-actions{display:flex;justify-content:flex-end;margin:0 0 12px}
-.equipment-actions #clear-model{font-size:11px;color:var(--muted);padding:5px 9px}
-.equipment-actions #clear-model:not(:disabled):hover{color:#ffb4aa;border-color:#b97870}
+.viewport-actions #clear-model{margin-left:5px;border-color:#63748a;color:var(--text);background:#263243}
+.viewport-actions #clear-model:not(:disabled):hover{border-color:var(--accent);color:var(--accent)}
 #viewport{flex:1;min-height:0;height:auto;margin:0;border-radius:8px;overflow:hidden;background:#111823}
 .viewport-panel #model-status:not(.is-loading):not(.is-notice){position:absolute;top:10px;left:10px;right:56px;margin:0;padding:7px 10px;max-height:64px;overflow:auto;background:#151a24dd;font-size:11px;font-weight:400;line-height:1.5}
 .viewport-hint{position:absolute;bottom:12px;left:56px;right:10px;text-align:center;color:var(--muted);font-size:10px!important;margin:0;pointer-events:none;text-shadow:0 1px 3px #000}
