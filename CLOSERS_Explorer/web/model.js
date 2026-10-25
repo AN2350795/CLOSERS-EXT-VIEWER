@@ -22,7 +22,7 @@ try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}
 $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage;
-const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onVisible:()=>{scene.updateMatrixWorld(true);resetCamera();},element});
+const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
 function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
