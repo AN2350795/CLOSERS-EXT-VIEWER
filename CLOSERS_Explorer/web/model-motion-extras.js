@@ -2,7 +2,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose} from './model-core.js';
 import {TextureCache} from './model-texture-cache.js';
 import {createTracks,random,vector} from './effect-timeline.js';
-import {createParticleModel,applyBlend} from './particle-model.js';
+import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST} from './particle-model.js';
 import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 
 export function setupMotionExtras({state,api,getScene,getCamera,onVisible,element}){
@@ -91,7 +91,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,elemen
       model.root.scale.z=1;anchor.add(model.root);
       asset.base=model.materials.map(m=>({color:m.color.clone(),opacity:m.opacity,material:m,dual:false}));
       if(entry.kind==='effect'){
-        for(const m of model.materials){m.transparent=true;m.alphaTest=0;m.depthTest=entry.depth_test;m.depthWrite=entry.depth_write;applyBlend(m,entry.blend||['SRCALPHA',entry.additive?'ONE':'INVSRCALPHA']);m.needsUpdate=true;}
+        for(const m of model.materials){m.transparent=true;m.alphaTest=EFFECT_ALPHA_TEST;m.depthTest=entry.depth_test;m.depthWrite=entry.depth_write;applyBlend(m,entry.blend||['SRCALPHA',entry.additive?'ONE':'INVSRCALPHA']);m.needsUpdate=true;}
         if(entry.dual)for(const mesh of [...model.meshes]){
           const copy=mesh.clone(false);copy.material=mesh.material.map(original=>{const m=original.clone();m.onBeforeCompile=original.onBeforeCompile;m.customProgramCacheKey=original.customProgramCacheKey;applyBlend(m,['SRCALPHA','DESTALPHA']);m.transparent=true;asset.owned.push(m);asset.base.push({color:m.color.clone(),opacity:m.opacity,material:m,dual:true});return m;});
           mesh.parent.add(copy);asset.extraMeshes.push(copy);

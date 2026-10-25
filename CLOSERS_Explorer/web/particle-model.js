@@ -1,6 +1,10 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {ParticleTimeline} from './effect-timeline.js';
 
+// Clear texels must not write depth and hide other animated models. Keep the
+// cutoff low enough to preserve soft particles and gradual appearance fades.
+export const EFFECT_ALPHA_TEST=1/255;
+
 const factors={ZERO:THREE.ZeroFactor,ONE:THREE.OneFactor,SRCCOLOR:THREE.SrcColorFactor,INVSRCCOLOR:THREE.OneMinusSrcColorFactor,SRCALPHA:THREE.SrcAlphaFactor,INVSRCALPHA:THREE.OneMinusSrcAlphaFactor,DESTALPHA:THREE.DstAlphaFactor,INVDESTALPHA:THREE.OneMinusDstAlphaFactor,DESTCOLOR:THREE.DstColorFactor,INVDESTCOLOR:THREE.OneMinusDstColorFactor,SRCALPHASAT:THREE.SrcAlphaSaturateFactor};
 export function applyBlend(material,blend=['SRCALPHA','INVSRCALPHA']){
   material.blending=THREE.CustomBlending;material.blendEquation=THREE.AddEquation;
@@ -35,7 +39,7 @@ export function createParticleModel(rule,source,maps=[]){
     const alpha=new THREE.InstancedBufferAttribute(new Float32Array(capacity),1),uv=new THREE.InstancedBufferAttribute(new Float32Array(capacity*2),2);
     geometry.setAttribute('particleAlpha',alpha);geometry.setAttribute('particleUV',uv);
     const materials=template.materials.map(original=>{
-      const material=original.clone();ownedMaterials.push(material);material.transparent=true;material.alphaTest=0;material.depthTest=rule.depth_test;material.depthWrite=rule.depth_write;
+      const material=original.clone();ownedMaterials.push(material);material.transparent=true;material.alphaTest=EFFECT_ALPHA_TEST;material.depthTest=rule.depth_test;material.depthWrite=rule.depth_write;
       if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);return material;
     });
     const mesh=new THREE.InstancedMesh(geometry,materials,capacity);mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
