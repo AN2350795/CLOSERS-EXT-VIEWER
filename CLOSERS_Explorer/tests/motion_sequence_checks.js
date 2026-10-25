@@ -29,6 +29,8 @@ try{
   player.advance(.2);check(player.completed&&player.time===.08,'end reaches final pose exactly');
   const slow=structuredClone(definition);slow.steps[0].speed=.5;
   const slower=new MotionSequencePlayer(slow,packets);slower.advance(.08);check(slower.phase==='시작'&&Math.abs(slower.time-.04)<1e-8,'game state playback rate is respected');
+  slower.seek(.02);check(slower.time===.02&&slower.elapsed===.02,'seeking rewinds animation and global event clocks together');
+  slower.seek(.06);check(slower.time===.06&&slower.elapsed/.5===.12,'slow-motion seek preserves elapsed real time for cube effects');
   const delayed=structuredClone(definition);delayed.steps[1].cancel_time=.3;
   const waiting=new MotionSequencePlayer(delayed,packets);waiting.advance(.08);waiting.requestFinish();waiting.advance(.2);
   check(waiting.phase==='반복','minimum cancellation time spans multiple loop cycles');

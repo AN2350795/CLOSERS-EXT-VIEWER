@@ -11,6 +11,12 @@ export class MotionSequencePlayer{
   get phase(){return this.completed?'종료':this.index<this.definition.loop_index?'시작':this.index===this.definition.loop_index?'반복':'마무리';}
   requestFinish(){this.finishRequested=true;}
   restart(){this.index=0;this.time=this.definition.steps[0].start_time;this.elapsed=0;this.finishRequested=false;this.completed=false;}
+  seek(time){
+    if(!Number.isFinite(time))throw Error('동작 재생 위치가 올바르지 않습니다.');
+    const start=this.definition.steps[this.index].start_time,duration=this.clip.clip.duration;
+    this.time=Math.max(start,Math.min(duration,time));this.elapsed=this.time-start;
+    this.completed=this.index===this.clips.length-1&&this.time===duration;
+  }
   advance(seconds,multiplier=1){
     if(this.completed)return;
     let remaining=seconds;
