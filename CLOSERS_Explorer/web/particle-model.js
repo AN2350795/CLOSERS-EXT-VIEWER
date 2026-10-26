@@ -21,7 +21,26 @@ function installAlpha(material){
   };
 }
 
-export function createParticleModel(rule,source,maps=[],{dissolveMap=null}={}){
+function installTraceMask(material,trace){
+  const previous=material.onBeforeCompile,key=material.customProgramCacheKey;
+  material.customProgramCacheKey=()=>key.call(material)+'|particle-trace-mask-v1';
+  material.onBeforeCompile=shader=>{
+    previous.call(material,shader);
+    shader.uniforms.traceMaskMap={value:trace.map};shader.uniforms.traceMaskProjection={value:trace.projection};
+    shader.vertexShader='uniform mat4 traceMaskProjection; varying vec2 vTraceMaskUv;\n'+shader.vertexShader.replace('#include <project_vertex>',`#include <project_vertex>
+vec4 traceVertex=vec4(transformed,1.0);
+#ifdef USE_INSTANCING
+traceVertex=instanceMatrix*traceVertex;
+#endif
+vTraceMaskUv=(traceMaskProjection*modelMatrix*traceVertex).xy+0.5;`);
+    shader.fragmentShader='uniform sampler2D traceMaskMap; varying vec2 vTraceMaskUv;\n'+shader.fragmentShader.replace('#include <alphatest_fragment>',`
+if(any(lessThan(vTraceMaskUv,vec2(0.0)))||any(greaterThan(vTraceMaskUv,vec2(1.0))))discard;
+diffuseColor.a*=texture2D(traceMaskMap,vTraceMaskUv).a;
+#include <alphatest_fragment>`);
+  };
+}
+
+export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceMask=null}={}){
   const root=new THREE.Group(),templates=[],ownedGeometry=[],ownedMaterials=[],meshes=[],groups=[];
   if(source){
     source.root.scale.z=1;source.root.updateMatrixWorld(true);
@@ -44,7 +63,10 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null}={}){
     if(dissolveMap){geometry.setAttribute('particleDissolveColor',dissolveColor);geometry.setAttribute('particleDissolveParams',dissolveParams);}
     const materials=template.materials.map(original=>{
       const material=original.clone();ownedMaterials.push(material);material.transparent=true;material.alphaTest=EFFECT_ALPHA_TEST;material.depthTest=rule.depth_test;material.depthWrite=rule.depth_write;
-      if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);if(dissolveMap)installDissolve(material,dissolveMap,true);return material;
+      if(rule.cull==='CON_D3DCULL_NONE')material.side=THREE.DoubleSide;
+      else if(rule.cull==='CON_D3DCULL_CW')material.side=THREE.BackSide;
+      else if(rule.cull==='CON_D3DCULL_CCW')material.side=THREE.FrontSide;
+      if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);if(dissolveMap)installDissolve(material,dissolveMap,true);if(traceMask)installTraceMask(material,traceMask);return material;
     });
     const mesh=new THREE.InstancedMesh(geometry,materials,capacity);mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,dissolveColor,dissolveParams,frame:fi,pass});

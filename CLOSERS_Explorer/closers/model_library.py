@@ -446,6 +446,17 @@ class Models:
             item['resources']=resources
             if any(not r['candidates'] for r in resources):item.update(status='unavailable',error='보조 모델 원본이 없습니다.')
             elif any(not r['selected'] for r in resources):item.setdefault('warnings',[]).append('모델 출처를 선택해 주세요.')
+        for item in result:
+            rule=item.get('particle',{})
+            if not (rule.get('trace') and rule.get('land_connect') and rule.get('type')=='PCT_MESH'):continue
+            receivers=[r for r in result if r is not item and r.get('status')=='ready' and r.get('parent_key')==item.get('parent_key')
+                       and r.get('state')==item.get('state') and r.get('at')==item.get('at') and r.get('offset')==item.get('offset')
+                       and r.get('bone')==item.get('bone')
+                       and r.get('anim_time')==item.get('anim_time') and r.get('particle',{}).get('type')=='PCT_3D_PLANE'
+                       and r['particle'].get('dual') and r['particle'].get('max_particles')==1
+                       and not r['particle'].get('models')
+                       and len(r['particle'].get('frames',[]))==1]
+            if len(receivers)==1:item['trace_receiver_key']=receivers[0]['key']
         return result
 
     def effect_resource(self,entry_id):

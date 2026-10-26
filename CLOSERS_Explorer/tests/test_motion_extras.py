@@ -19,6 +19,27 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_land_trace_mask_requires_one_matching_sibling_emission(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work')
+            catalog.scan([fixture(root/'one.cmf',[('PROP.X',binary_model(),0),('MASK.PNG',b'fixture',0)])])
+            plane=particle_rule(dict(m_TexName='MASK.PNG',m_bDualBlending='TRUE'))
+            trace=particle_rule(dict(m_ParticleType='PCT_MESH',m_MeshName='PROP.X',m_bTrace='TRUE',m_bLandConnect='TRUE',m_CullMode='CON_D3DCULL_NONE'))
+            common=dict(kind='particle',status='ready',bone='',state='S1',parent_key='parent',at=1.3,offset=[30,0,0],anim_time=False)
+            entries=[dict(common,key='mask',models=[],particle_name='MASK'),dict(common,key='trace',models=['PROP.X'],particle_name='TRACE')]
+            with closing(sqlite3.connect(catalog.game_names.path)) as db,db:
+                db.executescript('PRAGMA user_version=1;CREATE TABLE metadata(key TEXT,value TEXT);CREATE TABLE names(filename TEXT,label TEXT,priority INTEGER);CREATE TABLE motion_extras(character TEXT,clip TEXT,details_json TEXT);CREATE TABLE motion_particles(name TEXT,details_json TEXT);')
+                db.execute('INSERT INTO motion_extras VALUES(?,?,?)',('STRIKER','MOVE',json.dumps(entries)))
+                db.executemany('INSERT INTO motion_particles VALUES(?,?)',[('MASK',json.dumps(plane)),('TRACE',json.dumps(trace))])
+            catalog.game_names.refresh();models=Models(catalog);result=models.extra_sources('STRIKER','MOVE',set())
+            self.assertEqual(result[1]['trace_receiver_key'],'mask')
+            self.assertEqual(result[1]['particle']['cull'],'CON_D3DCULL_NONE')
+            entries.append(dict(entries[0],key='another-mask'))
+            with closing(sqlite3.connect(catalog.game_names.path)) as db,db:
+                db.execute('UPDATE motion_extras SET details_json=?',(json.dumps(entries),))
+            catalog.game_names.refresh()
+            self.assertNotIn('trace_receiver_key',models.extra_sources('STRIKER','MOVE',set())[1])
+
     def test_inherited_equipment_hide_is_scoped_to_game_state(self):
         rig=layers();base=rig['STRIKER'][0][1]['GAME_UNIT_TEMPLET']['m_mapUnitStateData'][1]
         base['m_EventEquipHide']={1:dict(m_bAnimTime='FALSE',m_fEventTimeMin=.1,m_fEventTimeMax=30,m_HideEquipPosition='EP_AVATAR_WEAPON')}

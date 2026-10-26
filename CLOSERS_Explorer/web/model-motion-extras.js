@@ -93,7 +93,13 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         for(const info of entry.images||[])maps.push(await image(info,current,signal,asset,entry));
         const mask=entry.dissolve_image?await image(entry.dissolve_image,current,signal,asset,entry):null;
         const dissolveMap=mask?.clone();if(dissolveMap){dissolveMap.colorSpace=THREE.NoColorSpace;dissolveMap.needsUpdate=true;asset.owned.push(dissolveMap);}
-        model=createParticleModel(entry.particle,model,maps,{dissolveMap});asset.model=model;asset.particle=true;
+        let traceMask=null;
+        if(entry.trace_receiver_key){
+          const receiver=assets.get(entry.id.split(':')[0]+':'+entry.trace_receiver_key)?.[0],mesh=receiver?.model.meshes[0];
+          if(!receiver||!mesh?.isInstancedMesh||!mesh.material[0]?.map)throw Error('바닥 추적 효과의 마스크를 유일하게 연결할 수 없습니다. 함께 생성되는 기본 효과를 켜 주세요.');
+          asset.traceReceiver=receiver;asset.traceProjection=new THREE.Matrix4();traceMask={map:mesh.material[0].map,projection:asset.traceProjection};
+        }
+        model=createParticleModel(entry.particle,model,maps,{dissolveMap,traceMask});asset.model=model;asset.particle=true;
       }else if(entry.animation){
         try{
           if(!data.animation.selected)throw Error('자체 XMD가 없어 정적 모델로 표시합니다.');
@@ -218,6 +224,13 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
           asset.anchor.matrix.copy(target.matrixWorld).multiply(local);asset.anchor.matrixWorldNeedsUpdate=true;asset.frozen=true;
         }
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
+        if(asset.traceReceiver){
+          const receiver=asset.traceReceiver,mesh=receiver.model.meshes[0];
+          if(!receiver.anchor.visible||!mesh.count){asset.anchor.visible=false;continue;}
+          mesh.getMatrixAt(0,asset.traceProjection);asset.traceProjection.premultiply(mesh.matrixWorld);
+          if(Math.abs(asset.traceProjection.determinant())<1e-10){asset.anchor.visible=false;continue;}
+          asset.traceProjection.invert();
+        }
         if(asset.spine||asset.particle){asset.model.update(age,getCamera?.(),asset.anchor);if(asset.spine?asset.model.vertices>0:asset.model.meshes.some(m=>m.count>0))frame(asset);continue;}
         const time=age*entry.speed;
         for(const sequence of asset.textureAnimations){

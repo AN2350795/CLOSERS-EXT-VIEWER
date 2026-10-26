@@ -43,7 +43,18 @@ try{
   check(coverage(0)>0&&!shaderError,'instanced dissolve composes with opacity and UV shaders');
   check(coverage(1)===0,'the second threshold component dissolves the particle at the end');
   check(coverage(0)>0,'dissolve rewinds and restores visible pixels');
-  dissolve.dispose();
+  scene.remove(dissolve.root);dissolve.dispose();
+  const maskBytes=new Uint8Array(16*16*4);
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++){const i=(y*16+x)*4;maskBytes.set([255,255,255,(x-7.5)**2+(y-7.5)**2<36?255:0],i);}
+  const mask=new THREE.DataTexture(maskBytes,16,16);mask.needsUpdate=true;
+  const projection=new THREE.Matrix4().makeScale(.25,.25,1);
+  const traced=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',cull:'CON_D3DCULL_NONE',blend:['SRCALPHA','ONE'],tracks:[{property:'size',mode:'initial',value:[4,4,4]}]},null,[white],{traceMask:{map:mask,projection}});
+  scene.add(traced.root);scene.updateMatrixWorld(true);traced.update(.1,camera,anchor);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+  const rgb=(x,y)=>pixels.slice((y*64+x)*4,(y*64+x)*4+3).some(v=>v>0);
+  check(!shaderError&&rgb(32,32)&&!rgb(20,20),'projected trace mask keeps the center and clips the opaque square corners');
+  camera.position.z=-10;camera.lookAt(0,0,0);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+  check(rgb(32,32)&&!rgb(20,20),'two-sided trace mask also clips square corners from below');
+  traced.dispose();mask.dispose();
   let disposed=0;model.meshes[0].geometry.addEventListener('dispose',()=>disposed++);model.dispose();check(disposed===1,'particle geometry cleanup');white.dispose();renderer.dispose();
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}
