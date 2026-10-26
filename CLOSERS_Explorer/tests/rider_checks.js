@@ -19,10 +19,11 @@ try{
     if(!packet)throw Error('No matching source animation');return packet;
   };
   const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
-  const renderer=new THREE.WebGLRenderer();renderer.setSize(96,96);document.body.append(renderer.domElement);let shaderError=false;renderer.debug.onShaderError=()=>shaderError=true;
-  const camera=new THREE.PerspectiveCamera(40,1,.1,4000);camera.position.set(0,200,1200);camera.lookAt(0,100,0);
+  window.testCaptures=[];
+  const renderer=new THREE.WebGLRenderer();renderer.setSize(384,384);document.body.append(renderer.domElement);let shaderError=false;renderer.debug.onShaderError=()=>shaderError=true;
+  const camera=new THREE.PerspectiveCamera(40,1,.1,4000);camera.position.set(600,250,1000);camera.lookAt(0,100,0);
   for(const test of data.cases){
-    const scene=new THREE.Scene(),model=buildModel(test.actor);scene.add(model.root);
+    const scene=new THREE.Scene(),model=buildModel(test.actor);scene.background=new THREE.Color(0x404650);scene.add(model.root);
     const sequence=new MotionSequencePlayer(test.definition,test.clips),state={model,sequence,clip:sequence.clip,time:0,playing:false};
     const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,element});extras.select(test.clips,test.definition.steps);
     const expected=test.clips.flatMap(p=>p.extras).filter(e=>e.status==='ready'&&e.kind!=='equipment').length;
@@ -35,12 +36,23 @@ try{
       check(bike&&(bike.clip||bike.embedded),'bike has a verified source animation');let maximum=0;
       for(const fraction of [.05,.25,.5,.75,.9]){
         seek(index,test.clips[index].clip.duration*fraction);
+        if(fraction===.75)window.testCaptures.push({name:test.character+'_'+index,body:renderer.domElement.toDataURL('image/png')});
+        if(test.character==='ROGUE'&&index===0&&fraction===.75){
+          check(bike.textureAnimations.length>=2,'both bike material sequences are connected');
+          check(bike.textureAnimations.every(s=>s.material.map===s.frames.at(-1).map),'bike reveal reaches the solid body texture, including the dual pass');
+        }
         if(!bike.anchor.visible)continue;
         bike.model.meshes.forEach(m=>{if(m.isSkinnedMesh)m.computeBoundingBox();});
         const size=new THREE.Box3().setFromObject(bike.model.root).getSize(new THREE.Vector3());
         check(size.toArray().every(Number.isFinite),'bike geometry remains finite');maximum=Math.max(maximum,size.length());
       }
       check(maximum>20,'bike appears during '+test.character+' phase '+index+'; maximum size '+maximum);
+      if(test.character==='ROGUE'&&index===0){
+        seek(0,.05);
+        check(bike.textureAnimations.every(s=>s.material.map===s.frames[0].map),'rewinding restores the initial reveal textures');
+        seek(0,3);
+        check(bike.textureAnimations.every(s=>s.material.map===s.frames.at(-1).map),'forward seeking restores the solid bike');
+      }
       check(!shaderError,'Rider Call shaders compile');
     }
     extras.dispose();model.dispose();document.getElementById('motion-extras-dialog').remove();document.getElementById('motion-extras-settings').remove();

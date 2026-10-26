@@ -292,6 +292,10 @@ class Models:
                         if mat['texture']:
                             name = Path(mat['texture'].replace('\\','/')).name
                             mat['image'] = self.candidates(name,row)
+                            sequence=self.catalog.game_names.texture_animations.get((name.upper(),''))
+                            if sequence and not sequence.get('ambiguous'):
+                                mat['texture_animation']=dict(sequence,frames=[dict(self.candidates(f['name'],row),duration=f['duration']) for f in sequence['frames']])
+                            elif sequence:scene['warnings'].append('첫 텍스처가 같은 애니메이션이 여러 개라 연결을 보류합니다: '+name)
                             if 'eye_texture_id' in mat:mat['image']['selected']=mat['eye_texture_id']
                         if 'material_preview' in mat:
                             preview=mat['material_preview']

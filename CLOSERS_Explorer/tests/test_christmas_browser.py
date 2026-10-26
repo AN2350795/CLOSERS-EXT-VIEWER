@@ -48,7 +48,9 @@ class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
                             if selected not in scenes:
                                 scene=models.scene([selected]);scenes[selected]=scene
                                 for mesh in scene['meshes']:
-                                    for material in mesh['materials']:image(material.get('image'))
+                                    for material in mesh['materials']:
+                                        image(material.get('image'))
+                                        for frame in material.get('texture_animation',{}).get('frames',[]):image(frame)
                             scene=scenes[selected]
                             if not entry.get('animation'):continue
                             try:

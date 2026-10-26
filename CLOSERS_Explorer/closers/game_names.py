@@ -32,6 +32,7 @@ class GameNames:
         self.motion_names={}
         self.motion_sequences={}
         self.motion_extras={};self.motion_particles={}
+        self.texture_animations={}
         self.sequence_index_available=False
         self.local=threading.local()
 
@@ -66,9 +67,11 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
+                    self.texture_animations={}
                     self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
             labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False
+            texture_animations={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -98,6 +101,9 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_particles'").fetchone():
                             from .motion_extras import ExtraIndex
                             motion_particles=ExtraIndex(db.execute("SELECT name,'' AS clip,details_json FROM motion_particles"))
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='texture_animations'").fetchone():
+                            from .motion_extras import ExtraIndex
+                            texture_animations=ExtraIndex(db.execute("SELECT filename,'' AS clip,details_json FROM texture_animations"))
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_part_overrides'").fetchone():
                             for filename,parts in db.execute('SELECT filename,parts_json FROM model_part_overrides'):
                                 part_rules[filename]=json.loads(parts)
@@ -106,7 +112,7 @@ class GameNames:
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False;self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};texture_animations={};sequence_index_available=False;self.sources=[]
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
@@ -114,6 +120,7 @@ class GameNames:
             self.motion_names=motion_names
             self.motion_sequences=motion_sequences;self.sequence_index_available=sequence_index_available
             self.motion_extras=motion_extras;self.motion_particles=motion_particles
+            self.texture_animations=texture_animations
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -124,7 +131,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.texture_animations={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -236,7 +243,7 @@ def _build(workspace,executable,progress,cancel=None):
                 if not wanted_tex:
                     particle_defs=unique_rows(extra_particle_tables,'PARTICLE_SYSTEM','m_SeqName',wanted_particles)
                     wanted_tex={e.get('STR') for v in particle_defs.values() for e in values(v.get('m_vecEventList')) if isinstance(e,dict) and e.get(2)=='PCET_TEX_ANIM' and isinstance(e.get('STR'),str)}
-                extra_tex_tables[name]={'m_mapTexAnimData':dict(enumerate(v for v in values(table.get('m_mapTexAnimData')) if isinstance(v,dict) and v.get('m_AnimName') in wanted_tex))}
+                extra_tex_tables[name]={'m_mapTexAnimData':table.get('m_mapTexAnimData',{})}
             counts[name]=len(table);progress(current=name,rows=counts[name]);continue
         if name=='FRAME_UNIQUE_ID.LUA':
             patterns=frame_patterns(body);counts[name]=len(patterns);continue
@@ -301,6 +308,10 @@ def _build(workspace,executable,progress,cancel=None):
             from .motion_extras import particle_rule
             particle_defs=unique_rows(extra_particle_tables,'PARTICLE_SYSTEM','m_SeqName',wanted_particles)
             tex_defs=unique_rows(extra_tex_tables,'m_mapTexAnimData','m_AnimName',wanted_tex)
+            from .texture_sequences import texture_sequences
+            texture_animations=texture_sequences(extra_tex_tables)
+            db.execute('CREATE TABLE texture_animations(filename TEXT PRIMARY KEY,details_json TEXT NOT NULL)')
+            db.executemany('INSERT INTO texture_animations VALUES(?,?)',[(filename,json.dumps(details,ensure_ascii=False)) for filename,details in texture_animations.items()])
             motion_particles={}
             for name,row in particle_defs.items():
                 try:motion_particles[name]=particle_rule(row,tex_defs)

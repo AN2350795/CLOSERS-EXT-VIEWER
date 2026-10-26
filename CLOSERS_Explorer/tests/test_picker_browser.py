@@ -126,6 +126,11 @@ if(value.status==='passed'&&process.argv[2]==='viewer-layout'){
  const result=await call('Runtime.evaluate',{expression:'!document.getElementById("viewer-dialog").open&&document.activeElement===document.getElementById("expand-viewer")',returnByValue:true});
  if(!result.result.value)value={status:'failed',errors:'Escape did not restore viewer and focus'};
 }
+if(process.env.CLOSERS_TEST_CAPTURES){
+ const captures=await call('Runtime.evaluate',{expression:'window.testCaptures||[]',returnByValue:true});
+ const fs=await import('node:fs/promises'),path=await import('node:path');await fs.mkdir(process.env.CLOSERS_TEST_CAPTURES,{recursive:true});
+ for(const image of captures.result.value||[])await fs.writeFile(path.join(process.env.CLOSERS_TEST_CAPTURES,image.name.replace(/[^a-zA-Z0-9_-]/g,'_')+'.png'),Buffer.from(image.body.split(',')[1],'base64'));
+}
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
 ''',port,'motion-layout' if self.checks_script in ('motion_library_checks.js','motion_sequence_checks.js','motion_loading_checks.js','animation_controls_checks.js') else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)

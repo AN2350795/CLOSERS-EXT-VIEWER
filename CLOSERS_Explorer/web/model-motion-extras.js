@@ -64,7 +64,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     const data=resource&&!fbx?await api('/api/model-scene?entries='+resource.selected,signal):null;
     if(current!==version||disposed)throw Error('연출 선택이 변경되었습니다.');
     let model=data?buildModel(data):null;
-    const anchor=new THREE.Group(),asset={model,anchor,textureKeys:[],owned:[],extraMeshes:[],begun:false,born:0,packet:entry.packet};
+    const anchor=new THREE.Group(),asset={model,anchor,textureKeys:[],textureAnimations:[],owned:[],extraMeshes:[],begun:false,born:0,packet:entry.packet};
     anchor.visible=false;anchor.matrixAutoUpdate=false;
     try{
       if(fbx){model=await createFBXModel(await api('/api/model-effect-resource?entry='+resource.selected,signal));asset.model=model;}
@@ -72,6 +72,12 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         const info=material.userData.input.image;if(!info)continue;
         const map=await image(info,current,signal,asset,entry);
         if(map){material.map=map;material.color.set(0xffffff);material.needsUpdate=true;}
+        const sequence=material.userData.input.texture_animation;
+        if(sequence&&entry.kind!=='particle'){
+          const frames=[];
+          for(const frame of sequence.frames)frames.push({...frame,map:await image(frame,current,signal,asset,entry)});
+          if(frames.every(f=>f.map))asset.textureAnimations.push({material,frames,duration:frames.reduce((n,f)=>n+f.duration,0)});
+        }
       }
       if(entry.particle?.spine){
         const [skel,atlas]=entry.spine_sources;
@@ -115,7 +121,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       if(entry.kind==='effect'){
         for(const m of model.materials){m.transparent=true;m.alphaTest=EFFECT_ALPHA_TEST;m.depthTest=entry.depth_test;m.depthWrite=entry.depth_write;applyBlend(m,entry.blend||['SRCALPHA',entry.additive?'ONE':'INVSRCALPHA']);m.needsUpdate=true;}
         if(entry.dual)for(const mesh of [...model.meshes]){
-          const copy=mesh.clone(false);copy.material=mesh.material.map(original=>{const m=original.clone();m.onBeforeCompile=original.onBeforeCompile;m.customProgramCacheKey=original.customProgramCacheKey;applyBlend(m,['SRCALPHA','DESTALPHA']);m.transparent=true;asset.owned.push(m);asset.base.push({color:m.color.clone(),opacity:m.opacity,material:m,dual:true});return m;});
+          const copy=mesh.clone(false);copy.material=mesh.material.map(original=>{const m=original.clone();m.onBeforeCompile=original.onBeforeCompile;m.customProgramCacheKey=original.customProgramCacheKey;applyBlend(m,['SRCALPHA','DESTALPHA']);m.transparent=true;asset.owned.push(m);asset.base.push({color:m.color.clone(),opacity:m.opacity,material:m,dual:true});const sequence=asset.textureAnimations.find(s=>s.material===original);if(sequence)asset.textureAnimations.push({...sequence,material:m});return m;});
           mesh.parent.add(copy);asset.extraMeshes.push(copy);
         }
         if(entry.dissolve_texture){
@@ -212,6 +218,11 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         const time=age*entry.speed;
         const ownClip=asset.clip||asset.embedded;
         if(ownClip){const duration=ownClip.clip.duration,local=entry.loop&&duration>0?time%duration:Math.min(time,duration);if(asset.clip)applyPose(asset.model,asset.clip,local);else applyEmbeddedPose(asset.model,asset.embedded,local);}
+        for(const sequence of asset.textureAnimations){
+          let elapsed=age%sequence.duration,selected=sequence.frames.at(-1);
+          for(const f of sequence.frames){if(elapsed<f.duration){selected=f;break;}elapsed-=f.duration;}
+          sequence.material.map=selected.map;
+        }
         const timeline=asset.timeline,position=timeline.value('position',age,time),movement=timeline.integral('velocity',age),spin=timeline.integral('rotationSpeed',age);
         asset.model.root.position.fromArray(position.map((v,i)=>v+movement[i]+asset.gravity[i]*age*age*.5));
         const size=timeline.value('size',age,time),scale=timeline.value('scale',age,time)[0];asset.model.root.scale.set(...size.map(v=>v*scale));
