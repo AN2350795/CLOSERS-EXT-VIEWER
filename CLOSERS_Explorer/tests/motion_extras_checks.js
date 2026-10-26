@@ -37,6 +37,9 @@ try{
   asset=[...extras.assets.values()][0][0];state.clip=packet;state.time=.3;state.playing=true;extras.update(.3);state.clip=next;state.time=0;extras.update(.1);
   check(asset.anchor.visible,'effects without state-end cleanup can continue across sequence stages');
   const particleRule={seed:3,max_particles:4,rate:0,instant:1,life:1,emitter_life:1,deaths:1,radius:[0,0,0],radius_min:[0,0,0],gravity:[0,0,0],billboard:'BBT_NONE',blend:['SRCALPHA','ONE'],frames:[],tracks:[]};
+  const manyFrames={...common,key:'frames',kind:'particle',label:'animated textures',particle:{...particleRule,max_particles:64},resources:[],images:Array.from({length:96},()=>({name:'unresolved'}))};
+  extras.select([{clip:{duration:1},extras:[manyFrames]}]);await until(()=>extras.assets.size===1);
+  check([...extras.assets.values()][0][0].vertices===96*4*64,'texture-frame geometry is counted once and stays below the render budget');
   const parent={...common,key:'parent',kind:'effect',label:'missing mesh',status:'unavailable',error:'missing mesh',at:.2};
   const child={...common,key:'child',parent_key:'parent',kind:'particle',label:'child particle',particle:particleRule,resources:[],images:[],at:.1};
   const particlePacket={clip:{duration:1},extras:[parent,child],extras_index_available:true};

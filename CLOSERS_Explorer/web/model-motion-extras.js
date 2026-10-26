@@ -130,7 +130,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       asset.gravity=vector(entry.gravity,rng);asset.life=entry.play_count&&ownClip?ownClip.clip.duration*entry.play_count/entry.speed:entry.life;
       asset.timeline=createTracks(entry.tracks||[],seed,asset.life);
       if(!entry.tracks?.length)asset.timeline=createTracks([{property:'color',mode:'initial',value:entry.color||[1,1,1,1]},...(entry.fades||[]).map(f=>({property:'color',mode:'fade',value:f.color,start:f.start,end:f.end}))],seed,asset.life);
-      getScene().add(anchor);asset.vertices=(model.vertices||(data?data.meshes.reduce((n,m)=>n+m.vertices.length/3,0):model.meshes.reduce((n,m)=>n+m.geometry.getAttribute('position').count,0)))*(asset.particle?entry.particle.max_particles*Math.max(1,entry.images?.length||0)*(entry.particle.dual?2:1):1);
+      getScene().add(anchor);
+      // Particle meshes already include each texture frame and blend pass.
+      // Multiplying those again can reject small emitters as millions of vertices.
+      asset.vertices=(model.vertices??[...model.meshes,...asset.extraMeshes].reduce((n,m)=>n+m.geometry.getAttribute('position').count,0))*(asset.particle?entry.particle.max_particles:1);
       asset.transforms=asset.clip?.keys.reduce((n,k)=>n+k.transforms.length,0)||asset.embedded?.tracks.reduce((n,t)=>n+t.keys.length,0)||0;return asset;
     }catch(e){disposeAsset(asset);throw e;}
   }
