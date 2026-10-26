@@ -1,8 +1,14 @@
 import * as THREE from '/vendor/three/three.module.min.js';
 import {createTracks,ParticleTimeline} from '/effect-timeline.js';
 import {createParticleModel} from '/particle-model.js';
+import {chooseTextureSequence} from '/model-texture-animation.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
+  const packet={clip:{name:'CASH_RARE_7_EMOTION'},skeleton_source:{name:'MOTION_KNIVES.X'}};
+  const material={texture_animation_choices:[{name:'TEX_RARE_7_KNIVES_WIN_BIKE',characters:['KNIVES']},{name:'TEX_RARE_7_KNIVES_EMOTION_BIKE',characters:['KNIVES']},{name:'TEX_RARE_7_NONAME_EMOTION_BIKE',characters:['NONAME']}]};
+  check(chooseTextureSequence(material,packet)?.name==='TEX_RARE_7_KNIVES_EMOTION_BIKE','shared first texture selects the matching character and activity');
+  check(!chooseTextureSequence(material,{...packet,skeleton_source:{name:'MOTION_ROGUE.X'}}),'another character material sequence is not silently applied');
+  check(!chooseTextureSequence({}, {clip:{duration:1}}),'unanimated and legacy packets need no texture context');
   const tracks=createTracks([{property:'velocity',mode:'initial',value:[2,0,0]},{property:'size',mode:'initial',value:[1,1,1]},
     {property:'size',mode:'fade',start:0,end:1,value:[3,3,3]}, {property:'color',mode:'final',start:0,value:[1,1,1,0]}],1,2);
   check(tracks.value('size',.5)[0]===2,'timed size interpolation');check(tracks.integral('velocity',2)[0]===4,'velocity integral');

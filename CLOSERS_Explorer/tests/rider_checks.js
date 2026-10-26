@@ -34,6 +34,7 @@ try{
       const entry=test.clips[index].extras.find(e=>e.kind==='effect'&&e.animation?.includes('_BIKE')&&!e.label.includes('SHINE')&&!e.label.includes('MOTIONBLUR'));
       check(entry,'bike definition exists');const bike=extras.assets.get(index+':'+entry.key)?.[0];
       check(bike&&(bike.clip||bike.embedded),'bike has a verified source animation');let maximum=0;
+      if(test.character==='KNIVES'&&index===0)check(bike.textureAnimations.length>=2&&bike.textureAnimations.every(s=>s.name.includes('KNIVES')&&s.name.includes('EMOTION')),'Aeri reveal selects its own emotion textures rather than victory or other character variants');
       for(const fraction of [.05,.25,.5,.75,.9]){
         seek(index,test.clips[index].clip.duration*fraction);
         if(fraction===.75)window.testCaptures.push({name:test.character+'_'+index,body:renderer.domElement.toDataURL('image/png')});

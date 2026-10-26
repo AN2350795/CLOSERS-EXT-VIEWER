@@ -51,6 +51,8 @@ class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
                                     for material in mesh['materials']:
                                         image(material.get('image'))
                                         for frame in material.get('texture_animation',{}).get('frames',[]):image(frame)
+                                        for choice in material.get('texture_animation_choices',[]):
+                                            for frame in choice['frames']:image(frame)
                             scene=scenes[selected]
                             if not entry.get('animation'):continue
                             try:

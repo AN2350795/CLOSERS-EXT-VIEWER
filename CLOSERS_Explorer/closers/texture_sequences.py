@@ -1,6 +1,7 @@
 """Exact, unique first-frame links from the game's texture animation table."""
 import math
 from .motion_extras import values,unique_rows
+from .model_groups import CHARACTERS
 
 
 def texture_sequences(tables):
@@ -18,5 +19,5 @@ def texture_sequences(tables):
         else:
             if not 2<=len(frames)<=2048:continue
             first=frames[0]['name'].replace('\\','/').split('/')[-1].upper()
-            result.setdefault(first,[]).append(dict(name=name,frames=frames,source=row['source'],evidence='exact-unique-first-frame'))
-    return {first:rows[0] if len(rows)==1 else dict(ambiguous=True,names=[r['name'] for r in rows]) for first,rows in result.items()}
+            result.setdefault(first,[]).append(dict(name=name,frames=frames,source=row['source'],characters=[c for c in CHARACTERS if c in name.upper().split('_')],evidence='exact-unique-first-frame'))
+    return {first:rows[0] if len(rows)==1 else dict(ambiguous=True,names=[r['name'] for r in rows],choices=rows) for first,rows in result.items()}

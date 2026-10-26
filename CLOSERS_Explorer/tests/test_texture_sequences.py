@@ -20,7 +20,10 @@ class TextureSequenceTests(unittest.TestCase):
         self.assertEqual(result['FIRST.PNG']['source'],'TEX.LUA')
         result=texture_sequences({'TEX.LUA':{'m_mapTexAnimData':{1:sequence('ONE'),2:sequence('TWO')}}})
         self.assertTrue(result['FIRST.PNG']['ambiguous'])
+        self.assertEqual(len(result['FIRST.PNG']['choices']),2)
         self.assertNotIn('BODY.PNG',result)
+        named=texture_sequences({'TEX.LUA':{'m_mapTexAnimData':{1:sequence('TEX_RARE_7_KNIVES_EMOTION_BIKE')}}})
+        self.assertEqual(named['FIRST.PNG']['characters'],['KNIVES'])
 
     def test_optional_index_connects_model_material_and_frame_sources(self):
         with tempfile.TemporaryDirectory() as temp:

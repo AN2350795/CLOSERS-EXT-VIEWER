@@ -6,6 +6,7 @@ import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST} from './particle-model
 import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 import {installDissolve} from './model-effect-dissolve.js';
 import {applyEmbeddedPose} from './model-x-animation.js';
+import {chooseTextureSequence} from './model-texture-animation.js';
 
 export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
@@ -72,11 +73,12 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         const info=material.userData.input.image;if(!info)continue;
         const map=await image(info,current,signal,asset,entry);
         if(map){material.map=map;material.color.set(0xffffff);material.needsUpdate=true;}
-        const sequence=material.userData.input.texture_animation;
+        const sequence=chooseTextureSequence(material.userData.input,entry.packet);
+        if(!sequence&&material.userData.input.texture_animation_choices?.length)entry.loadWarnings.push('재질 애니메이션 후보가 중복되어 첫 이미지로 표시합니다: '+material.userData.input.texture_animation_choices.map(s=>s.name).join(', '));
         if(sequence&&entry.kind!=='particle'){
           const frames=[];
           for(const frame of sequence.frames)frames.push({...frame,map:await image(frame,current,signal,asset,entry)});
-          if(frames.every(f=>f.map))asset.textureAnimations.push({material,frames,duration:frames.reduce((n,f)=>n+f.duration,0)});
+          if(frames.every(f=>f.map))asset.textureAnimations.push({name:sequence.name,material,frames,duration:frames.reduce((n,f)=>n+f.duration,0)});
         }
       }
       if(entry.particle?.spine){
@@ -216,13 +218,13 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
         if(asset.spine||asset.particle){asset.model.update(age,getCamera?.(),asset.anchor);if(asset.spine?asset.model.vertices>0:asset.model.meshes.some(m=>m.count>0))frame(asset);continue;}
         const time=age*entry.speed;
-        const ownClip=asset.clip||asset.embedded;
-        if(ownClip){const duration=ownClip.clip.duration,local=entry.loop&&duration>0?time%duration:Math.min(time,duration);if(asset.clip)applyPose(asset.model,asset.clip,local);else applyEmbeddedPose(asset.model,asset.embedded,local);}
         for(const sequence of asset.textureAnimations){
           let elapsed=age%sequence.duration,selected=sequence.frames.at(-1);
           for(const f of sequence.frames){if(elapsed<f.duration){selected=f;break;}elapsed-=f.duration;}
           sequence.material.map=selected.map;
         }
+        const ownClip=asset.clip||asset.embedded;
+        if(ownClip){const duration=ownClip.clip.duration,local=entry.loop&&duration>0?time%duration:Math.min(time,duration);if(asset.clip)applyPose(asset.model,asset.clip,local);else applyEmbeddedPose(asset.model,asset.embedded,local);}
         const timeline=asset.timeline,position=timeline.value('position',age,time),movement=timeline.integral('velocity',age),spin=timeline.integral('rotationSpeed',age);
         asset.model.root.position.fromArray(position.map((v,i)=>v+movement[i]+asset.gravity[i]*age*age*.5));
         const size=timeline.value('size',age,time),scale=timeline.value('scale',age,time)[0];asset.model.root.scale.set(...size.map(v=>v*scale));
