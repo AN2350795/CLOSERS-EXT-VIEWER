@@ -115,6 +115,7 @@ def particle_rule(row,texanims=None):
     if min(life if isinstance(life,list) else [life])<=0:life=1;rule['warnings'].append('0 이하의 입자 수명을 1초로 미리보기합니다.')
     rule.update(type=kind,models=models,frames=frames,uv_offsets=uv_offsets,dissolve_texture=row.get('m_DissolveTexName'),life=life,max_particles=min(256,max(1,int(maximum))),
                 trace=row.get('m_bTrace','FALSE') in (True,'TRUE'),land_connect=row.get('m_bLandConnect','FALSE') in (True,'TRUE'),cull=row.get('m_CullMode'),
+                mask_texture=row.get('m_MaskTexName'),
                 rate=span(row.get('m_EmitRate',0)),instant=span(row.get('m_EmitRateInstant',0)),
                 emitter_life=span(row.get('m_DieTime',100000)),deaths=span(row.get('m_DieCount',0)),
                 radius=vec(row.get('m_EmitRadius')),radius_min=vec(row.get('m_EmitRadiusMin')),

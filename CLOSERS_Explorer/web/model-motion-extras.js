@@ -41,7 +41,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       row.append(element('small',entry.error||entry.loadError||(entry.kind==='equipment'?'지정된 구간에서 무기를 숨깁니다.':assets.has(entry.id)?'표시 준비됨':entry.status==='ready'?'선택한 표시 옵션에 따라 적용':'연결 확인 필요')));
       const warnings=[...(entry.warnings||[]),...(entry.loadWarnings||[])];if(warnings.length)row.append(element('small',warnings.join(' ')));
       if(Object.keys(entry.conditions||{}).length)row.append(element('small','조건 · '+JSON.stringify(entry.conditions)));
-      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[]),...(entry.dissolve_image?[entry.dissolve_image]:[])])if(resource.candidates?.length>1){
+      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[]),...(entry.dissolve_image?[entry.dissolve_image]:[]),...(entry.mask_image?[entry.mask_image]:[])])if(resource.candidates?.length>1){
         const select=element('select');select.setAttribute('aria-label',resource.name+' 출처');select.append(element('option','출처 선택 · '+resource.name));select.firstChild.value='';
         for(const candidate of resource.candidates){const option=element('option',candidate.archive+' · '+candidate.ordinal);option.value=candidate.id;select.append(option);}select.value=resource.selected||'';
         select.onchange=()=>{resource.selected=Number(select.value)||null;void refresh();};row.append(select);
@@ -93,13 +93,15 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         for(const info of entry.images||[])maps.push(await image(info,current,signal,asset,entry));
         const mask=entry.dissolve_image?await image(entry.dissolve_image,current,signal,asset,entry):null;
         const dissolveMap=mask?.clone();if(dissolveMap){dissolveMap.colorSpace=THREE.NoColorSpace;dissolveMap.needsUpdate=true;asset.owned.push(dissolveMap);}
+        const coverage=entry.mask_image?await image(entry.mask_image,current,signal,asset,entry):null;
+        const coverageMap=coverage?.clone();if(coverageMap){coverageMap.colorSpace=THREE.NoColorSpace;coverageMap.needsUpdate=true;asset.owned.push(coverageMap);}
         let traceMask=null;
         if(entry.trace_receiver_key){
           const receiver=assets.get(entry.id.split(':')[0]+':'+entry.trace_receiver_key)?.[0],mesh=receiver?.model.meshes[0];
           if(!receiver||!mesh?.isInstancedMesh||!mesh.material[0]?.map)throw Error('바닥 추적 효과의 마스크를 유일하게 연결할 수 없습니다. 함께 생성되는 기본 효과를 켜 주세요.');
           asset.traceReceiver=receiver;asset.traceProjection=new THREE.Matrix4();traceMask={map:mesh.material[0].map,projection:asset.traceProjection};
         }
-        model=createParticleModel(entry.particle,model,maps,{dissolveMap,traceMask});asset.model=model;asset.particle=true;
+        model=createParticleModel(entry.particle,model,maps,{dissolveMap,traceMask,coverageMap});asset.model=model;asset.particle=true;
       }else if(entry.animation){
         try{
           if(!data.animation.selected)throw Error('자체 XMD가 없어 정적 모델로 표시합니다.');

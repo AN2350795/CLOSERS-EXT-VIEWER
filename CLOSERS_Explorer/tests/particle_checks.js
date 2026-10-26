@@ -54,7 +54,16 @@ try{
   check(!shaderError&&rgb(32,32)&&!rgb(20,20),'projected trace mask keeps the center and clips the opaque square corners');
   camera.position.z=-10;camera.lookAt(0,0,0);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
   check(rgb(32,32)&&!rgb(20,20),'two-sided trace mask also clips square corners from below');
-  traced.dispose();mask.dispose();
+  scene.remove(traced.root);traced.dispose();mask.dispose();
+  const coverageBytes=maskBytes.slice();
+  for(let i=0;i<coverageBytes.length;i+=4){const value=coverageBytes[i+3];coverageBytes.set([value,value,value,255],i);}
+  const coverageMask=new THREE.DataTexture(coverageBytes,16,16);coverageMask.needsUpdate=true;
+  const covered=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',tracks:[
+    {property:'size',mode:'initial',value:[4,4,4]},{property:'uv',mode:'initial',value:[.37,.37]}]},null,[white],{coverageMap:coverageMask});
+  camera.position.z=10;camera.lookAt(0,0,0);scene.add(covered.root);scene.updateMatrixWorld(true);covered.update(.3,camera,anchor);renderer.render(scene,camera);
+  gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+  check(!shaderError&&rgb(32,32)&&!rgb(20,20),'grayscale coverage mask clips corners independently of animated color UVs and opaque texture alpha');
+  covered.dispose();coverageMask.dispose();
   let disposed=0;model.meshes[0].geometry.addEventListener('dispose',()=>disposed++);model.dispose();check(disposed===1,'particle geometry cleanup');white.dispose();renderer.dispose();
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

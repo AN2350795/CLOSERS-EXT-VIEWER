@@ -42,6 +42,7 @@ class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
                     for entry in packet['extras']:
                         self.assertEqual(entry['status'],'ready',entry['label']+': '+entry.get('error',''))
                         image(entry.get('dissolve_image'))
+                        image(entry.get('mask_image'))
                         for record in entry.get('images',[]):image(record)
                         for resource in entry.get('resources',[]):
                             selected=resource['selected']

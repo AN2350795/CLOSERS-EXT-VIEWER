@@ -97,8 +97,8 @@ class MotionExtrasTests(unittest.TestCase):
     def test_particle_index_resolves_textures_without_mutating_snapshot(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work')
-            catalog.scan([fixture(root/'one.cmf',[('SMOKE.PNG',b'fixture',0)])])
-            rule=particle_rule(dict(m_SeqName='STEAM',m_vecEventList={1:{1:'PCET_INITIAL',2:'PCET_TEXTURE','STR':'SMOKE.PNG'}}))
+            catalog.scan([fixture(root/'one.cmf',[('SMOKE.PNG',b'fixture',0),('MASK.PNG',b'mask',0)])])
+            rule=particle_rule(dict(m_SeqName='STEAM',m_MaskTexName='MASK.PNG',m_vecEventList={1:{1:'PCET_INITIAL',2:'PCET_TEXTURE','STR':'SMOKE.PNG'}}))
             entry=dict(key='steam',kind='particle',status='ready',models=[],particle_name='STEAM',bone='')
             with closing(sqlite3.connect(catalog.game_names.path)) as db,db:
                 db.executescript('PRAGMA user_version=1;CREATE TABLE metadata(key TEXT,value TEXT);CREATE TABLE names(filename TEXT,label TEXT,priority INTEGER);CREATE TABLE motion_extras(character TEXT,clip TEXT,details_json TEXT);CREATE TABLE motion_particles(name TEXT,details_json TEXT);')
@@ -106,7 +106,9 @@ class MotionExtrasTests(unittest.TestCase):
                 db.execute('INSERT INTO motion_particles VALUES(?,?)',('STEAM',json.dumps(rule)))
             catalog.game_names.refresh()
             item=Models(catalog).extra_sources('STRIKER','MOVE',set())[0]
-            self.assertEqual(item['images'][0]['selected'],catalog.entries({})['items'][0]['id'])
+            self.assertEqual(item['images'][0]['selected'],Models(catalog).matches('SMOKE.PNG')[0]['id'])
+            self.assertEqual(item['mask_image']['selected'],Models(catalog).matches('MASK.PNG')[0]['id'])
+            self.assertEqual(item['particle']['mask_texture'],'MASK.PNG')
             self.assertEqual(item['particle']['max_particles'],1)
             self.assertNotIn('particle',catalog.game_names.motion_extras['STRIKER','MOVE'][0])
 

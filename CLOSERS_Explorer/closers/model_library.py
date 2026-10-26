@@ -421,6 +421,9 @@ class Models:
                 particle=copy.deepcopy(self.catalog.game_names.motion_particles.get((item['particle_name'],'')))
                 if not particle:item.update(status='unavailable',error='파티클 인덱스를 갱신해 주세요.');continue
                 item['particle']=particle
+                if particle.get('mask_texture'):
+                    item['mask_texture']=particle['mask_texture']
+                    item['mask_image']=self.candidates(Path(particle['mask_texture'].replace('\\','/')).name,{})
                 if particle.get('dissolve_texture'):
                     item['dissolve_texture']=particle['dissolve_texture']
                     item['dissolve_image']=self.candidates(Path(particle['dissolve_texture'].replace('\\','/')).name,{})

@@ -40,7 +40,7 @@ diffuseColor.a*=texture2D(traceMaskMap,vTraceMaskUv).a;
   };
 }
 
-export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceMask=null}={}){
+export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceMask=null,coverageMap=null}={}){
   const root=new THREE.Group(),templates=[],ownedGeometry=[],ownedMaterials=[],meshes=[],groups=[];
   if(source){
     source.root.scale.z=1;source.root.updateMatrixWorld(true);
@@ -63,6 +63,7 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
     if(dissolveMap){geometry.setAttribute('particleDissolveColor',dissolveColor);geometry.setAttribute('particleDissolveParams',dissolveParams);}
     const materials=template.materials.map(original=>{
       const material=original.clone();ownedMaterials.push(material);material.transparent=true;material.alphaTest=EFFECT_ALPHA_TEST;material.depthTest=rule.depth_test;material.depthWrite=rule.depth_write;
+      if(coverageMap)material.alphaMap=coverageMap;
       if(rule.cull==='CON_D3DCULL_NONE')material.side=THREE.DoubleSide;
       else if(rule.cull==='CON_D3DCULL_CW')material.side=THREE.BackSide;
       else if(rule.cull==='CON_D3DCULL_CCW')material.side=THREE.FrontSide;
