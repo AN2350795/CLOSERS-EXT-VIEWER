@@ -2,13 +2,14 @@ export function random(seed){let n=seed>>>0;return ()=>{n=(n+0x6d2b79f5)|0;let x
 export const sample=(value,rng)=>Array.isArray(value)?value[0]+(value[1]-value[0])*rng():Number(value||0);
 export const vector=(value,rng,fallback=[0,0,0])=>(value||fallback).map(v=>sample(v,rng));
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
-const defaults={color:[1,1,1,1],dualColor:[1,1,1,1],size:[1,1,1],scale:[1],rotation:[0,0,0],rotationSpeed:[0,0,0],velocity:[0,0,0],position:[0,0,0],uv:[0,0],directionSpeed:[0],drag:[0,0,0],blinkColor:[0,0,0,0],blinkPeriod:[0],crash:[0,0,0],crashPeriod:[0],dissolveColor:[1,1,1,1],dissolveWidth:[.05],dissolveThreshold:[1]};
+const defaults={color:[1,1,1,1],dualColor:[1,1,1,1],size:[1,1,1],scale:[1],rotation:[0,0,0],rotationSpeed:[0,0,0],velocity:[0,0,0],position:[0,0,0],uv:[0,0],directionSpeed:[0],drag:[0,0,0],blinkColor:[0,0,0,0],blinkPeriod:[0],crash:[0,0,0],crashPeriod:[0],dissolveColor:[1,1,1,1],dissolveWidth:[.05],dissolveThreshold:[1,1]};
 export function createTracks(definitions=[],seed=1,life=1){
   const rng=random(seed),tracks={};
   for(const [name,value] of Object.entries(defaults))tracks[name]={initial:[...value],events:[]};
   for(const event of definitions){
     const track=tracks[event.property];if(!track)continue;
     const value=vector(event.value,rng),start=Math.max(0,sample(event.start,rng));
+    if(event.property==='dissolveThreshold'&&value.length===1)value.push(value[0]);
     if(event.mode==='initial')track.initial=value;
     else track.events.push({value,start,end:event.mode==='final'?life:Math.max(start,sample(event.end,rng)),clock:event.clock||'global',mode:event.mode});
   }
@@ -91,7 +92,8 @@ export class ParticleTimeline{
       const period=t.value('blinkPeriod',age)[0];if(period>0){const blink=t.value('blinkColor',age),factor=(Math.sin(age/period*Math.PI*2)+1)/2;color=color.map((v,i)=>v+(blink[i]-v)*factor);}
       let frame=0,elapsed=age;const frames=p.frames||[],duration=frames.reduce((n,f)=>n+f.duration,0);
       if(duration>0){elapsed%=duration;for(let i=0;i<frames.length;i++){frame=i;if(elapsed<frames[i].duration)break;elapsed-=frames[i].duration;}}
-      out.push({position,rotation,size:size.map(v=>v*scale),color,dualColor:dual,uv:t.value('uv',age).map((v,i)=>v+particle.uv[i]),frame});
+      out.push({position,rotation,size:size.map(v=>v*scale),color,dualColor:dual,uv:t.value('uv',age).map((v,i)=>v+particle.uv[i]),frame,
+        dissolveColor:t.value('dissolveColor',age),dissolveWidth:t.value('dissolveWidth',age)[0],dissolveThreshold:t.value('dissolveThreshold',age)});
     }return out;
   }
 }

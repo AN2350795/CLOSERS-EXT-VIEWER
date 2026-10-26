@@ -34,6 +34,11 @@ class MotionExtrasTests(unittest.TestCase):
             2:{1:'MPETT_GLOBAL',2:'MPET_FADE',3:'MPET_DISSOLVE',4:0,5:.4,'RGBA':{1:1,2:1,3:1,4:1},'WIDTH':.1,'THRESHOLD':{1:0,2:1}}}))
         self.assertEqual(rule['dissolve_texture'],'MASK.PNG');self.assertEqual(len(rule['tracks']),6);self.assertFalse(rule['warnings'])
         self.assertEqual(rule['tracks'][0]['property'],'dissolveColor');self.assertEqual(rule['tracks'][3]['value'][-1],1)
+        self.assertEqual(rule['tracks'][5]['value'],[0,1])
+        particle=particle_rule(dict(m_DissolveTexName='PARTICLE_MASK.DDS',m_TexName='WHITE.PNG',m_vecEventList={
+            1:{1:'PCET_FADE',2:'PCET_DISSOLVE',3:0,4:1,'THRESHOLD':{1:1,2:0}}}))
+        self.assertEqual(particle['dissolve_texture'],'PARTICLE_MASK.DDS')
+        self.assertEqual(particle['tracks'][-1]['value'],[1,0])
         rig=layers();rig['STRIKER'][0][1]['GAME_UNIT_TEMPLET']['m_mapUnitStateData'][1]['m_EventDamageEffect'][1]['m_fScale']=.4
         item=compile_extras(references(rig),{},{} )['STRIKER','MOVE'][1]
         self.assertEqual(item['scale'],.4)

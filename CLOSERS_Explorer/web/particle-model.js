@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {ParticleTimeline} from './effect-timeline.js';
+import {installDissolve} from './model-effect-dissolve.js';
 
 // Clear texels must not write depth and hide other animated models. Keep the
 // cutoff low enough to preserve soft particles and gradual appearance fades.
@@ -20,11 +21,12 @@ function installAlpha(material){
   };
 }
 
-export function createParticleModel(rule,source,maps=[]){
+export function createParticleModel(rule,source,maps=[],{dissolveMap=null}={}){
   const root=new THREE.Group(),templates=[],ownedGeometry=[],ownedMaterials=[],meshes=[],groups=[];
   if(source){
     source.root.scale.z=1;source.root.updateMatrixWorld(true);
     for(const mesh of source.meshes){
+      if(!mesh.visible)continue;
       const geometry=mesh.geometry.clone(),position=geometry.getAttribute('position'),point=new THREE.Vector3();
       for(let i=0;i<position.count;i++){point.fromBufferAttribute(mesh.geometry.getAttribute('position'),i);if(mesh.isSkinnedMesh)mesh.applyBoneTransform(i,point);point.applyMatrix4(mesh.matrixWorld);position.setXYZ(i,...point.toArray());}
       templates.push({geometry,materials:mesh.material});ownedGeometry.push(geometry);
@@ -38,12 +40,14 @@ export function createParticleModel(rule,source,maps=[]){
     const geometry=template.geometry.clone();ownedGeometry.push(geometry);
     const alpha=new THREE.InstancedBufferAttribute(new Float32Array(capacity),1),uv=new THREE.InstancedBufferAttribute(new Float32Array(capacity*2),2);
     geometry.setAttribute('particleAlpha',alpha);geometry.setAttribute('particleUV',uv);
+    const dissolveColor=dissolveMap?new THREE.InstancedBufferAttribute(new Float32Array(capacity*4),4):null,dissolveParams=dissolveMap?new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3):null;
+    if(dissolveMap){geometry.setAttribute('particleDissolveColor',dissolveColor);geometry.setAttribute('particleDissolveParams',dissolveParams);}
     const materials=template.materials.map(original=>{
       const material=original.clone();ownedMaterials.push(material);material.transparent=true;material.alphaTest=EFFECT_ALPHA_TEST;material.depthTest=rule.depth_test;material.depthWrite=rule.depth_write;
-      if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);return material;
+      if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);if(dissolveMap)installDissolve(material,dissolveMap,true);return material;
     });
     const mesh=new THREE.InstancedMesh(geometry,materials,capacity);mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,frame:fi,pass});
+    mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,dissolveColor,dissolveParams,frame:fi,pass});
   }
   const timeline=new ParticleTimeline(rule),matrix=new THREE.Matrix4(),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),euler=new THREE.Euler(),look=new THREE.Matrix4(),up=new THREE.Vector3(0,1,0);
   return {root,meshes,materials:ownedMaterials,skeletons:[],
@@ -57,8 +61,10 @@ export function createParticleModel(rule,source,maps=[]){
           if(rule.billboard!=='BBT_NONE'){look.lookAt(cameraLocal,position,up);quaternion.premultiply(new THREE.Quaternion().setFromRotationMatrix(look));}
           matrix.compose(position,quaternion,scale);group.mesh.setMatrixAt(count,matrix);
           const color=group.pass?p.dualColor:p.color;group.mesh.instanceColor.setXYZ(count,color[0],color[1],color[2]);group.alpha.setX(count,Math.max(0,Math.min(1,color[3])));group.uv.setXY(count,p.uv[0],p.uv[1]);count++;
+          if(group.dissolveColor){group.dissolveColor.setXYZW(count-1,...p.dissolveColor);group.dissolveParams.setXYZ(count-1,p.dissolveWidth,...p.dissolveThreshold);}
         }
         group.mesh.count=count;group.mesh.instanceMatrix.needsUpdate=true;group.mesh.instanceColor.needsUpdate=true;group.alpha.needsUpdate=true;group.uv.needsUpdate=true;
+        if(group.dissolveColor){group.dissolveColor.needsUpdate=true;group.dissolveParams.needsUpdate=true;}
       }
     },
     dispose(){meshes.forEach(m=>m.dispose());ownedGeometry.forEach(g=>g.dispose());ownedMaterials.forEach(m=>m.dispose());source?.dispose();}

@@ -91,7 +91,9 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       }else if(entry.kind==='particle'){
         const maps=[];
         for(const info of entry.images||[])maps.push(await image(info,current,signal,asset,entry));
-        model=createParticleModel(entry.particle,model,maps);asset.model=model;asset.particle=true;
+        const mask=entry.dissolve_image?await image(entry.dissolve_image,current,signal,asset,entry):null;
+        const dissolveMap=mask?.clone();if(dissolveMap){dissolveMap.colorSpace=THREE.NoColorSpace;dissolveMap.needsUpdate=true;asset.owned.push(dissolveMap);}
+        model=createParticleModel(entry.particle,model,maps,{dissolveMap});asset.model=model;asset.particle=true;
       }else if(entry.animation){
         try{
           if(!data.animation.selected)throw Error('자체 XMD가 없어 정적 모델로 표시합니다.');
@@ -236,7 +238,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
           const rgba=timeline.value(base.dual?'dualColor':'color',age,time),material=base.material;
           material.color.copy(base.color).multiply(new THREE.Color(...rgba.slice(0,3)));material.opacity=base.opacity*rgba[3];
         }
-        for(const dissolve of asset.dissolve||[])dissolve.update(timeline.value('dissolveColor',age,time),timeline.value('dissolveWidth',age,time)[0],timeline.value('dissolveThreshold',age,time)[0]);
+        for(const dissolve of asset.dissolve||[])dissolve.update(timeline.value('dissolveColor',age,time),timeline.value('dissolveWidth',age,time)[0],timeline.value('dissolveThreshold',age,time));
         asset.model.root.updateMatrixWorld(true);
         frame(asset);
       }

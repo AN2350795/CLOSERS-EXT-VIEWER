@@ -33,6 +33,17 @@ try{
   check(!shaderError,'particle opacity and UV shaders compile');check(renderer.info.render.calls>0,'instanced dual-pass particles draw');
   const gl=renderer.getContext(),pixels=new Uint8Array(64*64*4);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
   check(pixels.some((v,i)=>i%4!==3&&v>0),'particles produce visible pixels');
+  scene.remove(model.root);
+  const dissolve=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',tracks:[
+    {property:'size',mode:'initial',value:[4,4,4]},
+    {property:'dissolveThreshold',mode:'initial',value:[1,1]},
+    {property:'dissolveThreshold',mode:'fade',start:0,end:1,value:[1,0]}]},null,[white],{dissolveMap:white});
+  scene.add(dissolve.root);scene.updateMatrixWorld(true);
+  const coverage=time=>{dissolve.update(time,camera,anchor);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels.filter((v,i)=>i%4!==3&&v>0).length;};
+  check(coverage(0)>0&&!shaderError,'instanced dissolve composes with opacity and UV shaders');
+  check(coverage(1)===0,'the second threshold component dissolves the particle at the end');
+  check(coverage(0)>0,'dissolve rewinds and restores visible pixels');
+  dissolve.dispose();
   let disposed=0;model.meshes[0].geometry.addEventListener('dispose',()=>disposed++);model.dispose();check(disposed===1,'particle geometry cleanup');white.dispose();renderer.dispose();
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}
