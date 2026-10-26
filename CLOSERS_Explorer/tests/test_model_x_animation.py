@@ -12,7 +12,7 @@ from closers.model_x_animation import embedded_clip
 from closers.catalog import Catalog
 from closers.model_library import Models
 from test_explorer import fixture
-from test_model import binary_model,obj,name,numbers,animation
+from test_model import binary_model,obj,name,numbers,animation,IDENTITY
 
 
 def animated_model(target='CHILD',kind=2,width=3):
@@ -23,6 +23,16 @@ def animated_model(target='CHILD',kind=2,width=3):
 
 
 class EmbeddedAnimationTests(unittest.TestCase):
+    def test_duplicate_matrix_channels_are_bound_by_their_first_local_pose(self):
+        shifted=IDENTITY.copy();shifted[12]=5
+        def track(matrix):
+            ref=struct.pack('<H',10)+name('CHILD')+struct.pack('<H',11)
+            return obj('Animation',ref+obj('AnimationKey',numbers([4,1,0,16])+numbers(matrix,True)))
+        body=binary_model()+obj('Frame',b'','CHILD')+obj('AnimationSet',track(shifted)+track(IDENTITY),'BOTH')
+        scene=parse_x(body);packet=embedded_clip(body,scene['frames'],'BOTH')
+        self.assertEqual([t['frame'] for t in packet['tracks']],[1,2])
+        scene['frames'][2]['matrix']=shifted.copy()
+        with self.assertRaises(ValueError):embedded_clip(body,scene['frames'],'BOTH')
     def test_deleted_helper_channels_do_not_disable_existing_frames(self):
         body=animated_model();missing=animated_model(target='DELETED_HELPER')
         # Put an existing and a deleted frame track in the same AnimationSet.

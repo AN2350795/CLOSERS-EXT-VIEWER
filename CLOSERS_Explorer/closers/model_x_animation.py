@@ -19,6 +19,15 @@ def embedded_clip(body,frames,name):
         refs=[o['name'] for o in animation['children'] if o['kind']=='reference']
         if len(refs)!=1:raise ValueError('X 애니메이션 프레임 연결이 올바르지 않습니다.')
         frame=names.get(refs[0])
+        aliases=[i for i,f in enumerate(frames) if f.get('original_name',f['name'])==refs[0]]
+        if len(aliases)>1:
+            matrices=[c['values'][4:20] for c in animation['children'] if c['kind']=='AnimationKey' and c['values'][:1] in ([3],[4]) and len(c['values'])>=20 and c['values'][2:4]==[0,16]]
+            if len(matrices)!=1:raise ValueError('중복 애니메이션 프레임의 시작 행렬이 불명확합니다: '+refs[0])
+            errors=sorted((max(abs(a-b) for a,b in zip(matrices[0],frames[i]['matrix'])),i) for i in aliases)
+            # Require a close match with a clear numerical margin over every
+            # other same-name frame; identical poses remain ambiguous.
+            if errors[0][0]>1e-5 or errors[1][0]<=max(1e-8,errors[0][0]*4):raise ValueError('중복 애니메이션 프레임의 시작 자세를 유일하게 연결할 수 없습니다: '+refs[0])
+            frame=errors[0][1]
         # Exporters can retain tracks for deleted leaf helpers. They have no
         # frame or geometry in this X; keep the channels for existing frames.
         if frame is None:missing.add(refs[0])
@@ -28,7 +37,7 @@ def embedded_clip(body,frames,name):
             try:
                 kind=next(it);count=Reader(b'').count(next(it),10000)
                 prop,width={0:('quaternion',4),1:('scale',3),2:('position',3),3:('matrix',16),4:('matrix',16)}[kind]
-                channel_key=(refs[0],prop)
+                channel_key=(frame if frame is not None else refs[0],prop)
                 if channel_key in seen or not count:raise ValueError('X 애니메이션 채널이 중복되거나 비어 있습니다.')
                 seen.add(channel_key);total+=count
                 if total>150000:raise ValueError('X 애니메이션 키 예산을 초과했습니다.')

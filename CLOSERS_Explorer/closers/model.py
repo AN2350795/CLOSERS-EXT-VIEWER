@@ -13,6 +13,10 @@ MAX_BYTES = 32 * 1024 * 1024
 IDENTITY = [1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]
 
 
+def matrix_product(a,b):
+    return [sum(a[r*4+k]*b[k*4+c] for k in range(4)) for r in range(4) for c in range(4)]
+
+
 def numeric(values):
     if any(type(v) not in (int,float) or not math.isfinite(v) for v in values):
         raise ValueError('X 벡터·행렬에 숫자가 아닌 값이 있습니다.')
@@ -314,24 +318,25 @@ def parse_x(data):
     if not frames and not meshes:raise ValueError('X 파일에 표시할 프레임이나 메시가 없습니다.')
     names = [f['name'] for f in frames]
     if len(set(names))!=len(names):
-        referenced={s['bone'] for m in meshes for s in m['skin']}
+        worlds=[]
+        for f in frames:worlds.append(matrix_product(f['matrix'],worlds[f['parent']]) if f['parent']>=0 else f['matrix'])
         occupied=set(names)
         for label in dict.fromkeys(names):
             indices=[i for i,n in enumerate(names) if n==label]
             if len(indices)<2:continue
-            # Observed DEVILISH face repeats an unused, empty identity leaf.
-            # Preserve its hierarchy with a unique label; ambiguous skin bones
-            # and meaningful duplicate transforms remain unsupported.
-            if label in referenced or any(
-                any(f['parent']==i for f in frames) or any(m['frame']==i for m in meshes)
-                or max(abs(a-b) for a,b in zip(frames[i]['matrix'],IDENTITY))>1e-4
-                for i in indices[1:]):
-                raise ValueError('이름이 중복된 X 뼈는 현재 지원하지 않습니다.')
+            bindings=[]
+            for mesh in meshes:
+                for skin in mesh['skin']:
+                    if skin['bone']!=label:continue
+                    matches=[i for i in indices if max(abs(a-b) for a,b in zip(matrix_product(skin['offset'],worlds[i]),IDENTITY))<1e-4]
+                    if len(matches)!=1:raise ValueError('중복 X 뼈의 스킨 바인드 행렬을 유일하게 연결할 수 없습니다: '+label)
+                    bindings.append((skin,matches[0]))
             for i in indices[1:]:
-                unique=label+'__UNUSED_FRAME_'+str(i)
+                unique=label+'__DUPLICATE_FRAME_'+str(i)
                 while unique in occupied:unique+='_' 
-                frames[i]['name']=unique;occupied.add(unique)
-            warnings.append('스킨 미사용·빈 말단 프레임의 중복 이름을 표시용으로 구분했습니다: '+label)
+                frames[i]['name']=unique;frames[i]['original_name']=label;occupied.add(unique)
+            for skin,index in bindings:skin['bone']=frames[index]['name']
+            warnings.append('중복 프레임의 계층을 유지하고 스킨 바인드 행렬로 연결했습니다: '+label)
         names=[f['name'] for f in frames]
     if sum(len(m['vertices'])//3 for m in meshes)>250_000:
         raise ValueError('3D 장면은 정점 250,000개까지 지원합니다.')
@@ -409,7 +414,7 @@ def xmd_matrix(transform):
 def bind_mapping(scene,animation):
     """Require every DEFAULT local matrix to match before enabling game playback."""
     defaults = animation['retained']
-    ordered = sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i]['name'])
+    ordered = sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i].get('original_name',scene['frames'][i]['name']))
     if len(ordered)!=animation['bones'] or len(defaults)!=1 or not defaults[0]['keys']:
         raise ValueError('XMD 뼈 연결을 검증할 수 없습니다: 뼈 수 또는 _DEFAULT 자세가 일치하지 않습니다.')
     return _pose_mapping(scene,ordered,defaults[0]['keys'])
@@ -434,7 +439,7 @@ def _pose_mapping(scene,ordered,keys):
 
 def bind_effect_mapping(scene,references):
     """No DEFAULT: require a complete source-pose match, never just bone counts."""
-    ordered=sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i]['name'])
+    ordered=sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i].get('original_name',scene['frames'][i]['name']))
     if not ordered or len(ordered)!=references['bones']:raise ValueError('연출 모델과 XMD의 뼈 수가 다릅니다.')
     for retained in references['retained']:
         keys=retained['keys']

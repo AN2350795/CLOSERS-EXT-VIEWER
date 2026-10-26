@@ -160,17 +160,21 @@ class ModelTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, '1,024'):
                 Models(catalog).scene([ids['one.X']], ids['common.X'])
 
-    def test_only_unused_empty_identity_duplicate_leaf_can_be_named_uniquely(self):
+    def test_duplicate_frames_keep_hierarchy_and_require_unique_skin_bindings(self):
         dummy=obj('Frame',obj('FrameTransformMatrix',numbers(IDENTITY,True)),'DUMMY')
         body=binary_model()+obj('Frame',dummy,'DUMMY')
         scene=parse_x(body)
         self.assertEqual(len(set(f['name'] for f in scene['frames'])),len(scene['frames']))
         self.assertEqual(scene['frames'][-1]['parent'],len(scene['frames'])-2)
         self.assertTrue(scene['warnings'])
-        # A repeated skin bone, or a leaf with a meaningful transform, is ambiguous.
-        with self.assertRaisesRegex(ValueError,'중복'):parse_x(binary_model()+obj('Frame',b'','CHILD'))
+        # The inverse bind matrix proves which repeated frame a skin uses.
+        scene=parse_x(binary_model()+obj('Frame',b'','CHILD'))
+        self.assertEqual(scene['meshes'][0]['skin'][0]['bone'],scene['frames'][-1]['name'])
+        with self.assertRaisesRegex(ValueError,'중복'):parse_x(binary_model()+obj('Frame',b'','CHILD')+obj('Frame',b'','CHILD'))
         shifted=IDENTITY.copy();shifted[12]=1
-        with self.assertRaisesRegex(ValueError,'중복'):parse_x(binary_model()+obj('Frame',obj('Frame',obj('FrameTransformMatrix',numbers(shifted,True)),'DUMMY'),'DUMMY'))
+        scene=parse_x(binary_model()+obj('Frame',obj('Frame',obj('FrameTransformMatrix',numbers(shifted,True)),'DUMMY'),'DUMMY'))
+        self.assertEqual(scene['frames'][-1]['matrix'][12],1)
+        self.assertEqual(scene['frames'][-1]['parent'],len(scene['frames'])-2)
 
     def test_binary_mesh_and_verified_multi_key_default(self):
         scene=parse_x(binary_model());a=parse_xmd(animation());mapping=bind_mapping(scene,a)
