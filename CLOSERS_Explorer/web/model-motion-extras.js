@@ -96,8 +96,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         }catch(e){
           if(signal.aborted)throw e;asset.clip=null;
           try{
-            asset.embedded=await api('/api/model-effect-clip?'+new URLSearchParams({skeleton:resource.selected,name:entry.animation,sha256:data.skeleton_source.sha256}),signal);
-            if(asset.embedded.skeleton_source.sha256!==data.skeleton_source.sha256)throw Error('연출 모델 원본이 변경되었습니다.');
+            const fallback=await api('/api/model-effect-clip?'+new URLSearchParams({skeleton:resource.selected,name:entry.animation,sha256:data.skeleton_source.sha256}),signal);
+            if(fallback.skeleton_source.sha256!==data.skeleton_source.sha256)throw Error('연출 모델 원본이 변경되었습니다.');
+            if(fallback.tracks)asset.embedded=fallback;else asset.clip=fallback;
+            entry.loadWarnings.push(...(fallback.warnings||[]));
           }catch(fallback){if(signal.aborted)throw fallback;asset.embedded=null;entry.loadWarnings.push('정적 모델 미리보기 · '+e.message+' · '+fallback.message);}
         }
       }

@@ -374,7 +374,7 @@ def create_server(catalog, port=0):
                 elif url.path == '/api/model-animations':
                     self.respond(models.animations(int(query['skeleton']),int(query['animation']),effect=query.get('effect')=='1'))
                 elif url.path == '/api/model-effect-clip':
-                    self.respond(models.effect_embedded_clip(int(query['skeleton']),query['name'],query.get('sha256')))
+                    self.respond(models.effect_clip(int(query['skeleton']),query['name'],query.get('sha256')))
                 elif url.path == '/api/model-clip':
                     self.respond(models.clip(int(query['skeleton']),int(query['animation']),int(query['clip']),query.get('sha256'),effect=query.get('effect')=='1'))
                 elif url.path == '/api/state':

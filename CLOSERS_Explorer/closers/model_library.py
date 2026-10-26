@@ -28,10 +28,47 @@ class Models:
         return self.parsed.get(key,lambda:parse_x(body) if fmt=='x' else parse_xmd(body,selected=selected))
 
     def animation_mapping(self,scene,animation,body,source,animation_source,effect=False):
-        if not effect or animation['retained']:return bind_mapping(scene,animation)
+        try:return bind_mapping(scene,animation)
+        except ValueError:
+            if not effect:raise
         if Path(source['name']).stem.upper()!=Path(animation_source['name']).stem.upper():raise ValueError('연출 모델과 동명인 XMD를 선택해 주세요.')
         references=self.parsed.get(('xmd-first-keys',animation_source['sha256']),lambda:parse_xmd(body,first_keys=True))
         return bind_effect_mapping(scene,references)
+
+    def effect_clip(self,entry_id,name,expected):
+        try:return self.effect_embedded_clip(entry_id,name,expected)
+        except ValueError as embedded_error:
+            with self.operation():
+                body,owner,source=self.read(entry_id,'x')
+                if source['sha256']!=expected:raise ValueError('연출 모델 원본이 변경되었습니다.')
+                scene=self.parse(body,source,'x');stem=Path(source['name']).stem.upper()
+                # A model can use another pack in its own XMD family (HYDE's
+                # emotes, for example). Verify every bone with DEFAULT; never
+                # switch rigs or choose a similarly named character here.
+                with self.catalog.connect() as db:
+                    rows=[dict(r) for r in db.execute("SELECT id,name FROM entries WHERE format='xmd' AND flag!=2")
+                          if Path(r['name']).stem.upper().startswith(stem+'_')]
+                if len(rows)>128:raise ValueError('연출 XMD 묶음 검색 예산을 초과했습니다.')
+                matches=[]
+                for row in rows:
+                    try:
+                        animation,_,animation_source=self.read(row['id'],'xmd')
+                        metadata=self.parse(animation,animation_source,'xmd')
+                        clips=[c for c in metadata['clips'] if c['name']==name]
+                        if len(clips)!=1:continue
+                        mapping=bind_mapping(scene,metadata)
+                        selected=self.parse(animation,animation_source,'xmd',selected=clips[0]['index'])
+                        for key in selected['retained'][0]['keys']:
+                            for ti,tr in enumerate(key['transforms']):
+                                if ti>=key['scale_count']:tr[4:7]=mapping['scales'][mapping['frames'][ti]].copy()
+                                xmd_matrix(tr)
+                        matches.append(dict(clip=clips[0],keys=selected['retained'][0]['keys'],mapping=mapping,
+                                            skeleton_source=source,animation_source=animation_source))
+                        if len(matches)>1:break
+                    except (ValueError,OSError):continue
+                if len(matches)==1:return matches[0]
+                if matches:raise ValueError('연출 동작을 가진 XMD 출처가 중복됩니다.')
+                raise embedded_error
 
     def effect_embedded_clip(self,entry_id,name,expected):
         from .model_x_animation import embedded_clip

@@ -12,7 +12,7 @@ from closers.model_x_animation import embedded_clip
 from closers.catalog import Catalog
 from closers.model_library import Models
 from test_explorer import fixture
-from test_model import binary_model,obj,name,numbers
+from test_model import binary_model,obj,name,numbers,animation
 
 
 def animated_model(target='CHILD',kind=2,width=3):
@@ -23,6 +23,27 @@ def animated_model(target='CHILD',kind=2,width=3):
 
 
 class EmbeddedAnimationTests(unittest.TestCase):
+    def test_deleted_helper_channels_do_not_disable_existing_frames(self):
+        body=animated_model();missing=animated_model(target='DELETED_HELPER')
+        # Put an existing and a deleted frame track in the same AnimationSet.
+        start=missing.index(name('Animation')+struct.pack('<H',10))
+        body=body[:-2]+missing[start:-2]+body[-2:]
+        packet=embedded_clip(body,parse_x(body)['frames'],'BOX_LOOP')
+        self.assertEqual(len(packet['tracks']),1)
+        self.assertEqual(packet['mapping']['missing_frames'],['DELETED_HELPER'])
+        self.assertTrue(packet['warnings'])
+
+    def test_other_pack_in_same_model_family_requires_unique_full_default_match(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work')
+            catalog.scan([fixture(root/'models.cmf',[('HELPER.X',binary_model(),0),('HELPER_EMOTION.XMD',animation(),0),('UNRELATED.XMD',animation(),0)])])
+            models=Models(catalog);entry=models.matches('HELPER.X')[0]['id'];sha=models.scene([entry])['skeleton_source']['sha256']
+            packet=models.effect_clip(entry,'MOVE',sha)
+            self.assertEqual(packet['animation_source']['name'],'HELPER_EMOTION.XMD')
+            self.assertEqual(packet['keys'][0]['transforms'][0][7],5)
+            catalog.scan([fixture(root/'duplicate.cmf',[('HELPER_DUPLICATE.XMD',animation(),0)])])
+            with self.assertRaises(ValueError):models.effect_clip(entry,'MOVE',sha)
+
     def test_named_channels_timing_and_rotation_convention(self):
         body=animated_model();scene=parse_x(body);packet=embedded_clip(body,scene['frames'],'BOX_LOOP')
         self.assertEqual(packet['clip']['duration'],1)

@@ -79,7 +79,8 @@ class ModelTests(unittest.TestCase):
             packet=models.clip(ids['FX.X'],ids['FX.XMD'],1,info['animation_source']['sha256'],effect=True)
             self.assertEqual(packet['keys'][0]['transforms'][0][7],8)
             with self.assertRaises(ValueError):models.animations(ids['FX.X'],ids['OTHER.XMD'],effect=True)
-            with self.assertRaises(ValueError):models.animations(ids['BAD.X'],ids['BAD.XMD'],effect=True)
+            with self.assertRaises(ValueError):models.animations(ids['BAD.X'],ids['BAD.XMD'])
+            self.assertEqual(models.animations(ids['BAD.X'],ids['BAD.XMD'],effect=True)['mapping']['reference_clip'],'MOVE')
 
     def test_material_retains_original_reflection_and_emission_values(self):
         before=[1,1,1,1,0,0,0,0,0,0,0]

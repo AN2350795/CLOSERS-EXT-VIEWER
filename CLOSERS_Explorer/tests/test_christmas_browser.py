@@ -7,6 +7,9 @@ import test_picker_browser
 
 class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
     checks_script='christmas_checks.js'
+    characters=(('STRIKER','MEN'),('ROGUE','GIRL'))
+    sequence_keys=('SI_COMMON_EMOTION_SANTA_BUNNY','SI_COMMON_EMOTION_SANTA_BUNNY_BGM')
+    animation_pattern='MOTION_{character}_EMOTION_SANTA_BUNNY_{gender}.XMD'
 
     def test_picker(self):
         from closers.catalog import Catalog
@@ -26,10 +29,10 @@ class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
             if selected not in images:
                 path,info=composition.prepare(selected)
                 images[selected]=dict(info,body=base64.b64encode(path.read_bytes()).decode())
-        for char,gender in [('STRIKER','MEN'),('ROGUE','GIRL')]:
-            rig=source('MOTION_'+char+'.X');animation=source('MOTION_'+char+'_EMOTION_SANTA_BUNNY_'+gender+'.XMD')
+        for char,gender in self.characters:
+            rig=source('MOTION_'+char+'.X');animation=source(self.animation_pattern.format(character=char,gender=gender))
             actor=models.scene([rig]);info=models.animations(rig,animation)
-            definitions=[s for s in catalog.game_names.motion_sequences[char] if s['key'] in ('SI_COMMON_EMOTION_SANTA_BUNNY','SI_COMMON_EMOTION_SANTA_BUNNY_BGM')]
+            definitions=[s for s in catalog.game_names.motion_sequences[char] if s['key'] in self.sequence_keys]
             for definition in definitions:
                 clips=[]
                 for step in definition['steps']:
@@ -58,7 +61,7 @@ class ChristmasBrowserTests(test_picker_browser.PickerBrowserTests):
                             except (ValueError,TypeError,StopIteration):
                                 key=str(selected)+':'+entry['animation']
                                 if key not in embedded:
-                                    try:embedded[key]=models.effect_embedded_clip(selected,entry['animation'],scene['skeleton_source']['sha256'])
+                                    try:embedded[key]=models.effect_clip(selected,entry['animation'],scene['skeleton_source']['sha256'])
                                     except ValueError:
                                         # The source's empty BASE dummy has no animation.
                                         self.assertEqual(entry['animation'],'BASE')
