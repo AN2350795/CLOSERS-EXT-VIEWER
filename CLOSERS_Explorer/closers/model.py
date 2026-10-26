@@ -65,8 +65,12 @@ class Reader:
 def x_tokens(data):
     r = Reader(data)
     head = r.take(16)
+    if head==b'xof 0303txt 0032':
+        from .model_x_text import text_tokens
+        yield from text_tokens(data)
+        return
     if head != b'xof 0303bin 0032':
-        raise ValueError('현재 3D 뷰어는 xof 0303bin 0032 바이너리 X를 지원합니다. 원본 저장은 가능합니다.')
+        raise ValueError('현재 3D 뷰어는 xof 0303의 32비트 바이너리·텍스트 X를 지원합니다. 원본 저장은 가능합니다.')
     while r.pos < len(data):
         code, = r.unpack('H')
         if code in (1,2):
@@ -152,7 +156,8 @@ def x_objects(data):
 
 
 def x_data(data):
-    if data[:16]==b'xof 0303bzip0032':
+    if data[:16] in (b'xof 0303bzip0032',b'xof 0303tzip0032'):
+        header=b'xof 0303txt 0032' if data[8:12]==b'tzip' else b'xof 0303bin 0032'
         r = Reader(data); r.take(16); advertised, = r.unpack('I')
         expanded,previous = bytearray(),b''
         while r.pos<len(data):
@@ -167,7 +172,7 @@ def x_data(data):
             if len(expanded)>MAX_BYTES:
                 raise ValueError('복원된 X는 32 MiB까지 지원합니다.')
             previous = bytes(expanded[-32768:])
-        data = b'xof 0303bin 0032'+expanded
+        data = header+expanded
         if len(data)!=advertised:
             raise ValueError('X MSZIP 전체 복원 길이가 헤더와 일치하지 않습니다.')
     return data
@@ -301,11 +306,12 @@ def parse_x(data):
             elif node['kind']=='Mesh':
                 mesh(node,parent)
             elif node['kind']=='AnimationSet':
-                warnings.append('X 내부 AnimationSet은 현재 재생하지 않습니다. XMD를 선택해 주세요.')
+                warnings.append('X 내부 AnimationSet은 모션 연출에서 이름이 연결된 경우 재생합니다.')
     try:
         visit(objects)
     except (StopIteration,IndexError,TypeError) as exc:
         raise ValueError('X 메시 데이터가 잘렸거나 지원하지 않는 구조입니다.') from exc
+    if not frames and not meshes:raise ValueError('X 파일에 표시할 프레임이나 메시가 없습니다.')
     names = [f['name'] for f in frames]
     if len(set(names))!=len(names):
         referenced={s['bone'] for m in meshes for s in m['skin']}
