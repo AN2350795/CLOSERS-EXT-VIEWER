@@ -14,6 +14,10 @@ try{
   const timeline=new ParticleTimeline(rule),expected=JSON.stringify(timeline.at(.5));
   check(timeline.at(.5).length===4,'continuous and instant emissions');timeline.at(2);check(JSON.stringify(timeline.at(.5))===expected,'seeking is deterministic');
   check(timeline.at(4).length===0,'finite emitter and particles expire');
+  const oneShot=new ParticleTimeline({...rule,max_particles:1,rate:100,instant:0,life:1,emitter_life:100,deaths:1,frames:[{duration:.2},{duration:.2},{duration:.2}],tracks:[{property:'velocity',mode:'initial',value:[1,0,0]}]});
+  const single=oneShot.at(.55);check(single.length===1&&single[0].position[0]>.5&&single[0].frame===2,'full emitter keeps the first particle and advances its animation');
+  check(oneShot.at(2).length===0,'die count stops high-rate one-shot emitters after the particle dies');
+  check(JSON.stringify(oneShot.at(.55))===JSON.stringify(single),'capped emitter rewinds deterministically');
   const renderer=new THREE.WebGLRenderer({antialias:false});renderer.setSize(64,64);document.body.append(renderer.domElement);
   let shaderError=false;renderer.debug.onShaderError=()=>shaderError=true;
   const scene=new THREE.Scene(),camera=new THREE.PerspectiveCamera(45,1,.1,100);camera.position.z=10;

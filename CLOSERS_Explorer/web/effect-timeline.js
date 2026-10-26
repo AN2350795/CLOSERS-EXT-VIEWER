@@ -37,7 +37,36 @@ export function createTracks(definitions=[],seed=1,life=1){
 }
 
 export class ParticleTimeline{
-  constructor(rule){this.rule=rule;const rng=random(rule.seed);this.rate=Math.max(0,sample(rule.rate,rng));this.instant=Math.max(0,Math.floor(sample(rule.instant,rng)));this.emitterLife=Math.max(0,sample(rule.emitter_life,rng));this.deaths=Math.max(0,sample(rule.deaths,rng));this.cache=new Map();}
+  constructor(rule){this.rule=rule;const rng=random(rule.seed);this.rate=Math.max(0,sample(rule.rate,rng));this.instant=Math.max(0,Math.floor(sample(rule.instant,rng)))||(!this.rate?1:0);this.emitterLife=Math.max(0,sample(rule.emitter_life,rng));this.deaths=Math.max(0,sample(rule.deaths,rng));this.cache=new Map();this.maxLife=Array.isArray(rule.life)?rule.life[1]:rule.life;this.resetEmitter();}
+  resetEmitter(){this.live=[];this.births=0;this.dead=0;this.nextEmission=this.rate?1/this.rate:Infinity;this.lastTime=-1;this.initialized=false;this.stopped=false;}
+  life(index){return Math.max(.001,sample(this.rule.life,random((this.rule.seed+Math.imul(index+1,2654435761))>>>0)));}
+  birthsAt(time){
+    const max=this.rule.max_particles;
+    // No capacity pressure: skip history and inspect only the lifetime window.
+    if(!this.deaths&&max>=this.instant+Math.ceil(this.rate*this.maxLife)){
+      const births=Array.from({length:Math.min(max,this.instant)},(_,i)=>[i,0]);
+      const end=Math.floor(Math.min(time,this.emitterLife)*this.rate),first=Math.max(1,Math.ceil((time-this.maxLife)*this.rate));
+      for(let i=end;i>=first&&births.length<max;i--)births.push([this.instant+i-1,i/this.rate]);
+      return births;
+    }
+    if(time<this.lastTime)this.resetEmitter();
+    const admit=birth=>{const index=this.births++;this.live.push({index,birth,end:birth+this.life(index)});};
+    if(!this.initialized){for(let i=0;i<Math.min(max,this.instant);i++)admit(0);this.initialized=true;}
+    while(true){
+      const death=this.live.reduce((n,p)=>Math.min(n,p.end),Infinity),emission=this.stopped||this.nextEmission>this.emitterLife?Infinity:this.nextEmission;
+      if(Math.min(death,emission)>time)break;
+      if(death<=emission){
+        const alive=this.live.filter(p=>p.end>death+1e-9);this.dead+=this.live.length-alive.length;this.live=alive;
+        if(this.deaths>0&&this.dead>=this.deaths)this.stopped=true;
+      }else if(this.live.length<max){admit(emission);this.nextEmission+=1/this.rate;}
+      else{
+        // Full emitters keep their existing particles. They never replace a
+        // living particle with a new birth and restart its texture animation.
+        this.nextEmission=Math.max(this.nextEmission+1/this.rate,Math.ceil((death-1e-9)*this.rate)/this.rate);
+      }
+    }
+    this.lastTime=time;return this.live.map(p=>[p.index,p.birth]);
+  }
   particle(index){
     if(this.cache.has(index))return this.cache.get(index);
     const p=this.rule,rng=random((p.seed+Math.imul(index+1,2654435761))>>>0),life=Math.max(.001,sample(p.life,rng));
@@ -47,16 +76,12 @@ export class ParticleTimeline{
     this.cache.set(index,particle);while(this.cache.size>1024)this.cache.delete(this.cache.keys().next().value);return particle;
   }
   at(time){
-    const p=this.rule,max=p.max_particles,instant=this.instant||(!this.rate?1:0),maxLife=Array.isArray(p.life)?p.life[1]:p.life;
-    const births=[];
-    for(let i=0;i<Math.min(max,instant);i++)births.push([i,0]);
-    const end=Math.floor(Math.min(time,this.emitterLife)*this.rate),first=Math.max(1,Math.floor((time-maxLife)*this.rate));
-    for(let i=end;i>=first&&births.length<max*2;i--)if(i>0)births.push([instant+i,i/this.rate]);
+    const p=this.rule,max=p.max_particles,births=this.birthsAt(time);
     const out=[];
     for(const [index,birth] of births){
       if(out.length>=max)break;
       const particle=this.particle(index),age=time-birth;
-      if(age<0||age>=particle.life||(this.deaths>0&&birth>this.deaths*maxLife))continue;
+      if(age<0||age>=particle.life)continue;
       const t=particle.tracks,velocity=t.integral('velocity',age),drag=t.value('drag',age),spin=t.integral('rotationSpeed',age);
       const position=t.value('position',age).map((v,i)=>v+particle.radius[i]+velocity[i]*Math.exp(-Math.max(0,drag[i])*age*.5)+particle.gravity[i]*age*age*.5);
       const speed=t.value('directionSpeed',age)[0];position[2]+=speed*age;
