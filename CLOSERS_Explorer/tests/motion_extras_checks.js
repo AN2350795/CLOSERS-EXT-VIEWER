@@ -15,7 +15,7 @@ try{
     if(url.startsWith('/api/model-scene')){
       if(defer)await new Promise(r=>release=r);
       const id=Number(new URL(url,location.href).searchParams.get('entries'));
-      return {frames:[],meshes:[{name:'prop',frame:-1,vertices:[0,0,0,1,0,0,0,1,0],indices:[0,1,2],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,1,1,1]}]}],skeleton_source:{sha256:'resource'},animation:{selected:id===11?8:null}};
+      return {frames:id===11?[{name:'FX_BONE',parent:-1,matrix:[1,0,0,0,0,1,0,0,0,0,1,0,5,0,0,1]}]:[],meshes:[{name:'prop',frame:-1,vertices:[0,0,0,1,0,0,0,1,0],indices:[0,1,2],uv:[],skin:[],groups:[[0,3,0]],materials:[{color:[1,1,1,1]}]}],skeleton_source:{sha256:'resource'},animation:{selected:id===11?8:null}};
     }
     if(url.startsWith('/api/model-animations')){if(failAnimation)throw Error('Unsupported default mapping');return {skeleton_source:{sha256:'resource'},animation_source:{sha256:'fx'},clips:[{index:0,name:'FX',duration:1}]};}
     if(url.startsWith('/api/model-clip')){loadedAnimation=true;return {skeleton_source:{sha256:'resource'},clip:{duration:1},keys:[],mapping:{frames:[]}};}
@@ -43,6 +43,17 @@ try{
   extras.select([particlePacket]);state.clip=particlePacket;state.playing=false;state.time=.25;await until(()=>extras.assets.size===1);
   asset=[...extras.assets.values()][0][0];extras.update();check(!asset.anchor.visible,'child particle waits relative to parent creation');
   state.time=.4;extras.seek();extras.update();check(asset.anchor.visible&&asset.model.meshes[0].count===1,'plane particles render even if the parent mesh is unavailable');
+  const animatedParent={...common,key:'animated-parent',kind:'effect',label:'parent',bone:'',offset:[0,0,0],scale:.5,at:.1,speed:2,animation:'FX',resources:[{selected:11}]};
+  const attachedChild={...child,key:'attached-child',parent_key:'animated-parent',bone:'FX_BONE',offset:[0,0,0],anim_time:false,at:.15,particle:{...particleRule,life:.1}};
+  const attachedPacket={clip:{duration:1},extras:[animatedParent,attachedChild]};
+  extras.select([attachedPacket],[{state:'S1',speed:.5}]);state.clip=attachedPacket;state.sequence={elapsed:0,index:0,definition:{steps:[{speed:.5}]}};state.playing=false;await until(()=>extras.assets.size===2);
+  const attached=[...extras.assets.values()][1][0],parentAsset=[...extras.assets.values()][0][0];
+  state.time=.16;state.sequence.elapsed=.16;extras.seek();extras.update();check(!attached.anchor.visible,'child global delay uses real time since the parent starts');
+  state.time=.19;state.sequence.elapsed=.19;extras.seek();extras.update();scene.updateMatrixWorld(true);
+  check(attached.anchor.visible&&Math.abs(attached.anchor.matrixWorld.elements[12]-2.5)<1e-6,'child binds to the effect bone, including parent scale');
+  parentAsset.model.bones[0].position.x=8;extras.update();scene.updateMatrixWorld(true);check(Math.abs(attached.anchor.matrixWorld.elements[12]-4)<1e-6,'child follows animated effect bones');
+  state.playing=true;state.time=.9;extras.update(1.42);state.time=.05;extras.update(.3);check(!attached.anchor.visible,'parent wrap resets delayed children even when their own clock is global');
+  state.time=.19;extras.update(.28);check(attached.anchor.visible&&attached.model.meshes[0].count===1,'child particles restart on subsequent parent loops');state.sequence=null;state.playing=false;
   const conditional={...prop,key:'conditional',conditions:{m_SetID:42}};
   extras.select([{clip:{duration:1},extras:[conditional]}]);await new Promise(r=>setTimeout(r,20));check(!extras.assets.size,'equipment conditions require the preview switch');
   $('show-conditional-extras').checked=true;$('show-motion-props').checked=true;$('show-conditional-extras').dispatchEvent(new Event('change'));await until(()=>extras.assets.size===1);

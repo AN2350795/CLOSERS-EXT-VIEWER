@@ -5,6 +5,7 @@ import {createTracks,random,vector,sample} from './effect-timeline.js';
 import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST} from './particle-model.js';
 import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 import {installDissolve} from './model-effect-dissolve.js';
+import {applyEmbeddedPose} from './model-x-animation.js';
 
 export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
@@ -86,15 +87,27 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       }else if(entry.animation){
         try{
           if(!data.animation.selected)throw Error('자체 XMD가 없어 정적 모델로 표시합니다.');
-          const info=await api('/api/model-animations?'+new URLSearchParams({skeleton:resource.selected,animation:data.animation.selected}),signal);
+          const info=await api('/api/model-animations?'+new URLSearchParams({skeleton:resource.selected,animation:data.animation.selected,effect:'1'}),signal);
           if(info.skeleton_source.sha256!==data.skeleton_source.sha256)throw Error('연출 모델 원본이 변경되었습니다.');
           const matches=info.clips.filter(c=>c.name===entry.animation);
           if(matches.length!==1)throw Error('효과 클립을 확정할 수 없어 정적 모델로 표시합니다.');
-          asset.clip=await api('/api/model-clip?'+new URLSearchParams({skeleton:resource.selected,animation:data.animation.selected,clip:matches[0].index,sha256:info.animation_source.sha256}),signal);
+          asset.clip=await api('/api/model-clip?'+new URLSearchParams({skeleton:resource.selected,animation:data.animation.selected,clip:matches[0].index,sha256:info.animation_source.sha256,effect:'1'}),signal);
           if(asset.clip.skeleton_source.sha256!==data.skeleton_source.sha256)throw Error('연출 모델 원본이 변경되었습니다.');
-        }catch(e){if(signal.aborted)throw e;asset.clip=null;entry.loadWarnings.push('정적 모델 미리보기 · '+e.message);}
+        }catch(e){
+          if(signal.aborted)throw e;asset.clip=null;
+          try{
+            asset.embedded=await api('/api/model-effect-clip?'+new URLSearchParams({skeleton:resource.selected,name:entry.animation,sha256:data.skeleton_source.sha256}),signal);
+            if(asset.embedded.skeleton_source.sha256!==data.skeleton_source.sha256)throw Error('연출 모델 원본이 변경되었습니다.');
+          }catch(fallback){if(signal.aborted)throw fallback;asset.embedded=null;entry.loadWarnings.push('정적 모델 미리보기 · '+e.message+' · '+fallback.message);}
+        }
       }
       if(current!==version||signal.aborted||disposed)throw Error('연출 선택이 변경되었습니다.');
+      if(entry.parent_key&&entry.bone){
+        const parent=(assets.get(entry.id.split(':')[0]+':'+entry.parent_key)||[]),matches=parent.flatMap(a=>a.model.bones||[]).filter(b=>b.name===entry.bone);
+        if(matches.length>1)throw Error('연출 뼈의 출처가 중복됩니다: '+entry.bone);
+        asset.boneTarget=matches[0]||state.model?.bones.find(b=>b.name===entry.bone);
+        if(!asset.boneTarget)throw Error('부모 연출에서 연결할 뼈를 찾지 못했습니다: '+entry.bone);
+      }
       model.root.scale.z=1;anchor.add(model.root);
       asset.base=model.materials.map(m=>({color:m.color.clone(),opacity:m.opacity,material:m,dual:false}));
       if(entry.kind==='effect'){
@@ -111,10 +124,12 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       if(current!==version||signal.aborted||disposed)throw Error('연출 선택이 변경되었습니다.');
       const seed=[...entry.id].reduce((n,c)=>((n*31)^c.charCodeAt(0))>>>0,1),rng=random(seed);
       asset.offset=vector(entry.offset,rng);asset.rotation=vector(entry.rotation,rng);asset.scale=sample(entry.scale??1,rng);
-      asset.gravity=vector(entry.gravity,rng);asset.life=entry.play_count&&asset.clip?asset.clip.clip.duration*entry.play_count/entry.speed:entry.life;
+      const ownClip=asset.clip||asset.embedded;
+      asset.gravity=vector(entry.gravity,rng);asset.life=entry.play_count&&ownClip?ownClip.clip.duration*entry.play_count/entry.speed:entry.life;
       asset.timeline=createTracks(entry.tracks||[],seed,asset.life);
       if(!entry.tracks?.length)asset.timeline=createTracks([{property:'color',mode:'initial',value:entry.color||[1,1,1,1]},...(entry.fades||[]).map(f=>({property:'color',mode:'fade',value:f.color,start:f.start,end:f.end}))],seed,asset.life);
-      getScene().add(anchor);asset.vertices=(model.vertices||(data?data.meshes.reduce((n,m)=>n+m.vertices.length/3,0):model.meshes.reduce((n,m)=>n+m.geometry.getAttribute('position').count,0)))*(asset.particle?entry.particle.max_particles*Math.max(1,entry.images?.length||0)*(entry.particle.dual?2:1):1);asset.transforms=asset.clip?.keys.reduce((n,k)=>n+k.transforms.length,0)||0;return asset;
+      getScene().add(anchor);asset.vertices=(model.vertices||(data?data.meshes.reduce((n,m)=>n+m.vertices.length/3,0):model.meshes.reduce((n,m)=>n+m.geometry.getAttribute('position').count,0)))*(asset.particle?entry.particle.max_particles*Math.max(1,entry.images?.length||0)*(entry.particle.dual?2:1):1);
+      asset.transforms=asset.clip?.keys.reduce((n,k)=>n+k.transforms.length,0)||asset.embedded?.tracks.reduce((n,t)=>n+t.keys.length,0)||0;return asset;
     }catch(e){disposeAsset(asset);throw e;}
   }
   async function refresh(){
@@ -161,25 +176,27 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
     if(state.playing){const elapsed=delta*Number($('animation-speed').value);total+=elapsed;if(!changed)stageClock+=elapsed;}
     const wrapped=!changed&&state.time<lastTime-1e-6&&state.playing;lastTime=state.time;
-    const births=new Map(),hiddenParts=new Set();let frameNeeded=false;
+    const births=new Map(),restarts=new Map(),hiddenParts=new Set();let frameNeeded=false;
     const frame=asset=>{if(!asset.framed){asset.framed=true;frameNeeded=true;}};
     for(const entry of entries){
       const active=entry.packet===state.clip,group=assets.get(entry.id)||[];
-      const parent=entry.parent_key?births.get(entry.id.split(':')[0]+':'+entry.parent_key):null;
+      const parentId=entry.parent_key?entry.id.split(':')[0]+':'+entry.parent_key:null,parent=parentId?births.get(parentId):null;
       // Child event clocks are relative to their damage effect, even if its mesh is unavailable.
-      const clock=entry.parent_key?(parent===undefined?-1:parent):entry.anim_time?state.time:stageClock;
+      const clock=parentId?(parent===undefined?-1:entry.anim_time?parent.age*parent.speed:parent.age):entry.anim_time?state.time:stageClock;
       const since=clock-entry.at;
+      const rate=entry.anim_time?(parentId?parent?.speed||1:entry.stateSpeed):1;
+      const restart=active&&(changed||(wrapped&&entry.anim_time)||restarts.get(parentId));restarts.set(entry.id,restart);
       if(entry.kind==='equipment'){if(active&&enabled(entry)&&clock>=entry.at&&clock<entry.until)hiddenParts.add(entry.part);continue;}
-      if(active&&since>=0)births.set(entry.id,since);
+      if(active&&since>=0)births.set(entry.id,{age:since/rate,speed:entry.speed||1});
       for(const asset of group){
         if(!enabled(entry)||entry.loadError||(!active&&(entry.kind==='model'||entry.state_end||!asset.begun))){asset.anchor.visible=false;continue;}
-        if(active&&(changed||(wrapped&&entry.anim_time)))asset.begun=false;
-        if(!asset.begun){if(!active||since<0){asset.anchor.visible=false;continue;}asset.begun=true;asset.born=total-since/(entry.anim_time?entry.stateSpeed:1);asset.frozen=false;}
+        if(restart)asset.begun=false;
+        if(!asset.begun){if(!active||since<0){asset.anchor.visible=false;continue;}asset.begun=true;asset.born=total-since/rate;asset.frozen=false;}
         const age=Math.max(0,total-asset.born);
         if(age>(asset.life??entry.life)){asset.anchor.visible=false;continue;}
         const parentEntry=entry.parent_key?entries.find(e=>e.id===entry.id.split(':')[0]+':'+entry.parent_key):null;
         const parentAsset=parentEntry?(assets.get(parentEntry.id)||[]).find(a=>a.anchor.visible):null;
-        const target=parentAsset?.model.root||(entry.bone?state.model.bones.find(b=>b.name===entry.bone):state.model.root);
+        const target=asset.boneTarget||parentAsset?.model.root||(entry.bone?state.model.bones.find(b=>b.name===entry.bone):state.model.root);
         if(!target){asset.anchor.visible=false;continue;}
         if(entry.follow||!asset.frozen){
           const local=new THREE.Matrix4().compose(new THREE.Vector3(...asset.offset),new THREE.Quaternion().setFromEuler(new THREE.Euler(...asset.rotation.map(THREE.MathUtils.degToRad))),new THREE.Vector3(asset.scale,asset.scale,asset.scale));
@@ -188,7 +205,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
         if(asset.spine||asset.particle){asset.model.update(age,getCamera?.(),asset.anchor);if(asset.spine?asset.model.vertices>0:asset.model.meshes.some(m=>m.count>0))frame(asset);continue;}
         const time=age*entry.speed;
-        if(asset.clip){const duration=asset.clip.clip.duration;applyPose(asset.model,asset.clip,entry.loop&&duration>0?time%duration:Math.min(time,duration));}
+        const ownClip=asset.clip||asset.embedded;
+        if(ownClip){const duration=ownClip.clip.duration,local=entry.loop&&duration>0?time%duration:Math.min(time,duration);if(asset.clip)applyPose(asset.model,asset.clip,local);else applyEmbeddedPose(asset.model,asset.embedded,local);}
         const timeline=asset.timeline,position=timeline.value('position',age,time),movement=timeline.integral('velocity',age),spin=timeline.integral('rotationSpeed',age);
         asset.model.root.position.fromArray(position.map((v,i)=>v+movement[i]+asset.gravity[i]*age*age*.5));
         const size=timeline.value('size',age,time),scale=timeline.value('scale',age,time)[0];asset.model.root.scale.set(...size.map(v=>v*scale));
@@ -201,6 +219,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
           material.color.copy(base.color).multiply(new THREE.Color(...rgba.slice(0,3)));material.opacity=base.opacity*rgba[3];
         }
         for(const dissolve of asset.dissolve||[])dissolve.update(timeline.value('dissolveColor',age,time),timeline.value('dissolveWidth',age,time)[0],timeline.value('dissolveThreshold',age,time)[0]);
+        asset.model.root.updateMatrixWorld(true);
         frame(asset);
       }
     }

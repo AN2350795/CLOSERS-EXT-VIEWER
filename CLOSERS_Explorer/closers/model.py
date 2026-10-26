@@ -151,7 +151,7 @@ def x_objects(data):
     return objects
 
 
-def parse_x(data):
+def x_data(data):
     if data[:16]==b'xof 0303bzip0032':
         r = Reader(data); r.take(16); advertised, = r.unpack('I')
         expanded,previous = bytearray(),b''
@@ -170,7 +170,11 @@ def parse_x(data):
         data = b'xof 0303bin 0032'+expanded
         if len(data)!=advertised:
             raise ValueError('X MSZIP 전체 복원 길이가 헤더와 일치하지 않습니다.')
-    objects = x_objects(data)
+    return data
+
+
+def parse_x(data):
+    objects = x_objects(x_data(data))
     frames,meshes,warnings = [],[],[]
     material_defs = {}
     def gather(nodes):
@@ -331,7 +335,7 @@ def parse_x(data):
     return dict(frames=frames,meshes=meshes,warnings=warnings)
 
 
-def parse_xmd(data,selected=None):
+def parse_xmd(data,selected=None,first_keys=False):
     """Scan all clips; retain transforms only for the requested/default pose clip."""
     r = Reader(data)
     if r.take(18)!=b'\x91CLOSERS_XMD_0001\0':
@@ -342,15 +346,16 @@ def parse_xmd(data,selected=None):
         raise ValueError(f'지원하지 않는 XMD 내부 버전 {version}')
     nclips = r.count(r.varint(),2048)
     clips,retained = [],[]
-    total = 0
+    total = 0;reference_transforms=0
     for index in range(nclips):
         name,secondary = r.wide(),r.wide()
         duration = r.floats(1)[0]
         flags = r.take(2).hex()
         nk = r.count(r.varint(),10000)
-        keep = index==selected or (selected is None and name.startswith('_DEFAULT'))
+        keep_clip = index==selected or (selected is None and name.startswith('_DEFAULT'))
         keys,last = [],-1
-        for _ in range(nk):
+        for key_index in range(nk):
+            keep=key_index==0 if first_keys else keep_clip
             time = r.floats(1)[0]
             if time<last or time<0 or time>duration+0.01:
                 raise ValueError('XMD 키프레임 시간이 올바르지 않습니다.')
@@ -365,6 +370,9 @@ def parse_xmd(data,selected=None):
             if total>2_000_000:
                 raise ValueError('XMD 전체 키 변환은 2,000,000개까지 지원합니다.')
             if keep:
+                if first_keys:
+                    reference_transforms+=bones
+                    if reference_transforms>150_000:raise ValueError('XMD 시작 자세 검증 예산을 초과했습니다.')
                 if (len(keys)+1)*bones>150_000:
                     raise ValueError('한 동작의 뼈 키 변환은 150,000개까지 지원합니다.')
                 values = [scales[i:i+10] for i in range(0,len(scales),10)]
@@ -373,7 +381,7 @@ def parse_xmd(data,selected=None):
         if duration<0 or duration>3600 or not nk:
             raise ValueError('XMD 동작 길이·키 수가 올바르지 않습니다.')
         clips.append(dict(index=index,name=name,secondary=secondary,duration=duration,keys=nk,flags=flags))
-        if keep:
+        if keep_clip or first_keys:
             retained.append(dict(index=index,keys=keys))
     if r.pos!=len(data):
         raise ValueError(f'지원하지 않는 XMD 후행 데이터: {len(data)-r.pos}바이트')
@@ -398,9 +406,13 @@ def bind_mapping(scene,animation):
     ordered = sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i]['name'])
     if len(ordered)!=animation['bones'] or len(defaults)!=1 or not defaults[0]['keys']:
         raise ValueError('XMD 뼈 연결을 검증할 수 없습니다: 뼈 수 또는 _DEFAULT 자세가 일치하지 않습니다.')
+    return _pose_mapping(scene,ordered,defaults[0]['keys'])
+
+
+def _pose_mapping(scene,ordered,keys):
     scales = [[math.sqrt(sum(f['matrix'][j+k]**2 for k in range(3))) for j in (0,4,8)] for f in scene['frames']]
     maximum = 0
-    for key in defaults[0]['keys']:
+    for key in keys:
         for ti,(i,tr) in enumerate(zip(ordered,key['transforms'])):
             tr = tr.copy()
             if ti>=key['scale_count']:
@@ -411,4 +423,17 @@ def bind_mapping(scene,animation):
             maximum = max(maximum,error)
     if maximum>0.005:
         raise ValueError(f'XMD 기본 자세가 X 뼈 행렬과 일치하지 않습니다 (최대 상대 오차 {maximum:.6f}). 동작 재생을 보류합니다.')
-    return dict(frames=ordered,scales=scales,maximum_error=maximum,method='alphabetical/default-local-matrix/direct-coordinates',verified_bones=len(ordered),verified_keys=len(defaults[0]['keys']))
+    return dict(frames=ordered,scales=scales,maximum_error=maximum,method='alphabetical/default-local-matrix/direct-coordinates',verified_bones=len(ordered),verified_keys=len(keys))
+
+
+def bind_effect_mapping(scene,references):
+    """No DEFAULT: require a complete source-pose match, never just bone counts."""
+    ordered=sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i]['name'])
+    if not ordered or len(ordered)!=references['bones']:raise ValueError('연출 모델과 XMD의 뼈 수가 다릅니다.')
+    for retained in references['retained']:
+        keys=retained['keys']
+        if not keys or abs(keys[0]['time'])>1e-6:continue
+        try:mapping=_pose_mapping(scene,ordered,keys[:1])
+        except ValueError:continue
+        return dict(mapping,method='alphabetical/verified-clip-start/direct-coordinates',reference_clip=references['clips'][retained['index']]['name'],reference_time=keys[0]['time'])
+    raise ValueError('연출 XMD에서 모델의 모든 뼈 행렬과 일치하는 시작 자세를 찾지 못했습니다.')

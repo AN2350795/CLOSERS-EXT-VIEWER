@@ -340,7 +340,7 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / 'model.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
                 elif url.path in ('/avatar-navigation.js', '/resource-dates.js', '/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/particle-effects.js','/animation-png.js','/animation-loop.js','/compose.css','/model.js','/model-core.js','/model-stage.js','/model-motions.js','/model-motion-extras.js','/effect-timeline.js','/particle-model.js','/motion-sequence-player.js','/model-materials.js','/model-texture-cache.js','/face-preview.js','/model-picker.js','/model-memory.js','/model-preview.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
-                elif url.path in EFFECT_MODULES or url.path in ('/model-effect-formats.js','/model-effect-dissolve.js'):
+                elif url.path in EFFECT_MODULES or url.path in ('/model-effect-formats.js','/model-effect-dissolve.js','/model-x-animation.js'):
                     self.respond((STATIC/url.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 elif url.path == '/api/model-effect-resource':
                     self.respond(models.effect_resource(int(query['entry'])))
@@ -372,9 +372,11 @@ def create_server(catalog, port=0):
                 elif url.path == '/api/model-motion-library':
                     self.respond(models.motion_library(int(query['skeleton']),[int(i) for i in query.get('entries','').split(',') if i]))
                 elif url.path == '/api/model-animations':
-                    self.respond(models.animations(int(query['skeleton']),int(query['animation'])))
+                    self.respond(models.animations(int(query['skeleton']),int(query['animation']),effect=query.get('effect')=='1'))
+                elif url.path == '/api/model-effect-clip':
+                    self.respond(models.effect_embedded_clip(int(query['skeleton']),query['name'],query.get('sha256')))
                 elif url.path == '/api/model-clip':
-                    self.respond(models.clip(int(query['skeleton']),int(query['animation']),int(query['clip']),query.get('sha256')))
+                    self.respond(models.clip(int(query['skeleton']),int(query['animation']),int(query['clip']),query.get('sha256'),effect=query.get('effect')=='1'))
                 elif url.path == '/api/state':
                     self.respond(dict(job=jobs.snapshot(), workspace=str(catalog.workspace), default_input=str(STATIC.parent.parent / 'data'),
                                       default_output=str(catalog.workspace / 'assets'), categories=CATEGORIES))

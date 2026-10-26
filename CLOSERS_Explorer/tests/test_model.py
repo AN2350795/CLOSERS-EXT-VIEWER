@@ -9,7 +9,7 @@ import urllib.request
 import zlib
 
 from closers.catalog import Catalog
-from closers.model import IDENTITY,parse_x,parse_xmd,bind_mapping
+from closers.model import IDENTITY,parse_x,parse_xmd,bind_mapping,bind_effect_mapping
 from closers.model_library import Models
 from test_explorer import fixture
 
@@ -61,6 +61,26 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_effect_without_default_requires_a_full_matching_clip_start(self):
+        body=animation(bad=True).replace(wide('_DEFAULT'),wide('EFFECT_START'))
+        scene=parse_x(binary_model());references=parse_xmd(body,first_keys=True)
+        self.assertEqual([len(r['keys']) for r in references['retained']],[1,1])
+        with self.assertRaises(ValueError):bind_mapping(scene,parse_xmd(body))
+        mapping=bind_effect_mapping(scene,references)
+        self.assertEqual(mapping['reference_clip'],'MOVE');self.assertEqual(mapping['verified_bones'],2)
+        references['retained'][0]['keys'][0]['transforms'][0][7]=8
+        with self.assertRaises(ValueError):bind_effect_mapping(scene,references)
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);catalog=Catalog(root/'work')
+            catalog.scan([fixture(root/'models.cmf',[('FX.X',binary_model(),0),('FX.XMD',body,0),('OTHER.XMD',body,0),('BAD.X',binary_model(),0),('BAD.XMD',animation(bad=True),0)])])
+            ids={r['name']:r['id'] for r in catalog.entries({})['items']};models=Models(catalog)
+            with self.assertRaises(ValueError):models.animations(ids['FX.X'],ids['FX.XMD'])
+            info=models.animations(ids['FX.X'],ids['FX.XMD'],effect=True)
+            packet=models.clip(ids['FX.X'],ids['FX.XMD'],1,info['animation_source']['sha256'],effect=True)
+            self.assertEqual(packet['keys'][0]['transforms'][0][7],8)
+            with self.assertRaises(ValueError):models.animations(ids['FX.X'],ids['OTHER.XMD'],effect=True)
+            with self.assertRaises(ValueError):models.animations(ids['BAD.X'],ids['BAD.XMD'],effect=True)
+
     def test_material_retains_original_reflection_and_emission_values(self):
         before=[1,1,1,1,0,0,0,0,0,0,0]
         after=[.5,.25,.75,.5,150,.1,.2,.3,.4,.5,.6]
@@ -198,7 +218,7 @@ class ModelTests(unittest.TestCase):
             thread=threading.Thread(target=server.serve_forever,daemon=True)
             thread.start()
             try:
-                for name in ('model-core.js','model-stage.js','model-motions.js','model-motion-extras.js','effect-timeline.js','particle-model.js','model-effect-formats.js','model-effect-dissolve.js','vendor/spine/core/index.js','vendor/spine/threejs/SkeletonMesh.js','vendor/three/addons/FBXLoader.js','vendor/three/addons/NURBSUtils.js','motion-sequence-player.js','face-preview.js','model-memory.js','model-preview.js'):
+                for name in ('model-core.js','model-stage.js','model-motions.js','model-motion-extras.js','effect-timeline.js','particle-model.js','model-effect-formats.js','model-effect-dissolve.js','model-x-animation.js','vendor/spine/core/index.js','vendor/spine/threejs/SkeletonMesh.js','vendor/three/addons/FBXLoader.js','vendor/three/addons/NURBSUtils.js','motion-sequence-player.js','face-preview.js','model-memory.js','model-preview.js'):
                     with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/{name}') as response:
                         self.assertEqual(response.status,200)
                         self.assertIn(response.headers.get_content_type(),('text/javascript','application/javascript'))

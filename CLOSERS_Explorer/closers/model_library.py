@@ -8,7 +8,7 @@ from contextlib import contextmanager
 
 from .cmf import Archive
 from .library import saved_file
-from .model import MAX_BYTES,parse_x,parse_xmd,bind_mapping,xmd_matrix
+from .model import MAX_BYTES,parse_x,parse_xmd,bind_mapping,bind_effect_mapping,xmd_matrix
 from .model_groups import ModelGroups,classify
 
 
@@ -26,6 +26,22 @@ class Models:
     def parse(self,body,source,fmt,selected=None):
         key=(fmt,source['sha256'],selected)
         return self.parsed.get(key,lambda:parse_x(body) if fmt=='x' else parse_xmd(body,selected=selected))
+
+    def animation_mapping(self,scene,animation,body,source,animation_source,effect=False):
+        if not effect or animation['retained']:return bind_mapping(scene,animation)
+        if Path(source['name']).stem.upper()!=Path(animation_source['name']).stem.upper():raise ValueError('연출 모델과 동명인 XMD를 선택해 주세요.')
+        references=self.parsed.get(('xmd-first-keys',animation_source['sha256']),lambda:parse_xmd(body,first_keys=True))
+        return bind_effect_mapping(scene,references)
+
+    def effect_embedded_clip(self,entry_id,name,expected):
+        from .model_x_animation import embedded_clip
+        with self.operation():
+            body,row,source=self.read(entry_id,'x')
+            if source['sha256']!=expected:raise ValueError('연출 모델 원본이 변경되었습니다.')
+            scene=self.parse(body,source,'x')
+            packet=self.parsed.get(('x-animation',source['sha256'],name),lambda:embedded_clip(body,scene['frames'],name))
+            packet['skeleton_source']=source
+            return packet
 
     @contextmanager
     def operation(self):
@@ -261,14 +277,14 @@ class Models:
                          equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))
             return scene
 
-    def animations(self,skeleton_id,animation_id):
+    def animations(self,skeleton_id,animation_id,effect=False):
         from .motion_names import decorate
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
             scene = self.parse(body,source,'x')
             body,_,animation_source = self.read(animation_id,'xmd')
             animation = self.parse(body,animation_source,'xmd')
-            mapping = bind_mapping(scene,animation)
+            mapping = self.animation_mapping(scene,animation,body,source,animation_source,effect)
             clips=decorate(animation['clips'],classify(source['name'])['character'],self.catalog.game_names.motion_names)
             return dict(clips=clips,mapping=mapping,skeleton_source=source,animation_source=animation_source)
 
@@ -327,7 +343,7 @@ class Models:
                         sequence_index_available=self.catalog.game_names.sequence_index_available,
                         evidence='종류는 파일명 기준입니다. 인게임 명칭은 게임 테이블에서 연결된 경우 표시하며, 착용·해금 조건은 확정하지 않습니다.')
 
-    def clip(self,skeleton_id,animation_id,index,expected):
+    def clip(self,skeleton_id,animation_id,index,expected,effect=False):
         from .motion_names import decorate
         with self.operation():
             body,_,source = self.read(skeleton_id,'x')
@@ -335,7 +351,7 @@ class Models:
             body,_,animation_source = self.read(animation_id,'xmd')
             if expected != animation_source['sha256']:
                 raise ValueError('XMD 내용이 변경되었습니다. 동작 목록을 다시 불러오세요.')
-            mapping = bind_mapping(scene,self.parse(body,animation_source,'xmd'))
+            mapping = self.animation_mapping(scene,self.parse(body,animation_source,'xmd'),body,source,animation_source,effect)
             animation = self.parse(body,animation_source,'xmd',selected=index)
             if not animation['retained']:
                 raise ValueError('선택한 동작이 없습니다.')
@@ -374,7 +390,8 @@ class Models:
                     candidates=[r for r in self.matches(filename) if self.catalog.get(r['id'])['flag']!=2]
                     images.append(dict(frame,candidates=candidates,selected=candidates[0]['id'] if len(candidates)==1 else None))
                 item['images']=images
-            if item.get('bone') and item['bone'] not in bones:
+            if item.get('parent_key') and item.get('bone'):item['bone_scope']='effect'
+            elif item.get('bone') and item['bone'] not in bones:
                 item.update(status='unavailable',error='연출을 붙일 뼈가 현재 모델에 없습니다: '+item['bone']);continue
             resources=[]
             for name in item['models']:
