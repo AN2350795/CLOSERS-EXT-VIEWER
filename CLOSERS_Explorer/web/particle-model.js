@@ -5,11 +5,17 @@ import {installDissolve} from './model-effect-dissolve.js';
 // Clear texels must not write depth and hide other animated models. Keep the
 // cutoff low enough to preserve soft particles and gradual appearance fades.
 export const EFFECT_ALPHA_TEST=1/255;
+export function effectRenderOrder(layer){const match=/^ROL_EFFECT_(\d{1,2})$/.exec(layer||'');return match?100+Number(match[1]):0;}
 
 const factors={ZERO:THREE.ZeroFactor,ONE:THREE.OneFactor,SRCCOLOR:THREE.SrcColorFactor,INVSRCCOLOR:THREE.OneMinusSrcColorFactor,SRCALPHA:THREE.SrcAlphaFactor,INVSRCALPHA:THREE.OneMinusSrcAlphaFactor,DESTALPHA:THREE.DstAlphaFactor,INVDESTALPHA:THREE.OneMinusDstAlphaFactor,DESTCOLOR:THREE.DstColorFactor,INVDESTCOLOR:THREE.OneMinusDstColorFactor,SRCALPHASAT:THREE.SrcAlphaSaturateFactor};
 export function applyBlend(material,blend=['SRCALPHA','INVSRCALPHA']){
   material.blending=THREE.CustomBlending;material.blendEquation=THREE.AddEquation;
   material.blendSrc=factors[blend[0]]??THREE.SrcAlphaFactor;material.blendDst=factors[blend[1]]??THREE.OneMinusSrcAlphaFactor;
+  // Track framebuffer coverage independently from RGB blending. Reusing
+  // SRCALPHA for alpha squares coverage, so DESTALPHA effects erase/darken
+  // existing colors after an ordinary translucent black floor is drawn.
+  material.blendEquationAlpha=THREE.AddEquation;
+  material.blendSrcAlpha=THREE.OneFactor;material.blendDstAlpha=THREE.OneMinusSrcAlphaFactor;
 }
 function installAlpha(material){
   material.customProgramCacheKey=()=> 'closers-particle-alpha-uv-v1';
@@ -70,6 +76,7 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
       if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);if(dissolveMap)installDissolve(material,dissolveMap,true);if(traceMask)installTraceMask(material,traceMask);return material;
     });
     const mesh=new THREE.InstancedMesh(geometry,materials,capacity);mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.renderOrder=effectRenderOrder(rule.layer);
     mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,dissolveColor,dissolveParams,frame:fi,pass});
   }
   const timeline=new ParticleTimeline(rule),matrix=new THREE.Matrix4(),position=new THREE.Vector3(),scale=new THREE.Vector3(),quaternion=new THREE.Quaternion(),euler=new THREE.Euler(),look=new THREE.Matrix4(),up=new THREE.Vector3(0,1,0);

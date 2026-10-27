@@ -30,12 +30,24 @@ try{
     for(let i=0;i<600&&extras.assets.size!==expected;i++)await new Promise(r=>setTimeout(r,5));
     check(extras.assets.size===expected,'all Aura Pixies models load: '+document.getElementById('motion-extra-items').textContent);
     sequence.index=1;
+    const baseEntry=test.clips[1].extras.find(e=>e.particle_name==='PE_RARE_PIXI_EMOTION_BASE_LOOP');
+    check(Boolean(baseEntry)===(test.definition.key==='SI_COMMON_EMOTION_AURA_PIXIES'),'only the ordinary action has the original dark floor effect');
+    if(baseEntry){const base=extras.assets.get('1:'+baseEntry.key)[0];check(baseEntry.particle.layer==='ROL_EFFECT_0'&&base.model.meshes.every(m=>m.renderOrder===100),'the dark floor is drawn in the original bottom effect layer');}
     const gl=renderer.getContext(),pixels=new Uint8Array(384*384*4);
     const whiteCount=()=>{gl.readPixels(0,0,384,384,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let n=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]>=250&&pixels[i+1]>=250&&pixels[i+2]>=250)n++;return n;};
     for(const time of [1,3,6,10,14]){
       sequence.seek(time);state.clip=sequence.clip;state.time=sequence.time;applyPose(model,state.clip,state.time);scene.updateMatrixWorld(true);extras.seek();extras.update();renderer.render(scene,camera);
-      window.testCaptures.push({name:'pixies_'+time,body:renderer.domElement.toDataURL('image/png')});
+      window.testCaptures.push({name:test.definition.key+'_'+time,body:renderer.domElement.toDataURL('image/png')});
       check(!shaderError,'Pixies shaders compile');
+      if(time===6&&baseEntry){
+        const darkCount=()=>{gl.readPixels(0,0,384,384,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let n=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]+pixels[i+1]+pixels[i+2]<15)n++;return n;};
+        const corrected=darkCount(),materials=[...extras.assets.values()].flat().flatMap(a=>[...a.model.materials,...a.owned.filter(v=>v.isMaterial)]).filter(m=>m.blending===THREE.CustomBlending);
+        const factors=materials.map(m=>[m.blendSrcAlpha,m.blendDstAlpha]);
+        materials.forEach(m=>{m.blendSrcAlpha=null;m.blendDstAlpha=null;});renderer.render(scene,camera);const broken=darkCount();
+        materials.forEach((m,i)=>{[m.blendSrcAlpha,m.blendDstAlpha]=factors[i];});renderer.render(scene,camera);
+        check(broken>corrected+50,'separate alpha prevents black erasure in the ordinary action: '+corrected+' corrected, '+broken+' old blending');
+        check(darkCount()===corrected,'restoring alpha coverage restores the same image');
+      }
       if(time===3){
         const masked=[...extras.assets.values()].flat().filter(a=>a.packet===state.clip).flatMap(a=>a.model.materials).filter(m=>m.alphaMap);
         check(masked.length>=2,'both ring and hexagon masks are connected');

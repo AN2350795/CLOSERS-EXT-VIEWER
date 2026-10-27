@@ -63,7 +63,24 @@ try{
   camera.position.z=10;camera.lookAt(0,0,0);scene.add(covered.root);scene.updateMatrixWorld(true);covered.update(.3,camera,anchor);renderer.render(scene,camera);
   gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
   check(!shaderError&&rgb(32,32)&&!rgb(20,20),'grayscale coverage mask clips corners independently of animated color UVs and opaque texture alpha');
-  covered.dispose();coverageMask.dispose();
+  scene.remove(covered.root);covered.dispose();coverageMask.dispose();
+  const layeredRule={...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',depth_write:false,blend:['SRCALPHA','INVSRCALPHA']};
+  const floor=createParticleModel({...layeredRule,layer:'ROL_EFFECT_0',tracks:[{property:'size',mode:'initial',value:[4,4,4]},{property:'position',mode:'initial',value:[0,0,1]},{property:'color',mode:'initial',value:[0,0,0,.6]}]},null,[white]);
+  const glow=createParticleModel({...layeredRule,layer:'ROL_EFFECT_1',tracks:[{property:'size',mode:'initial',value:[2,2,2]},{property:'color',mode:'initial',value:[1,1,1,.8]}]},null,[white]);
+  scene.add(floor.root,glow.root);scene.updateMatrixWorld(true);floor.update(.1,camera,anchor);glow.update(.1,camera,anchor);
+  for(const side of [1,-1]){
+    camera.position.z=side*10;camera.lookAt(0,0,0);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+    check(pixels[(32*64+32)*4]>=190,'the lower dark effect layer cannot cover the higher glow layer when camera depth order reverses');
+  }
+  scene.remove(floor.root,glow.root);floor.dispose();glow.dispose();
+  scene.background=new THREE.Color(.25,.35,.45);camera.position.z=10;camera.lookAt(0,0,0);
+  const shade=createParticleModel({...layeredRule,layer:'ROL_EFFECT_0',tracks:[{property:'size',mode:'initial',value:[4,4,4]},{property:'color',mode:'initial',value:[0,0,0,.3]}]},null,[white]);
+  const neutral=createParticleModel({...layeredRule,layer:'ROL_EFFECT_1',blend:['SRCALPHA','DESTALPHA'],tracks:[{property:'size',mode:'initial',value:[4,4,4]},{property:'color',mode:'initial',value:[0,0,0,.4]}]},null,[white]);
+  scene.add(shade.root);scene.updateMatrixWorld(true);shade.update(.1,camera,anchor);neutral.update(.1,camera,anchor);renderer.render(scene,camera);
+  gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);const basePixel=pixels.slice((32*64+32)*4,(32*64+32)*4+3);
+  scene.add(neutral.root);scene.updateMatrixWorld(true);renderer.render(scene,camera);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+  check([0,1,2].every(c=>Math.abs(basePixel[c]-pixels[(32*64+32)*4+c])<=1),'destination-alpha light with zero RGB does not erase background after a translucent dark floor');
+  shade.dispose();neutral.dispose();
   let disposed=0;model.meshes[0].geometry.addEventListener('dispose',()=>disposed++);model.dispose();check(disposed===1,'particle geometry cleanup');white.dispose();renderer.dispose();
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

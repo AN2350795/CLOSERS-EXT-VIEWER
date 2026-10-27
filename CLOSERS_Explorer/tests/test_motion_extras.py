@@ -19,6 +19,12 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_effect_layers_survive_mesh_and_particle_normalization(self):
+        mesh=mesh_rule(dict(m_vecMeshName='PROP.X',m_Layer='ROL_EFFECT_3'))
+        particle=particle_rule(dict(m_TexName='WHITE.PNG',m_Layer='ROL_EFFECT_0'))
+        self.assertEqual(mesh['layer'],'ROL_EFFECT_3')
+        self.assertEqual(particle['layer'],'ROL_EFFECT_0')
+
     def test_land_trace_mask_requires_one_matching_sibling_emission(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work')

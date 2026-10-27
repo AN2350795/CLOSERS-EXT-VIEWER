@@ -77,7 +77,7 @@ def mesh_rule(row):
     lifetime=row.get('m_LifeType','MPLT_TIME')
     color=next((t['value'] for t in rule['tracks'] if t['property']=='color' and t['mode']=='initial'),[1,1,1,1])
     fades=[dict(start=t['start'],end=t['end'],color=t['value']) for t in rule['tracks'] if t['property']=='color' and t['mode']=='fade']
-    rule.update(models=meshes,life=life if life>0 and lifetime=='MPLT_TIME' else 100000,
+    rule.update(models=meshes,layer=row.get('m_Layer'),life=life if life>0 and lifetime=='MPLT_TIME' else 100000,
                 play_count=max(1,int(row.get('m_iPlayCount',1))) if lifetime=='MPLT_PLAY_COUNT' else None,
                 color=color,fades=fades,dissolve_texture=row.get('m_DissolveTexName'),gravity=vec(row.get('m_vGravity')),billboard=row.get('m_BillBoardType','BBT_NONE'),
                 blend=blend(row),dual=row.get('m_bDualBlending','FALSE') in (True,'TRUE'),additive=blend(row)[1]=='ONE',
@@ -115,7 +115,7 @@ def particle_rule(row,texanims=None):
     if min(life if isinstance(life,list) else [life])<=0:life=1;rule['warnings'].append('0 이하의 입자 수명을 1초로 미리보기합니다.')
     rule.update(type=kind,models=models,frames=frames,uv_offsets=uv_offsets,dissolve_texture=row.get('m_DissolveTexName'),life=life,max_particles=min(256,max(1,int(maximum))),
                 trace=row.get('m_bTrace','FALSE') in (True,'TRUE'),land_connect=row.get('m_bLandConnect','FALSE') in (True,'TRUE'),cull=row.get('m_CullMode'),
-                mask_texture=row.get('m_MaskTexName'),
+                mask_texture=row.get('m_MaskTexName'),layer=row.get('m_Layer'),
                 rate=span(row.get('m_EmitRate',0)),instant=span(row.get('m_EmitRateInstant',0)),
                 emitter_life=span(row.get('m_DieTime',100000)),deaths=span(row.get('m_DieCount',0)),
                 radius=vec(row.get('m_EmitRadius')),radius_min=vec(row.get('m_EmitRadiusMin')),
