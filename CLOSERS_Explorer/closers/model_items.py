@@ -91,11 +91,11 @@ class AvatarItems(EyeAvatars):
         return result
 
     def definitions(self):
-        return self.data.cached(('avatar-items',2),self._definitions,persistent=True)
+        return self.data.cached(('avatar-items',3),self._definitions,persistent=True)
 
     def _definitions(self):
         models={}
-        for _,body in self._tables(r'ITEM_MODEL_TEMPLET[\d_]*\.NTF'):
+        for source,body in self._tables(r'ITEM_MODEL_TEMPLET[\d_]*\.NTF'):
             for v in ntf.rows(body):
                 if len(v)!=36:raise ValueError('미지원 아바타 모델 테이블입니다.')
                 if v[1].startswith('GUST_NPC_'):continue
@@ -107,8 +107,13 @@ class AvatarItems(EyeAvatars):
                     key=(v[0],character,filename.upper())
                     priority=int(v[1]=='GUST_USER_'+character)
                     record=dict(item_id=v[0],character=character,model_name=filename.upper(),refs=refs.copy(),model_priority=priority)
+                    from .model_attachment import attachment
+                    binding=attachment(v,source)
+                    if binding:record['attachment']=binding
                     if key not in models or priority>models[key][0]:models[key]=(priority,record)
                     elif priority==models[key][0]:
+                        before={k:v for k,v in (models[key][1].get('attachment') or {}).items() if k!='source'};after={k:v for k,v in (record.get('attachment') or {}).items() if k!='source'}
+                        if before!=after:models[key][1]['attachment']=dict(status='unavailable',error='동일 아이템의 부착 정의가 충돌합니다.',source=source)
                         models[key][1]['refs']=list(dict.fromkeys(models[key][1]['refs']+refs))
         ids={k[0] for k in models};items={}
         for _,body in self._tables(r'ITEM_TEMPLET[\d_]*\.NTF'):
@@ -149,7 +154,7 @@ class AvatarItems(EyeAvatars):
             return dict(groups)
         # Reuse the definition objects in memory; serializing the full graph
         # would duplicate the large source-verified definition cache on disk.
-        return self.data.cached(('avatar-item-compositions',2),build)
+        return self.data.cached(('avatar-item-compositions',3),build)
 
     def composition(self,key,name):
         values=self.compositions().get(key,[])
@@ -207,8 +212,11 @@ class AvatarItems(EyeAvatars):
                            family=code.split('_')[0] if code.split('_')[0] in LABELS['family'] else g['family'],
                            type_label=code,costume_type=costume_type,reference=item['reference'],preview_kind='icon')
                 value.pop('item_icon',None)
+                if item.get('attachment'):value['attachment']=item['attachment']
                 if composite and len(components[group])>1:
                     value['components']=[dict(name=v['model_name'],appearance_key=v['key'],reference=v['reference'],candidates=sources[v['model_name']],selected=row['id'] if v['model_name']==row['name'].upper() else (sources[v['model_name']][0]['id'] if len(sources[v['model_name']])==1 else None)) for v in components[group]]
+                    for component,definition in zip(value['components'],components[group]):
+                        if definition.get('attachment'):component['attachment']=definition['attachment']
                 if len(icons[item['icon_name']])==1:value['preview_entry']=icons[item['icon_name']][0]
                 result.append(value)
         return self.shared_hairs(result,definitions,character) if composite else result

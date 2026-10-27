@@ -41,6 +41,65 @@ class AvatarTypeTests(unittest.TestCase):
         bundle=self.models.groups.bundle('STRIKER|CLOTH_123_SP','',True)
         self.assertEqual(bundle['slots'][0]['candidates'][0]['appearance_key'],'STRIKER:4:0')
 
+    def add_attachment(self,bone='ROOT'):
+        from closers import ntf
+        name,body=self.tables[0];types=list(ntf.header(body)[0]);rows=[list(r) for r in ntf.rows(body)]
+        for column in (15,16,17,20):
+            types[column]=8
+            for row in rows:row[column]=''
+        rows[0][15]='{1,1,1}';rows[0][16]='{0,0,0}';rows[0][17]='{7,0,0}';rows[0][20]=bone
+        self.tables[0]=(name,table(tuple(types),rows))
+
+    def test_attachment_metadata_survives_resolution_and_identical_tables(self):
+        self.add_attachment();self.tables.append(('ITEM_MODEL_TEMPLET_2.NTF',self.tables[0][1]))
+        value=self.registry.resolve('STRIKER:1:0',self.model)
+        self.assertEqual(value['attachment']['status'],'ready')
+        self.assertEqual(value['attachment']['offset'],[7,0,0])
+
+    def test_conflicting_attachment_definitions_are_not_silently_chosen(self):
+        from closers import ntf
+        self.add_attachment();name,body=self.tables[0];rows=[list(r) for r in ntf.rows(body)];rows[0][17]='{9,0,0}'
+        self.tables.append(('ITEM_MODEL_TEMPLET_2.NTF',table(ntf.header(body)[0],rows)))
+        self.assertEqual(self.registry.resolve('STRIKER:1:0',self.model)['attachment']['status'],'unavailable')
+
+    def test_character_specific_binding_overrides_generic_values(self):
+        from closers import ntf
+        self.add_attachment();name,body=self.tables[0];rows=[list(r) for r in ntf.rows(body)];override=rows[0].copy()
+        override[1]='GUST_USER_STRIKER';override[17]='{9,0,0}'
+        self.tables[0]=(name,table(ntf.header(body)[0],rows+[override]))
+        self.assertEqual(self.registry.resolve('STRIKER:1:0',self.model)['attachment']['offset'],[9,0,0])
+
+    def test_rigid_binding_does_not_double_source_bone_or_mutate_cached_mesh(self):
+        from closers.model import parse_x
+        self.add_attachment()
+        part=parse_x(binary_model(self.model[:-2]+'.PNG'));part['meshes'][0]['skin']=[];part['meshes'][0]['frame']=1
+        part['frames'][0]['matrix'][12]=100
+        with patch('closers.model_library.parse_x',return_value=part):
+            row=self.models.matches(self.model)[0]
+            scene=self.models.scene([row['id']],items={str(row['id']):'STRIKER:1:0'})
+            index=scene['meshes'][0]['frame'];total=0
+            while index>=0:
+                frame=scene['frames'][index];total+=frame['matrix'][12];index=frame['parent']
+            self.assertEqual(total,112) # target root 100 + item 7 + local child 5
+            original=self.models.scene([row['id']],items={str(row['id']):'STRIKER:2:0'})
+            self.assertEqual(len(original['frames']),2)
+            self.assertEqual(original['meshes'][0]['frame'],1)
+
+    def test_missing_attachment_bone_is_reported(self):
+        from closers.model import parse_x
+        self.add_attachment('MISSING_BONE');part=parse_x(binary_model());part['meshes'][0]['skin']=[]
+        with patch('closers.model_library.parse_x',return_value=part):
+            row=self.models.matches(self.model)[0]
+            with self.assertRaisesRegex(ValueError,'MISSING_BONE'):self.models.scene([row['id']],items={str(row['id']):'STRIKER:1:0'})
+
+    def test_grade_aliases_with_different_attachment_remain_separate(self):
+        from closers import ntf
+        self.add_attachment();self.add_item_alias()
+        name,body=self.tables[0];rows=[list(r) for r in ntf.rows(body)];rows[-1][17]='{9,0,0}'
+        self.tables[0]=(name,table(ntf.header(body)[0],rows))
+        result=self.models.groups.browse(dict(character='STRIKER',mode='parts',items='1',costume_type='A'))
+        self.assertEqual(result['total'],2)
+
     def test_shared_mesh_renders_distinct_registered_textures_and_retains_item(self):
         rows=self.models.groups.filtered(dict(character='STRIKER',items='1',format='x'))
         self.assertEqual(len({r['id'] for r in rows}),1)

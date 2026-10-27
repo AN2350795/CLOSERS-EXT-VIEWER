@@ -177,7 +177,7 @@ class Models:
             if eye_key is not None:
                 if eye_face not in entry_ids:raise ValueError('눈동자를 적용할 얼굴을 함께 선택하세요.')
                 eye=self.eyes.resolve(eye_key,eye_face,eye_texture)
-            parts,sources,rows = [],[],[]
+            parts,sources,rows = [],[],[];bindings={}
             vertices = 0
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
@@ -189,6 +189,11 @@ class Models:
                     composition=self.groups.items.composition(item['key'],row['name'])
                     primary=min(composition,key=lambda v:(classify(v['model_name'])['variant']!='BASE',v['model_name']))
                     source.update(appearance_key=item['key'],item_id=item['item_id'],display_name=item['label'],game_names=[item['label']],game_name_count=1,item_set=item['set_name'],item_part=classify(primary['model_name'])['part'])
+                    source['item_character']=item['character']
+                    if item.get('attachment'):
+                        binding=item['attachment']
+                        if binding['status']!='ready':raise ValueError(binding['error'])
+                        bindings[row['id']]=binding;source['attachment']=binding
                     changed=0
                     for mesh in part['meshes']:
                         for mat in mesh['materials']:
@@ -221,9 +226,13 @@ class Models:
                 if vertices > 250_000:
                     raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
                 parts.append(part); sources.append(source); rows.append(row)
-            characters={classify(row['name'])['character'] for row in rows if classify(row['name'])['kind']=='avatar' and classify(row['name'])['character']}
+            characters={source.get('item_character') or classify(row['name'])['character'] for source,row in zip(sources,rows) if classify(row['name'])['kind']=='avatar' and (source.get('item_character') or classify(row['name'])['character'])}
             if len(characters)>1:
                 raise ValueError('서로 다른 캐릭터의 아바타·얼굴은 함께 연결할 수 없습니다.')
+            if skeleton_id is None and bindings and len(characters)==1:
+                character=next(iter(characters));rigs=self.matches('MOTION_'+character+'.X')
+                if len(rigs)==1:skeleton_id=rigs[0]['id']
+                elif len(rigs)>1:raise ValueError('액세서리를 붙일 캐릭터 공용 뼈 출처가 중복됩니다. 공용 뼈를 직접 선택하세요.')
             if eye and eye['geometry']:
                 from .model_eyes import eye_material
                 if not any(classify(r['name'])['part']=='FACE' for r in rows):raise ValueError('눈동자와 기본 얼굴을 함께 선택하세요.')
@@ -256,11 +265,20 @@ class Models:
             frame_names = set(names)
             for part,row in zip(parts,rows):
                 attachments = {}
+                binding=bindings.get(row['id']);item_frame=None
+                if binding and any(not mesh['skin'] for mesh in part['meshes']):
+                    from .model_attachment import transform
+                    if binding['bone'] not in names:raise ValueError('액세서리를 붙일 뼈가 없습니다: '+binding['bone'])
+                    if len(scene['frames'])>=1024:raise ValueError('결합한 X 프레임은 1,024개까지 지원합니다.')
+                    item_frame=len(scene['frames']);name='__ITEM_ATTACHMENT_'+str(row['id'])
+                    while name in frame_names:name+='_'
+                    frame_names.add(name);scene['frames'].append(dict(name=name,parent=names[binding['bone']],matrix=transform(binding)))
                 def attachment_frame(index):
                     if index < 0:
-                        return -1
+                        return item_frame if item_frame is not None else -1
                     frame = part['frames'][index]
-                    if frame['name'] in names:
+                    if item_frame is not None and frame['name']==binding['bone']:return item_frame
+                    if item_frame is None and frame['name'] in names:
                         return names[frame['name']]
                     if index not in attachments:
                         parent = attachment_frame(frame['parent'])
@@ -309,6 +327,7 @@ class Models:
             motion = self.candidates('MOTION_'+character+'.X',rows[0]) if character else None
             for source,row in zip(sources,rows):
                 source['model_group']=dict(classify(row['name']))
+                if source.get('item_character'):source['model_group']['character']=source['item_character']
                 if source.get('item_part'):source['model_group']['part']=source['item_part']
                 if source.get('item_set'):
                     source['model_group'].update(set_name=source['item_set'],set_key=source['model_group']['character']+'|'+source['item_set'])

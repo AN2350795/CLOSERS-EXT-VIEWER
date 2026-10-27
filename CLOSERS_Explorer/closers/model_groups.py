@@ -6,6 +6,7 @@ Costume codes are file-name evidence, not verified in-game costume names.
 from collections import Counter,defaultdict
 from functools import lru_cache
 from pathlib import Path
+import json
 import re
 import threading
 
@@ -181,8 +182,9 @@ class ModelGroups:
     @staticmethod
     def appearance_identity(row):
         if not row.get('appearance_key'):return (row['id'],)
-        components=tuple(sorted((c['name'],c['reference']) for c in row.get('components',[])))
-        return (row['id'],row.get('reference'),row.get('set_name'),row.get('display_name'),components)
+        def binding(value):return json.dumps({k:v for k,v in value.get('attachment',{}).items() if k!='source'},sort_keys=True)
+        components=tuple(sorted((c['name'],c['reference'],binding(c)) for c in row.get('components',[])))
+        return (row['id'],row.get('character'),row.get('reference'),row.get('set_name'),row.get('display_name'),binding(row),components)
 
     @classmethod
     def merge_appearances(cls,rows):
