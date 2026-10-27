@@ -42,5 +42,18 @@ try{
   check(status.classList.contains('is-loading')&&!status.classList.contains('is-notice'),'valid selection begins loading');
   release();await until(()=>!modelViewer.state.busy);
   check(!status.classList.contains('is-loading')&&!status.classList.contains('is-notice'),'successful retry clears loading');
+  // Hold an actual auxiliary-model response while the real animation loop runs.
+  const state=modelViewer.state,extras=modelViewer.extras;
+  const packet={clip:{duration:2},keys:[],mapping:{frames:[]},extras:[{key:'delayed',kind:'model',label:'지연 모델',status:'ready',source:'fixture',resources:[{selected:9}],offset:[0,0,0],rotation:[0,0,0],scale:1,at:0,anim_time:true,follow:true,speed:1,life:5}]};
+  document.getElementById('show-motion-props').checked=true;
+  state.clip=packet;state.time=.25;state.playing=true;requested=false;
+  let prepared=false;pending=extras.select([packet]).then(()=>prepared=true);await until(()=>requested);
+  check(extras.loading&&!prepared&&document.getElementById('play-animation').disabled&&viewport.getAttribute('aria-busy')==='true','playback waits for auxiliary-model readiness');
+  await new Promise(r=>setTimeout(r,120));
+  check(state.time===.25&&extras.assets.size===0,'loading does not consume motion time or show a partial auxiliary model');
+  release();await pending;
+  check(!extras.loading&&prepared&&!document.getElementById('play-animation').disabled,'readiness promise restores playback controls');
+  await new Promise(r=>setTimeout(r,120));
+  check(state.time>.25&&extras.assets.get('0:delayed')[0].anchor.visible,'playback resumes with the prepared model at the held event time');state.playing=false;
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}

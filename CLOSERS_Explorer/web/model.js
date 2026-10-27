@@ -22,7 +22,7 @@ try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}
 $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage;
-const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
+const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onLoadingChange:value=>{state.extrasLoading=value;updatePlaybackControls();updateSequenceControls();},onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
 function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
@@ -34,7 +34,8 @@ function status(text,notice=false){
 }
 function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);}
 async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
-function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=value||!state.clip;$('animation-loop').disabled=value||!state.clip||!!state.sequence;updateSequenceControls();updateMotionName();}
+function updatePlaybackControls(){const blocked=state.busy||state.extrasLoading;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=blocked||!state.clip;$('animation-loop').disabled=blocked||!state.clip||!!state.sequence;$('viewport').setAttribute('aria-busy',String(!!blocked));}
+function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
 async function operation(fn,replace=false){if(state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}
 function stop(){state.playing=false;$('play-animation').textContent='재생';$('play-animation').setAttribute('aria-pressed','false');}
 function updateMotionName(){
@@ -45,7 +46,7 @@ function updateMotionName(){
 function updateTime(){const duration=state.clip?.clip.duration||0;$('animation-seek').max=duration||1;$('animation-seek').value=state.time;$('animation-time').textContent=`${state.time.toFixed(2)} / ${duration.toFixed(2)}초`;updateMotionName();updateSequenceControls();}
 function updateSequenceControls(){
   const sequence=state.sequence;sequenceControls.hidden=!sequence;
-  $('finish-motion').disabled=state.busy||!sequence||sequence.finishRequested||sequence.completed;
+  $('finish-motion').disabled=state.busy||state.extrasLoading||!sequence||sequence.finishRequested||sequence.completed;
   $('finish-motion').textContent=sequence?.finishRequested&&!sequence.completed?'종료 중…':'종료하기';
   $('sequence-phase').textContent=sequence?sequence.phase:'';
 }
@@ -83,7 +84,7 @@ function initRenderer(){
   $('model-canvas').addEventListener('wheel',e=>{e.preventDefault();orbit.distance=THREE.MathUtils.clamp(orbit.distance*Math.exp(e.deltaY*.001),.1,100000);},{passive:false});
   $('model-canvas').addEventListener('webglcontextlost',e=>{e.preventDefault();stop();status('3D 그래픽 연결이 끊겼습니다. 이 페이지를 새로고침해 주세요.');});
   let previous=performance.now();
-  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);renderer.render(scene,camera);});
+  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip&&!extras.loading)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);renderer.render(scene,camera);});
 }
 function resetCamera(){if(!state.model)return;const bounds=new THREE.Box3();for(const m of [...state.model.meshes,...extras.meshes]){if(m.visible)bounds.expandByObject(m,true);}if(bounds.isEmpty())bounds.setFromObject(state.model.root);bounds.getCenter(target);const size=bounds.getSize(new THREE.Vector3());orbit.distance=Math.max(size.length()*1.45,1);orbit.yaw=0;orbit.pitch=.12;camera.near=Math.max(.01,orbit.distance/1000);camera.far=Math.max(1000,orbit.distance*100);camera.updateProjectionMatrix();}
 function avatarCharacter(data){
@@ -211,7 +212,7 @@ async function chooseClip(index){
   cancelSequence();
   const generation=state.generation,version=++clipVersion;
   stop();state.clip=null;state.time=0;updateTime();const a=state.animation;
-  const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;extras.select([clip]);$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clipLabel(clip.clip));
+  const clip=await api('/api/model-clip?skeleton='+state.data.skeleton_source.entry_id+'&animation='+a.id+'&clip='+index+'&sha256='+a.animation_source.sha256);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;if(clip.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');state.clip=clip;await extras.select([clip]);if(generation!==state.generation||version!==clipVersion||a!==state.animation)return;$('animation-clip').value=clip.clip.index;applyPose(state.model,clip,0);updateTime();status('게임 동작 불러오기 완료: '+clipLabel(clip.clip));
 }
 async function chooseSequence(definition,onProgress){
   if(definition.status!=='ready')throw Error(definition.error||'묶음 동작을 연결할 수 없습니다.');
@@ -236,7 +237,7 @@ async function chooseSequence(definition,onProgress){
     clips.push(clip);
   }
   state.sequence=new MotionSequencePlayer(definition,clips);state.animation=null;state.clip=state.sequence.clip;state.time=state.sequence.time;
-  applyPose(state.model,state.clip,state.time);extras.select(clips,definition.steps);stop();updateTime();status('묶음 동작 선택: '+definition.label);
+  applyPose(state.model,state.clip,state.time);onProgress?.('묶음 동작의 보조 모델과 효과를 준비하는 중입니다.');await extras.select(clips,definition.steps);if(generation!==state.generation||version!==animationVersion||controller.signal.aborted)return;stop();updateTime();status('묶음 동작 선택: '+definition.label);
 }
 const motions=setupMotions({state,api,operation,connectAnimation,chooseClip,chooseSequence,loadModel,element});
 const {search}=setupPicker({state,api,operation,loadModel,applyEye,element,previews:setupPreviews({api})});

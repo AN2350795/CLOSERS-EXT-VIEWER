@@ -65,6 +65,6 @@ try{
   check([...extras.assets.values()].some(group=>group.some(a=>!a.clip)),'failed own animation still shows geometry');
   check($('motion-extra-items').textContent.includes('Unsupported default mapping'),'static fallback explains the animation failure');failAnimation=false;
   defer=true;release=null;$('show-motion-props').checked=true;$('show-motion-props').dispatchEvent(new Event('change'));await until(()=>release);
-  extras.reset();release();await new Promise(r=>setTimeout(r,40));check(!extras.assets.size&&scene.children.length===1,'old resource loads cannot reappear after reset');
+  check(extras.loading,'pending refresh exposes readiness');extras.reset();check(!extras.loading,'reset cancels pending readiness');release();await new Promise(r=>setTimeout(r,40));check(!extras.assets.size&&scene.children.length===1&&!extras.loading,'old resource loads cannot reappear or leave readiness pending after reset');
   extras.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

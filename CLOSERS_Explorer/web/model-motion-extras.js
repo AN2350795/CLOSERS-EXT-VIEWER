@@ -8,10 +8,11 @@ import {installDissolve} from './model-effect-dissolve.js';
 import {applyEmbeddedPose} from './model-x-animation.js';
 import {chooseTextureSequence} from './model-texture-animation.js';
 
-export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,element}){
+export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,onLoadingChange,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
   button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','motion-extras-dialog');
   document.querySelector('.animation-options').append(button);
+  const progress=element('span','연출 준비 중…');progress.hidden=true;progress.setAttribute('role','status');document.querySelector('.animation-options').append(progress);
   const dialog=element('dialog');dialog.id='motion-extras-dialog';dialog.setAttribute('aria-labelledby','motion-extras-title');
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="motion-extras-title">모션 연출</h2><button type="button" class="secondary">닫기</button></div><div class="motion-extra-switches"><label><input id="show-motion-props" type="checkbox"> 보조 모델 표시</label><label><input id="show-motion-effects" type="checkbox"> 모션 효과 표시</label></div><p class="muted">모델과 파티클을 모션에 맞춰 표시합니다. 게임 전용 물리·셰이더는 근사하며 항목별 안내를 확인할 수 있습니다.</p><p id="motion-extras-status" role="status"></p><div id="motion-extra-items"></div>';
   document.body.append(dialog);
@@ -19,6 +20,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   const conditional=element('label'),conditionCheck=element('input');conditionCheck.type='checkbox';conditionCheck.id='show-conditional-extras';conditional.append(conditionCheck,element('span','조건부 연출도 미리보기'));dialog.querySelector('.motion-extra-switches').append(conditional);
   const stateChoice=element('select');stateChoice.id='motion-extra-state';stateChoice.setAttribute('aria-label','연출 상태 선택');stateChoice.hidden=true;dialog.querySelector('.motion-extra-switches').after(stateChoice);
   let entries=[],assets=new Map(),version=0,controller,packets=[],lastPacket=null,lastTime=0,total=0,stageClock=0,disposed=false;
+  let loading=false;
+  function setLoading(value){if(loading===value)return;loading=value;progress.hidden=!value;onLoadingChange?.(value);}
   const excluded=new Set(),hiddenEquipment=new Map(),token=document.querySelector('meta[name="explorer-token"]').content;
   try{const saved=JSON.parse(localStorage.getItem('closers-motion-extras')||'{}');$('show-motion-props').checked=saved.models===true;$('show-motion-effects').checked=saved.effects===true;}catch{}
   const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
@@ -30,7 +33,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   }
   function disposeAsset(asset){asset.anchor.removeFromParent();asset.model?.dispose();asset.owned?.forEach(v=>v.dispose());asset.extraMeshes?.forEach(v=>v.removeFromParent());for(const key of asset.textureKeys)cache.release(key);}
   function release(){equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
-  function reset(){version++;controller?.abort();release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
+  function reset(){version++;controller?.abort();setLoading(false);release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
   function render(){
     const container=$('motion-extra-items');container.replaceChildren();
     for(const entry of entries){
@@ -158,6 +161,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   }
   async function refresh(){
     const current=++version;controller?.abort();controller=new AbortController();const signal=controller.signal;
+    setLoading(true);
+    try{
     release();let count=0,vertices=0,transforms=0;
     $('motion-extras-status').textContent='선택한 연출을 준비하고 있습니다…';
     for(const entry of entries){
@@ -179,6 +184,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     if(current!==version)return;
     const requested=$('show-motion-props').checked||$('show-motion-effects').checked;
     $('motion-extras-status').textContent=count?`${count}개 모델 준비됨 · 모션에 맞춰 표시합니다.`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.';render();
+    }finally{if(current===version)setLoading(false);}
   }
   function select(clips,steps=[]){
     reset();packets=clips;button.disabled=!clips.length;
@@ -191,10 +197,11 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         entry.ambiguous=!known&&states.size>1&&entry.kind!=='model';
         entries.push(entry);
       }
-    });render();void refresh();
+    });render();return refresh();
   }
   function seek(){lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
   function update(delta=0){
+    if(loading)return;
     if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
     if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
@@ -265,5 +272,5 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   button.onclick=()=>{render();dialog.showModal();};dialog.querySelector('button').onclick=()=>dialog.close();
   conditionCheck.onchange=()=>void refresh();stateChoice.onchange=()=>void refresh();
   for(const id of ['show-motion-props','show-motion-effects'])$(id).onchange=()=>{try{localStorage.setItem('closers-motion-extras',JSON.stringify({models:$('show-motion-props').checked,effects:$('show-motion-effects').checked}));}catch{}void refresh();};
-  reset();return {select,reset,seek,update,setBusy(value){button.disabled=value||!packets.length;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){disposed=true;reset();}};
+  reset();return {select,reset,seek,update,setBusy(value){button.disabled=value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){disposed=true;reset();}};
 }
