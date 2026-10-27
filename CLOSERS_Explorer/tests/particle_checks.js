@@ -34,6 +34,12 @@ try{
   const gl=renderer.getContext(),pixels=new Uint8Array(64*64*4);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
   check(pixels.some((v,i)=>i%4!==3&&v>0),'particles produce visible pixels');
   scene.remove(model.root);
+  for(const yaw of [-170,-45,0,45,120]){
+    const upright=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',frames:[],tracks:[{property:'rotation',mode:'initial',value:[-90,yaw,0]}]},null,[white]);
+    upright.update(.1,camera,anchor);const transform=new THREE.Matrix4();upright.meshes[0].getMatrixAt(0,transform);
+    const axis=new THREE.Vector3(0,0,1).transformDirection(transform);
+    check(Math.abs(axis.y-1)<1e-6,'yaw spins an upright effect around the vertical axis without tipping it: '+yaw);upright.dispose();
+  }
   const dissolve=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',tracks:[
     {property:'size',mode:'initial',value:[4,4,4]},
     {property:'dissolveThreshold',mode:'initial',value:[1,1]},

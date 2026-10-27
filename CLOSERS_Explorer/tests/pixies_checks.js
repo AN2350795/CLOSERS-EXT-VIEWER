@@ -39,6 +39,18 @@ try{
       sequence.seek(time);state.clip=sequence.clip;state.time=sequence.time;applyPose(model,state.clip,state.time);scene.updateMatrixWorld(true);extras.seek();extras.update();renderer.render(scene,camera);
       window.testCaptures.push({name:test.definition.key+'_'+time,body:renderer.domElement.toDataURL('image/png')});
       check(!shaderError,'Pixies shaders compile');
+      const floorEntry=state.clip.extras.find(e=>e.particle_name==='PE_RARE_PIXI_EMOTION_GLOW_LOOP'),floorAsset=extras.assets.get('1:'+floorEntry.key)[0],floorPosition=floorAsset.anchor.getWorldPosition(new THREE.Vector3());
+      const cylinders=state.clip.extras.filter(e=>['PE_RARE_PIXI_EMOTION_AURA_LOOP','PE_RARE_PIXI_EMOTION_AURA_LOOP_01'].includes(e.particle_name));let uprightCount=0;
+      for(const entry of cylinders)for(const asset of extras.assets.get('1:'+entry.key)||[])for(const mesh of asset.model.meshes){
+        if(!asset.anchor.visible)continue;mesh.geometry.computeBoundingBox();const bounds=mesh.geometry.boundingBox;
+        for(let i=0;i<mesh.count;i++){
+          const world=new THREE.Matrix4();mesh.getMatrixAt(i,world);world.premultiply(mesh.matrixWorld);
+          const axis=new THREE.Vector3(0,0,1).transformDirection(world),bottom=new THREE.Vector3((bounds.min.x+bounds.max.x)/2,(bounds.min.y+bounds.max.y)/2,bounds.min.z).applyMatrix4(world);
+          check(Math.abs(axis.y-1)<1e-5,'real Pixies light cylinders stay upright across random yaw and rewind');
+          check(Math.hypot(bottom.x-floorPosition.x,bottom.z-floorPosition.z)<1&&Math.abs(bottom.y-floorPosition.y)<1,'real Pixies light cylinders remain centered on the floor ring');uprightCount++;
+        }
+      }
+      check(uprightCount>0,'both action variants exercise live cylindrical light effects at '+time);
       if(time===6&&baseEntry){
         const darkCount=()=>{gl.readPixels(0,0,384,384,gl.RGBA,gl.UNSIGNED_BYTE,pixels);let n=0;for(let i=0;i<pixels.length;i+=4)if(pixels[i]+pixels[i+1]+pixels[i+2]<15)n++;return n;};
         const corrected=darkCount(),materials=[...extras.assets.values()].flat().flatMap(a=>[...a.model.materials,...a.owned.filter(v=>v.isMaterial)]).filter(m=>m.blending===THREE.CustomBlending);

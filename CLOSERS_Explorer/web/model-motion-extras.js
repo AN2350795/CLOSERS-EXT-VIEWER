@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose} from './model-core.js';
 import {TextureCache} from './model-texture-cache.js';
-import {createTracks,random,vector,sample} from './effect-timeline.js';
+import {createTracks,random,vector,sample,EFFECT_ROTATION_ORDER} from './effect-timeline.js';
 import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST,effectRenderOrder} from './particle-model.js';
 import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 import {installDissolve} from './model-effect-dissolve.js';
@@ -260,7 +260,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         const target=asset.boneTarget||parentAsset?.model.root||(entry.bone?state.model.bones.find(b=>b.name===entry.bone):state.model.root);
         if(!target){asset.anchor.visible=false;continue;}
         if(entry.follow||!asset.frozen){
-          const local=new THREE.Matrix4().compose(new THREE.Vector3(...asset.offset),new THREE.Quaternion().setFromEuler(new THREE.Euler(...asset.rotation.map(THREE.MathUtils.degToRad))),new THREE.Vector3(asset.scale,asset.scale,asset.scale));
+          const local=new THREE.Matrix4().compose(new THREE.Vector3(...asset.offset),new THREE.Quaternion().setFromEuler(new THREE.Euler(...asset.rotation.map(THREE.MathUtils.degToRad),EFFECT_ROTATION_ORDER)),new THREE.Vector3(asset.scale,asset.scale,asset.scale));
           asset.anchor.matrix.copy(target.matrixWorld).multiply(local);asset.anchor.matrixWorldNeedsUpdate=true;asset.frozen=true;
         }
         asset.anchor.visible=true;asset.anchor.updateMatrixWorld(true);
@@ -283,7 +283,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         const timeline=asset.timeline,position=timeline.value('position',age,time),movement=timeline.integral('velocity',age),spin=timeline.integral('rotationSpeed',age);
         asset.model.root.position.fromArray(position.map((v,i)=>v+movement[i]+asset.gravity[i]*age*age*.5));
         const size=timeline.value('size',age,time),scale=timeline.value('scale',age,time)[0];asset.model.root.scale.set(...size.map(v=>v*scale));
-        asset.model.root.rotation.set(...timeline.value('rotation',age,time).map((v,i)=>THREE.MathUtils.degToRad(v+spin[i])));
+        asset.model.root.rotation.set(...timeline.value('rotation',age,time).map((v,i)=>THREE.MathUtils.degToRad(v+spin[i])),EFFECT_ROTATION_ORDER);
         if(entry.billboard&&entry.billboard!=='BBT_NONE'&&getCamera?.()){
           const cameraLocal=getCamera().getWorldPosition(new THREE.Vector3()).applyMatrix4(asset.anchor.matrixWorld.clone().invert());asset.model.root.lookAt(cameraLocal);
         }

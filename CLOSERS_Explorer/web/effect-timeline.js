@@ -1,4 +1,7 @@
 export function random(seed){let n=seed>>>0;return ()=>{n=(n+0x6d2b79f5)|0;let x=Math.imul(n^(n>>>15),1|n);x^=x+Math.imul(x^(x>>>7),61|x);return ((x^(x>>>14))>>>0)/4294967296;};}
+// Effect angles use pitch X, yaw Y, roll Z: Ry * Rx * Rz. In particular,
+// yaw must turn an already upright cylinder without tilting its vertical axis.
+export const EFFECT_ROTATION_ORDER='YXZ';
 export const sample=(value,rng)=>Array.isArray(value)?value[0]+(value[1]-value[0])*rng():Number(value||0);
 export const vector=(value,rng,fallback=[0,0,0])=>(value||fallback).map(v=>sample(v,rng));
 const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);

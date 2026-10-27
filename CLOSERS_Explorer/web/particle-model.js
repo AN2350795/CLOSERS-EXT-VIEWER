@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {ParticleTimeline} from './effect-timeline.js';
+import {ParticleTimeline,EFFECT_ROTATION_ORDER} from './effect-timeline.js';
 import {installDissolve} from './model-effect-dissolve.js';
 
 // Clear texels must not write depth and hide other animated models. Keep the
@@ -87,7 +87,7 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
         let count=0;
         for(const p of particles){
           if(frames.length>1&&p.frame!==group.frame)continue;
-          position.fromArray(p.position);scale.fromArray(p.size);euler.set(...p.rotation.map(v=>THREE.MathUtils.degToRad(v)));quaternion.setFromEuler(euler);
+          position.fromArray(p.position);scale.fromArray(p.size);euler.set(...p.rotation.map(v=>THREE.MathUtils.degToRad(v)),EFFECT_ROTATION_ORDER);quaternion.setFromEuler(euler);
           if(rule.billboard!=='BBT_NONE'){look.lookAt(cameraLocal,position,up);quaternion.premultiply(new THREE.Quaternion().setFromRotationMatrix(look));}
           matrix.compose(position,quaternion,scale);group.mesh.setMatrixAt(count,matrix);
           const color=group.pass?p.dualColor:p.color;group.mesh.instanceColor.setXYZ(count,color[0],color[1],color[2]);group.alpha.setX(count,Math.max(0,Math.min(1,color[3])));group.uv.setXY(count,p.uv[0],p.uv[1]);count++;
