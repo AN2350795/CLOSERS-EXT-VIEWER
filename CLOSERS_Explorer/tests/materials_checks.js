@@ -39,7 +39,7 @@ try{
     const original=pixels(scene),profile={color:[.7,.8,1,1],direction:[0,0,-1],intensity:.8};setAvatarLight(model.materials[0],profile);
     for(const angle of count?[0,.4]:[0]){
       model.bones.forEach(b=>b.rotation.y=angle);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());const actual=pixels(scene),index=(48*96+24)*4;
-      for(let c=0;c<3;c++){const value=[.2,.1,.05][c]*profile.color[c]*.8*Math.cos(angle)+[128,64,32][c]/255*[1,.5,.25][c]*.9;check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb(value)))<=2,'directional lighting preserves independent emission and skinned normals: '+count+'/'+c);}
+      for(let c=0;c<3;c++){const value=[.2,.1,.05][c]*(1+(profile.color[c]*.8-1)*Math.cos(angle)*.5)+[128,64,32][c]/255*[1,.5,.25][c]*.9;check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb(value)))<=2,'lighting comparison preserves independent emission and skinned normals: '+count+'/'+c);}
     }
     model.bones.forEach(b=>b.rotation.y=0);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());setAvatarLight(model.materials[0],null);const restored=pixels(scene);check(restored.every((v,i)=>v===original[i]),'lighting off restores exact pixels');model.dispose();
   }

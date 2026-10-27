@@ -164,7 +164,7 @@ class AvatarTypeTests(unittest.TestCase):
             with self.subTest(entry=entry):self.assertTrue(AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:entry}))['unresolved'])
         self.assertTrue(AvatarItems.parse_texture_rule(dict(m_mapTexChange=[]))['unresolved'])
 
-    def test_auxiliary_only_item_opens_with_original_texture_and_effect_notice(self):
+    def test_auxiliary_only_item_keeps_original_texture_and_scoped_material_report(self):
         rules=self.registry.texture_rules();reference=next(iter(rules))
         rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=self.model[:-2]+'.PNG',m_MultiTexName='mat_209_skin.PNG')}))
         self.registry.texture_rules=lambda:rules
@@ -174,7 +174,8 @@ class AvatarTypeTests(unittest.TestCase):
         preview=scene['meshes'][0]['materials'][0]['material_preview']
         self.assertEqual(preview['texture'],'MAT_209_SKIN.PNG')
         self.assertIsNone(preview['image']['selected'])
-        self.assertTrue(any('보조 재질' in warning for warning in scene['warnings']))
+        self.assertFalse(any('보조 재질' in warning for warning in scene['warnings']))
+        self.assertIn('m_MultiTexName',scene['meshes'][0]['materials'][0]['material_report']['unsupported'])
 
     def test_skin_material_follows_original_texture_and_selected_item(self):
         rules=self.registry.texture_rules();reference=next(iter(rules))

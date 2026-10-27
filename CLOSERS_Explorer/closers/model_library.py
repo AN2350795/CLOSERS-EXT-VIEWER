@@ -206,8 +206,6 @@ class Models:
                                 if not self.matches(target):raise ValueError('선택한 타입의 텍스처가 없습니다: '+target)
                                 mat['texture']=target;changed+=1
                     if item['textures'] and not changed:part['warnings'].append('선택한 타입의 텍스처 변경 대상이 이 메시에는 없습니다.')
-                    if item['shader_changes']:
-                        part['warnings'].append('보조 재질: XET 발광은 근사 미리보기이며 게임 bloom은 미지원입니다. 피부 MatCap·툰 조명·마스크·염색·반사는 원본 연결/조명 확인이 필요하여 적용하지 않습니다.')
                 if eye and entry_id==eye_face:
                     source['display_name']=eye['label']
                     if not eye['basic']:

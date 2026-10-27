@@ -10,6 +10,7 @@ import {MotionSequencePlayer} from './motion-sequence-player.js';
 import {setupMotionExtras} from './model-motion-extras.js';
 import {setupModelStage} from './model-stage.js';
 import {setupAvatarLighting} from './model-lighting.js';
+import {createEmissionRenderer} from './model-emission.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),textureKeys:new Set(),texturePixels:0,generation:0,timings:null};
@@ -22,7 +23,7 @@ const preserveViewKey='closers-model-preserve-view-v1';
 try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}catch{}
 $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
-let renderer,scene,camera,boneHelper,stage;
+let renderer,scene,camera,boneHelper,stage,emissionRenderer;
 const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onLoadingChange:value=>{state.extrasLoading=value;updatePlaybackControls();updateSequenceControls();},onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
 const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
@@ -34,7 +35,7 @@ function status(text,notice=false){
   closeNotice();$('model-status').textContent=text;
   if(notice){const close=element('button','×');close.type='button';close.className='notice-close';close.setAttribute('aria-label','알림 닫기');close.onclick=closeNotice;$('model-status').append(close);$('model-status').classList.add('is-notice');noticeTimer=setTimeout(closeNotice,6000);}
 }
-function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);}
+function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);lighting.refresh();}
 async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
 function updatePlaybackControls(){const blocked=state.busy||state.extrasLoading;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=blocked||!state.clip;$('animation-loop').disabled=blocked||!state.clip||!!state.sequence;$('viewport').setAttribute('aria-busy',String(!!blocked));}
 function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
@@ -75,6 +76,7 @@ function advanceAnimation(delta){
 }
 function initRenderer(){
   renderer=new THREE.WebGLRenderer({canvas:$('model-canvas'),antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x111823);renderer.outputColorSpace=THREE.SRGBColorSpace;
+  emissionRenderer=createEmissionRenderer(renderer);
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(40,1,.1,100000);
   stage=setupModelStage({scene});
   const observer=new ResizeObserver(()=>{const rect=$('viewport').getBoundingClientRect();renderer.setSize(rect.width,rect.height,false);stage.resize(rect.width,rect.height);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();});observer.observe($('viewport'));
@@ -86,7 +88,7 @@ function initRenderer(){
   $('model-canvas').addEventListener('wheel',e=>{e.preventDefault();orbit.distance=THREE.MathUtils.clamp(orbit.distance*Math.exp(e.deltaY*.001),.1,100000);},{passive:false});
   $('model-canvas').addEventListener('webglcontextlost',e=>{e.preventDefault();stop();status('3D 그래픽 연결이 끊겼습니다. 이 페이지를 새로고침해 주세요.');});
   let previous=performance.now();
-  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip&&!extras.loading)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);renderer.render(scene,camera);});
+  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip&&!extras.loading)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);emissionRenderer.render(scene,camera,state.model,lighting.getRenderOptions());});
 }
 function resetCamera(){if(!state.model)return;const bounds=new THREE.Box3();for(const m of [...state.model.meshes,...extras.meshes]){if(m.visible)bounds.expandByObject(m,true);}if(bounds.isEmpty())bounds.setFromObject(state.model.root);bounds.getCenter(target);const size=bounds.getSize(new THREE.Vector3());orbit.distance=Math.max(size.length()*1.45,1);orbit.yaw=0;orbit.pitch=.12;camera.near=Math.max(.01,orbit.distance/1000);camera.far=Math.max(1000,orbit.distance*100);camera.updateProjectionMatrix();}
 function avatarCharacter(data){
@@ -260,7 +262,7 @@ $('show-helpers').onchange=$('show-equipment-hidden').onchange=updateMeshVisibil
 $('material-preview').onchange=updateMaterialPreview;
 $('finish-motion').onclick=()=>{if(!state.sequence||state.busy||state.extrasLoading||state.sequence.completed)return;void extras.unlockAudio();state.sequence.requestFinish();state.playing=true;$('play-animation').textContent='일시정지';$('play-animation').setAttribute('aria-pressed','true');updateSequenceControls();};
 $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()=>chooseClip(Number($('animation-clip').value)));};$('play-animation').onclick=()=>{if(!state.clip||state.busy||state.extrasLoading)return;void extras.unlockAudio();if(state.sequence?.completed){state.sequence.restart();extras.seek();state.clip=state.sequence.clip;state.time=state.sequence.time;}state.playing=!state.playing;if(!state.playing)extras.pauseAudio();if(!state.sequence&&state.playing&&state.time>=state.clip.clip.duration){state.time=0;extras.seek();}$('play-animation').textContent=state.playing?'일시정지':'재생';$('play-animation').setAttribute('aria-pressed',String(state.playing));};$('animation-seek').oninput=()=>{if(!state.clip||state.busy||state.extrasLoading)return;stop();state.time=Number($('animation-seek').value);if(state.sequence){state.sequence.seek(state.time);state.time=state.sequence.time;}extras.seek();applyPose(state.model,state.clip,state.time);updateTime();};
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{viewerDisposed=true;state.generation++;modelController?.abort();renderer?.setAnimationLoop(null);disposeModel();extras.dispose();stage?.dispose();textureCache.clear();renderer?.dispose();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{viewerDisposed=true;state.generation++;modelController?.abort();renderer?.setAnimationLoop(null);disposeModel();extras.dispose();stage?.dispose();textureCache.clear();emissionRenderer?.dispose();renderer?.dispose();});
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.
 window.modelViewer={get view(){return {target:target.toArray(),...orbit};},state,loadModel:(...args)=>operation(()=>loadModel(...args),true),chooseClip:index=>operation(()=>chooseClip(index)),textureCache,extras,THREE};
 try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{});});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
