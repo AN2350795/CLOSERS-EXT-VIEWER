@@ -252,6 +252,7 @@
 .motion-modes button[aria-pressed=true]{background:#293849;color:var(--text)}
 .sequence-controls{display:flex;align-items:center;gap:10px;margin-right:auto;flex-wrap:wrap}.sequence-controls[hidden]{display:none}
 #motion-extras-settings{font-size:10px;padding:4px 9px}
+.motion-audio-controls{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding-top:8px;margin-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}.motion-audio-controls[hidden]{display:none}.motion-audio-controls label{display:flex;align-items:center;gap:8px}.motion-audio-controls input{width:120px;accent-color:var(--accent)}.motion-audio-controls output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}.motion-audio-controls button{font-size:11px;padding:4px 9px}
 @media(max-width:600px){.animation-options:has(#motion-extras-settings){margin-top:0;flex-wrap:wrap;row-gap:6px}}
 #motion-extras-dialog{width:min(640px,94vw);max-height:85dvh;padding:20px}
 .motion-extra-switches{display:flex;flex-wrap:wrap;gap:18px;margin:16px 0}.motion-extra-switches label{display:flex;align-items:center;gap:6px;font-size:13px}

@@ -14,10 +14,11 @@ try{
   window.AudioContext=class {
     state='running';currentTime=0;destination={};decodeAudioData=body=>decoder.decodeAudioData(body);
     resume=async()=>{};close=async()=>{};
-    createGain(){return {gain:{value:1,setValueAtTime(){},linearRampToValueAtTime(){}},connect(){},disconnect(){}};}
+    createGain(){return {gain:{value:1,setValueAtTime(){},linearRampToValueAtTime(){}},connect(target){this.target=target;},disconnect(){}};}
     createBufferSource(){const source={playbackRate:{value:1},connect(){},disconnect(){},start(time,offset){starts.push({source,offset,rate:source.playbackRate.value});},stop(time){stops.push({source,time});}};return source;}
   };
   localStorage.removeItem('closers-motion-extras');
+  localStorage.removeItem('closers-motion-audio-volume');
   const scene=new THREE.Scene(),root=new THREE.Group(),material=new THREE.MeshBasicMaterial({color:0xffffff}),state={model:{root,bones:[],materials:[material]},time:0,playing:false};scene.add(root);
   const sound=(key,id,overrides={})=>({key,kind:'sound',status:'ready',state:'S',source:'SOUND.LUA',label:key,conditions:{},at:.2,anim_time:true,state_end:true,speed:1,voice:false,probability:1,volume:.3,sound_names:['SE.OGG'],sounds:[{name:'SE.OGG',selected:id,candidates:[]}],resources:[],loop:false,stop_on_end:true,...overrides});
   const effect={key:'parent',kind:'effect',state:'S',status:'unavailable',source:'DE.LUA',label:'missing geometry',error:'no mesh',at:.1,anim_time:true,speed:1,conditions:{}};
@@ -30,10 +31,17 @@ try{
   check(['show-motion-props','show-motion-effects','show-motion-sounds','show-motion-voices','show-motion-colors'].every(id=>$(id).checked),'all accompanying elements default on');
   check(fetches.length===3&&fetches.every(u=>u.startsWith('/api/media/')&&u.includes('token=')),'all alternative audio files are decoded before readiness with authenticated same-origin URLs');
   check($('motion-extra-items').textContent.includes('UNSUPPORTED.OGG'),'unhandled source events remain inspectable without arbitrary playback');
+  check(!$('motion-audio-volume').closest('.motion-audio-controls').hidden,'sound controls appear when the chosen motion contains playable audio');
   extras.update();check(!starts.length&&material.color.g===0&&material.opacity===.5,'paused preview applies color without playing audio');
   state.playing=true;state.time=.25;extras.update(.25);await flush();extras.update();check(!starts.length,'child sound waits for its parent-relative event');
   state.time=.4;extras.update(.15);await flush();extras.update();check(starts.length===1&&Math.abs(starts[0].offset-.1)<1e-6,'sound-only child starts at the correct offset even when parent geometry is missing');
   check(starts[0].source.motionGain.gain.value===.3,'source event volume is preserved');
+  const master=starts[0].source.motionGain.target,volume=$('motion-audio-volume'),mute=$('motion-audio-mute');
+  volume.value=35;volume.dispatchEvent(new Event('input'));
+  check(master.gain.value===.35&&starts.length===1&&stops.length===0&&starts[0].source.motionGain.gain.value===.3,'master volume changes live without restarting audio or overwriting source fades');
+  mute.click();check(master.gain.value===0&&mute.getAttribute('aria-pressed')==='true'&&volume.value==='35','mute keeps the chosen volume and playback position');
+  mute.click();check(master.gain.value===.35&&mute.getAttribute('aria-pressed')==='false','unmute restores the chosen volume');
+  volume.value=0;volume.dispatchEvent(new Event('input'));mute.click();check(volume.value==='35'&&master.gain.value===.35,'unmuting zero volume restores the last audible level');
   state.time=.8;extras.update(.4);await flush();extras.update();check(starts.length===2,'a voice candidate plays once without stacking alternatives');
   state.playing=false;extras.update();check(stops.length===2,'pause stops all live sound sources');
   state.playing=true;extras.update();check(starts.length===4,'resume rebuilds sources at the held timeline position');
@@ -60,5 +68,10 @@ try{
   state.time=.2;extras.update(.2);check(stops.some(s=>s.source===groupedSource&&s.time===.1),'sound-group control fades the matching source without requiring an audio file');
   const failed={clip:{duration:2},extras:[sound('bad',999)]};await extras.select([failed],[{state:'S'}]);check(!extras.loading&&$('motion-extra-items').textContent.includes('재생할 음원이 준비되지 않았습니다'),'unsupported audio is explained and cannot leave playback loading forever');
   delay=true;const pending=extras.select([packet],[{state:'S'}]);await flush();check(extras.loading,'audio decoding belongs to motion readiness');extras.reset();for(const release of releases)release();await pending;check(!extras.loading,'cancellation cannot revive pending audio');
-  extras.dispose();material.dispose();document.body.dataset.checks='passed';
+  check(volume.closest('.motion-audio-controls').hidden,'reset hides audio controls');
+  volume.value=42;volume.dispatchEvent(new Event('input'));mute.click();extras.dispose();
+  document.querySelectorAll('#motion-extras-dialog,#motion-extras-settings,.motion-audio-controls').forEach(e=>e.remove());
+  const restored=setupMotionExtras({state,api:async()=>{},getScene:()=>scene,element});
+  check($('motion-audio-volume').value==='42'&&$('motion-audio-mute').getAttribute('aria-pressed')==='true','volume and mute preferences survive viewer recreation');
+  restored.dispose();material.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

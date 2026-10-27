@@ -3,6 +3,15 @@
 export class MotionAudio {
   constructor({fetchAudio=(url,options)=>fetch(url,options),createContext=()=>new AudioContext(),random=Math.random}={}){
     this.fetchAudio=fetchAudio;this.createContext=createContext;this.random=random;this.buffers=new Map();this.events=new Map();this.nodes=new Set();this.bytes=0;this.generation=0;
+    this.volume=1;this.muted=false;this.master=null;
+  }
+  setVolume(volume,muted=false){
+    this.volume=Number.isFinite(volume)?Math.max(0,Math.min(1,volume)):1;this.muted=!!muted;
+    if(this.master){const gain=this.master.gain,value=this.muted?0:this.volume;if(gain.setTargetAtTime)gain.setTargetAtTime(value,this.context.currentTime,.01);else gain.value=value;}
+  }
+  output(){
+    if(!this.master){this.master=this.context.createGain();this.master.gain.value=this.muted?0:this.volume;this.master.connect(this.context.destination);}
+    return this.master;
   }
   async prepare(entry,token,signal){
     this.context??=this.createContext();const generation=this.generation;let ready=0;
@@ -30,7 +39,7 @@ export class MotionAudio {
   pause(){for(const record of this.events.values())this.stop(record);for(const source of this.nodes){source.stop();source.disconnect();source.motionGain.disconnect();}this.nodes.clear();}
   reset(){this.generation++;this.pause();this.events.clear();this.buffers.clear();this.bytes=0;}
   seek(){this.pause();this.events.clear();}
-  async dispose(){this.reset();await this.context?.close();}
+  async dispose(){this.reset();this.master?.disconnect();this.master=null;await this.context?.close();}
   sync(entry,{active,since,rate,total,restart,playing,speed,enabled}){
     let record=this.events.get(entry.id);
     if(restart&&record){this.stop(record);this.events.delete(entry.id);record=null;}
@@ -48,7 +57,7 @@ export class MotionAudio {
     if(!entry.loop&&age>=buffer.duration){this.stop(record);return;}
     if(record.source){record.source.playbackRate.value=speed;return;}
     const source=this.context.createBufferSource(),gain=this.context.createGain();source.buffer=buffer;source.loop=entry.loop;source.playbackRate.value=speed;gain.gain.value=entry.volume;
-    source.connect(gain);gain.connect(this.context.destination);record.source=source;record.gain=gain;source.motionGain=gain;this.nodes.add(source);
+    source.connect(gain);gain.connect(this.output());record.source=source;record.gain=gain;source.motionGain=gain;this.nodes.add(source);
     source.onended=()=>{source.disconnect();gain.disconnect();this.nodes.delete(source);if(record.source===source)record.source=null;};
     source.start(0,entry.loop?age%buffer.duration:age);
   }

@@ -18,6 +18,14 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="motion-extras-title">모션 연출</h2><button type="button" class="secondary">닫기</button></div><div class="motion-extra-switches"><label><input id="show-motion-props" type="checkbox"> 보조 모델 표시</label><label><input id="show-motion-effects" type="checkbox"> 모션 효과 표시</label></div><p class="muted">모델과 파티클을 모션에 맞춰 표시합니다. 게임 전용 물리·셰이더는 근사하며 항목별 안내를 확인할 수 있습니다.</p><p id="motion-extras-status" role="status"></p><div id="motion-extra-items"></div>';
   document.body.append(dialog);
   const audio=new MotionAudio();
+  const volumeControls=element('div');volumeControls.className='motion-audio-controls';volumeControls.hidden=true;volumeControls.setAttribute('role','group');volumeControls.setAttribute('aria-label','모션 소리 조절');
+  const muteButton=element('button'),volumeLabel=element('label','소리'),volumeInput=element('input'),volumeOutput=element('output');
+  muteButton.id='motion-audio-mute';muteButton.type='button';muteButton.className='secondary';volumeInput.id='motion-audio-volume';volumeInput.type='range';volumeInput.min=0;volumeInput.max=100;volumeInput.step=1;volumeInput.setAttribute('aria-label','모션 소리 음량');volumeOutput.htmlFor=volumeInput.id;volumeLabel.append(volumeInput,volumeOutput);volumeControls.append(muteButton,volumeLabel);document.querySelector('.animation-controls').append(volumeControls);
+  const volumeKey='closers-motion-audio-volume';let muted=false,lastVolume=100;volumeInput.value=100;
+  try{const value=JSON.parse(localStorage.getItem(volumeKey)||'{}');if(typeof value?.volume==='number'&&Number.isFinite(value.volume))volumeInput.value=Math.max(0,Math.min(100,value.volume));muted=value?.muted===true;if(typeof value?.lastVolume==='number'&&Number.isFinite(value.lastVolume)&&value.lastVolume>0)lastVolume=Math.min(100,value.lastVolume);}catch{}
+  function applyVolume(save=false){const value=Number(volumeInput.value),silent=muted||value===0;audio.setVolume(value/100,muted);volumeOutput.value=value+'%';volumeInput.setAttribute('aria-valuetext',value+'%'+(silent?' (음소거)':''));muteButton.textContent=silent?'음소거 해제':'음소거';muteButton.setAttribute('aria-pressed',String(silent));if(save)try{localStorage.setItem(volumeKey,JSON.stringify({volume:value,muted,lastVolume}));}catch{}}
+  volumeInput.oninput=()=>{if(Number(volumeInput.value)>0){muted=false;lastVolume=Number(volumeInput.value);}applyVolume(true);};
+  muteButton.onclick=()=>{if(Number(volumeInput.value)===0){volumeInput.value=lastVolume;muted=false;}else muted=!muted;applyVolume(true);};applyVolume();
   const $=id=>document.getElementById(id),cache=new TextureCache({maxPixels:64*1024*1024,maxEntries:256}),loader=new THREE.TextureLoader();
   const conditional=element('label'),conditionCheck=element('input');conditionCheck.type='checkbox';conditionCheck.id='show-conditional-extras';conditional.append(conditionCheck,element('span','조건부 연출도 미리보기'));dialog.querySelector('.motion-extra-switches').append(conditional);
   for(const [id,label] of [['show-motion-sounds','효과음·음악 재생'],['show-motion-voices','보이스 재생'],['show-motion-colors','캐릭터 색상 연출']]){const row=element('label'),input=element('input');input.id=id;input.type='checkbox';input.checked=true;row.append(input,element('span',label));dialog.querySelector('.motion-extra-switches').append(row);}
@@ -43,6 +51,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   function release(){audio.reset();restoreColors();equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
   function reset(){version++;controller?.abort();setLoading(false);release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
   function render(){
+    volumeControls.hidden=!entries.some(entry=>entry.kind==='sound'&&entry.status==='ready'&&enabled(entry)&&entry.sounds?.some(sound=>sound.selected));
     const container=$('motion-extra-items');container.replaceChildren();
     for(const entry of entries){
       const row=element('div');row.className='motion-extra-row';
