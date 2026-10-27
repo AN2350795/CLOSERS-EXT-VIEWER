@@ -99,7 +99,7 @@ await new Promise(r=>ws.onopen=r);
 let id=0;const pending=new Map();ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){pending.get(m.id)?.(m.result);pending.delete(m.id);}};
 const call=(method,params={})=>new Promise(r=>{const n=++id;pending.set(n,r);ws.send(JSON.stringify({id:n,method,params}));});
 let value;for(let i=0;i<400;i++){
- const result=await call('Runtime.evaluate',{expression:'JSON.stringify({status:document.body?.dataset.checks,errors:document.querySelector("pre")?.textContent,thumbnails:[...document.querySelectorAll(".model-thumbnail")].map(e=>e.textContent)})',returnByValue:true});
+ const result=await call('Runtime.evaluate',{expression:'JSON.stringify({status:document.body?.dataset.checks,errors:(document.querySelector("body > pre:last-of-type")||document.querySelector("pre"))?.textContent,thumbnails:[...document.querySelectorAll(".model-thumbnail")].map(e=>e.textContent)})',returnByValue:true});
  value=JSON.parse(result.result.value);if(value.status)break;await new Promise(r=>setTimeout(r,50));
 }
 if(value.status==='passed'&&process.argv[2]==='responsive'){

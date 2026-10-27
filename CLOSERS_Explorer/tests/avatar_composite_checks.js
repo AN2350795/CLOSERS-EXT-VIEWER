@@ -35,8 +35,10 @@ try{
  check(modelViewer.state.ids[0]===3,'removing hair removes its wing and preserves unrelated equipment');
  check(!$('model-parts').querySelector('.empty-equipment').open,'empty equipment stays collapsed');
  foot.part='ACC_BODY_WING';await modelViewer.loadModel([3]);
+ $('show-equipment').click();
  check($('model-parts').querySelector('.equipped-slot h3').textContent==='등·날개'&&$('model-parts').querySelector('.model-part').checkVisibility(),'equipped accessories are visible with a readable slot label');
  $('model-parts').querySelector('.model-part button').click();check(modelViewer.state.ids.length===0&&!$('model-parts').querySelector('.model-part'),'the last equipped item can be removed');foot.part='FOOT';
+ $('show-wardrobe').click();
  document.querySelector('[data-mode="sets"]').click();await until(()=>document.querySelector('#model-results [data-set]'));document.querySelector('#model-results .model-open').click();await until(()=>!$('avatar-bundle').hidden);
  const select=$('avatar-bundle').querySelector('.bundle-slot>select');check(select.options.length===3,'normal and another are the only hair options');select.value='1|STRIKER:100:0';select.dispatchEvent(new Event('change'));
  check($('avatar-bundle').querySelectorAll('.bundle-components select').length===1,'normal composition includes a wing source');
