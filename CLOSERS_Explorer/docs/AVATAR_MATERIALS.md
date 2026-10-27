@@ -59,6 +59,14 @@
 
 ## 검증과 재실행
 
+### 선택형 의상 조명 비교
+
+`조명 · 발광`의 의상 조명은 `LIGHT_CONVERT_TEMPLET.NTF`/`LIGHT_CONVERT_DATA.NTF` 및 `SET_ITEM_EFFECT_TEMPLET.NTF`/`SET_ITEM_UNIT_LIGHT_DATA.NTF`에서 색·방향·강도를 읽는 별도 비교 기능이다. NTF의 type 9 강도는 IEEE 754 float로 해석하며, 한국어 이름은 원본 문자열 키로 연결한다. 착용 조건을 판정한 인게임 조명 자동 적용이라고 표시하지 않는다.
+
+표면의 기본색에 `color.rgb * intensity * max(dot(worldNormal, lightDirection), 0)`을 곱하는 방향광 근사다. 게임 좌표의 Z축을 뷰어 좌표에 맞춰 뒤집으며, 일반/다중 가중치 스키닝 법선도 변환한다. 발광의 가산식은 이 계산 이후에 독립적으로 적용한다. 기존 게임 툰 셰이더의 재현이나 미확인 MatCap 분기의 활성화가 아니다. `near_intensity`와 별도 추가 수치는 출처에 보존하지만 확인하지 못한 런타임 보간·후처리에는 사용하지 않는다.
+
+현재 아바타의 확인된 발광 연결은 아이템·원본 텍스처별로 표시하고 각각 제외할 수 있다. 전체 발광 스위치는 이 개별 제외 선택을 유지하며, 조명 OFF는 기본색·발광·투명도를 원래 값으로 복원한다.
+
 ```powershell
 cd CLOSERS_Explorer
 python -m unittest discover -s tests -p 'test_model*.py'

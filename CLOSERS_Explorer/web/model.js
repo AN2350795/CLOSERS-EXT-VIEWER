@@ -9,6 +9,7 @@ import {setupMotions} from './model-motions.js';
 import {MotionSequencePlayer} from './motion-sequence-player.js';
 import {setupMotionExtras} from './model-motion-extras.js';
 import {setupModelStage} from './model-stage.js';
+import {setupAvatarLighting} from './model-lighting.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),textureKeys:new Set(),texturePixels:0,generation:0,timings:null};
@@ -23,6 +24,7 @@ $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage;
 const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onLoadingChange:value=>{state.extrasLoading=value;updatePlaybackControls();updateSequenceControls();},onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
+const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
 function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
@@ -141,6 +143,7 @@ function updateMaterialPreview(){
   const supported=state.model?.materials.some(m=>m.userData.materialPreview)||false;
   $('material-preview').disabled=!supported;$('material-preview-note').hidden=!supported;
   state.model?.materials.forEach(m=>setMaterialPreview(m,$('material-preview').checked));
+  lighting.refresh();
 }
 function showParts(){
   const panel=$('model-parts');panel.replaceChildren();const places=new Map();
@@ -197,7 +200,7 @@ async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntrie
   const character=avatarCharacter(data),preserveView=!!state.model&&$('preserve-view').checked&&!!character&&character===avatarCharacter(state.data);
   disposeModel();state.ids=ids;state.eye=data.eye_avatar||null;state.skeleton=skeleton;state.data=data;state.model=model;scene.add(model.root);boneHelper=new THREE.SkeletonHelper(model.root);boneHelper.visible=$('show-bones').checked;scene.add(boneHelper);updateMeshVisibility();state.model.materials.forEach(m=>m.wireframe=$('wireframe').checked);showParts();if(!preserveView)resetCamera();
   status('모델 여는 중… · 텍스처를 적용하고 있습니다.');updateMaterialPreview();const textureStarted=performance.now();
-  const failed=await showTextures();if(!current())return;timings.textureMs=performance.now()-textureStarted;
+  const failed=await showTextures();if(!current())return;lighting.refresh();timings.textureMs=performance.now()-textureStarted;
   // Readiness includes a rendered frame with textures, even when XMD is slow.
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));if(!current())return;
   timings.readyMs=performance.now()-started;
