@@ -22,13 +22,24 @@ def values(value):
     return list(value.values()) if isinstance(value,dict) else []
 
 
+def event_inventory(value,source):
+    """Inventory unhandled events without duplicating all combat logic per clip."""
+    resources=set();pending=[value]
+    while pending:
+        current=pending.pop()
+        if isinstance(current,dict):pending.extend(current.values())
+        elif isinstance(current,str) and current.lower().endswith(('.x','.fbx','.skel','.atlas','.ogg','.wav','.mp3','.flac','.dds','.png','.tga')):resources.add(current)
+    return dict(source=source,count=len(value) if isinstance(value,dict) else 1,resources=sorted(resources))
+
+
 def vector(value,default=0):
     result=[value.get(i,default) for i in (1,2,3)] if isinstance(value,dict) else [default]*3
     if any(type(v) not in (int,float) or not math.isfinite(v) or abs(v)>100000 for v in result):raise ValueError('위치 또는 크기 수치를 확인할 수 없습니다.')
     return result
 
 
-def references(rigs):
+def references(rigs,sounds=None):
+    sound_states,_=sounds or ({},{})
     result={}
     for character,layers in rigs.items():
         states={};props=defaultdict(list)
@@ -44,7 +55,7 @@ def references(rigs):
             for row in values(game.get('m_mapUnitStateData')):
                 if isinstance(row,dict) and isinstance(row.get('m_StateName'),str):
                     name=row['m_StateName'];previous=states.get(name,{})
-                    origins={**previous.get('_event_sources',{}),**{key:filename for key in ('m_EventDamageEffect','m_EventParticle','m_EventEquipHide') if key in row}}
+                    origins={**previous.get('_event_sources',{}),**{key:filename for key in row if isinstance(key,str) and key.startswith('m_Event')}}
                     states[name]={**previous,**row,'source':filename,'_event_sources':origins}
         clips=defaultdict(list)
         for clip,items in props.items():
@@ -52,6 +63,15 @@ def references(rigs):
         for state,row in states.items():
             clip=row.get('m_AnimName')
             if not isinstance(clip,str):continue
+            known_events={'m_EventDamageEffect','m_EventParticle','m_EventEquipHide','m_EventSound','m_EventXMeshPlayer','m_EventColor'}
+            other={key:event_inventory(value,row['_event_sources'].get(key,row['source'])) for key,value in row.items() if isinstance(key,str) and key.startswith('m_Event') and key not in known_events}
+            if other:clips[clip].append(dict(kind='event_info',row=dict(source=row['source'],events=other),state=state))
+            for event in [*values(row.get('m_EventSound')),*sound_states.get((character,state),[])]:
+                if isinstance(event,dict):clips[clip].append(dict(kind='sound',row=dict(event,source=event.get('source',row['_event_sources'].get('m_EventSound',row['source']))),state=state))
+            for event in values(row.get('m_EventXMeshPlayer')):
+                if isinstance(event,dict):clips[clip].append(dict(kind='mesh',row=dict(event,source=row['_event_sources']['m_EventXMeshPlayer']),state=state))
+            for event in values(row.get('m_EventColor')):
+                if isinstance(event,dict):clips[clip].append(dict(kind='color',row=dict(event,source=row['_event_sources']['m_EventColor']),state=state))
             for event in values(row.get('m_EventEquipHide')):
                 if isinstance(event,dict) and event.get('m_HideEquipPosition')=='EP_AVATAR_WEAPON':clips[clip].append(dict(kind='equipment',row=dict(event,source=row['_event_sources']['m_EventEquipHide']),state=state))
             for event in values(row.get('m_EventDamageEffect')):
@@ -127,14 +147,22 @@ def particle_rule(row,texanims=None):
     return rule
 
 
-def compile_extras(refs,damage,meshes,particles=None):
+def compile_extras(refs,damage,meshes,particles=None,sounds=None):
+    _,effect_sounds=sounds or ({},{})
     from .effect_tracks import vec,span
     particles=particles or {}
     result={}
     for character,clips in refs.items():
         for clip,items in clips.items():
             out=[]
-            def add(row,kind,state,key,parent=None):
+            def add(row,kind,state,key,parent=None,trail=()):
+                if len(out)>=4096:
+                    warning='연출 연결이 4,096개를 초과해 추가 항목의 재생을 보류했습니다.'
+                    if warning not in out[-1].setdefault('warnings',[]):out[-1]['warnings'].append(warning)
+                    return
+                if kind=='event_info':
+                    out.append(dict(key=key,kind=kind,label=f"게임 전용 이벤트 {len(row['events'])}종",state=state,source=row.get('source',''),status='unavailable',error='뷰어 재생 대상 이외의 게임 이벤트입니다. 출처에서 종류와 연결 파일을 확인할 수 있습니다.',models=[],warnings=[],events=row['events']))
+                    return
                 if kind=='equipment':
                     try:start=float(row.get('m_fEventTimeMin',0));end=float(row.get('m_fEventTimeMax',100000))
                     except (TypeError,ValueError):return
@@ -152,7 +180,22 @@ def compile_extras(refs,damage,meshes,particles=None):
                                  conditions={k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID') if k in row})
                     if not math.isfinite(entry['at']) or entry['at']<0:raise ValueError('효과 생성 시간이 올바르지 않습니다.')
                     if parent:entry['parent_key']=parent
-                    if kind=='model':
+                    if kind=='sound':
+                        from .motion_sound import sound_rule
+                        entry.update(sound_rule(row));names=entry['sound_names'];entry['label']=('보이스' if entry['voice'] else '효과음')+' · '+((names[0]+(f' 외 {len(names)-1}개' if len(names)>1 else '')) if names else '그룹 중지')
+                        entry['state_end']=entry['stop_on_end']
+                    elif kind=='color':
+                        rgba=row.get('m_Color',{})
+                        color=[rgba.get(i,1) for i in (1,2,3,4)]
+                        if any(type(v) not in (int,float) or not math.isfinite(v) for v in color):raise ValueError('캐릭터 색상이 올바르지 않습니다.')
+                        entry.update(models=[],color=color,life=max(0,float(row.get('m_fColorTime',0))),transition=max(0,float(row.get('m_fTrackTime',0))),emissive=max(0,float(row.get('m_fEmissiveIntensity',0))))
+                        if any(not math.isfinite(entry[k]) for k in ('life','transition','emissive')):raise ValueError('색상 연출 시간이 올바르지 않습니다.')
+                        if entry['emissive']:entry['warnings'].append('캐릭터 발광은 원본 강도에 따른 색상 근사입니다.')
+                        entry['label']='캐릭터 색상·발광'
+                    elif kind=='mesh':
+                        if name not in meshes:raise ValueError('직접 연결한 메시 연출 정의가 없습니다.')
+                        entry.update(mesh_rule(meshes[name]));entry.update(kind='effect',mesh_source=meshes[name]['source'])
+                    elif kind=='model':
                         if not isinstance(row.get('m_XFileName'),str) or not row['m_XFileName'].upper().endswith('.X'):raise ValueError('보조 모델 파일 연결을 확인할 수 없습니다.')
                         entry.update(models=[row['m_XFileName']],animation=None,speed=1,loop=False,life=100000,color=[1,1,1,1],fades=[],tracks=[],blend=['SRCALPHA','INVSRCALPHA'],dual=False,depth_test=True,depth_write=True)
                     elif kind=='particle':
@@ -162,6 +205,7 @@ def compile_extras(refs,damage,meshes,particles=None):
                         entry.update(particle_name=name,models=rule['models'],life=100000,speed=1,animation=None,loop=False,color=[1,1,1,1],fades=[])
                         entry['warnings']=rule.get('warnings',[])
                     else:
+                        if name in trail or len(trail)>=16:raise ValueError('효과의 중첩 연결이 순환하거나 16단계를 초과했습니다.')
                         definition=damage.get(name)
                         if not definition:raise ValueError('효과 정의가 없거나 출처가 중복됩니다.')
                         seq=definition.get('m_MainEffectName')
@@ -175,7 +219,14 @@ def compile_extras(refs,damage,meshes,particles=None):
                     if entry['conditions']:entry['warnings'].append('장비 조건부 연출입니다. 조건부 표시 옵션으로 선택할 수 있습니다.')
                 except (ValueError,KeyError,TypeError) as exc:entry.update(status='unavailable',error=str(exc))
                 out.append(entry)
-                if kind=='effect' and name in damage:
+                if kind=='effect' and name in damage and name not in trail and len(trail)<16:
+                    if damage[name].get('_other_events'):add(dict(source=damage[name]['source'],events={k:dict(v,source=damage[name]['source']) for k,v in damage[name]['_other_events'].items()}),'event_info',state,key+':events',key)
+                    for di,child in enumerate(values(damage[name].get('m_EventDamageEffect'))):
+                        if isinstance(child,dict):add(dict(child,source=damage[name]['source']),'effect',state,key+f':effect:{di}',key,(*trail,name))
+                    for mi,mesh in enumerate(values(damage[name].get('m_EventXMeshPlayer'))):
+                        if isinstance(mesh,dict):add(dict(mesh,source=damage[name]['source']),'mesh',state,key+f':mesh:{mi}',key)
+                    for si,sound in enumerate([*values(damage[name].get('m_EventSound')),*effect_sounds.get(name,[])]):
+                        if isinstance(sound,dict):add(dict(sound,source=sound.get('source',damage[name]['source'])),'sound',state,key+f':sound:{si}',key)
                     for pi,particle in enumerate(values(damage[name].get('m_EventParticle'))):
                         if not isinstance(particle,dict):continue
                         add(dict(particle,source=damage[name]['source']),'particle',state,key+f':particle:{pi}',key)
@@ -194,3 +245,20 @@ def unique_rows(tables,root,key,wanted):
             if name in serialized and serialized[name]!=encoded:rows[name]=None
             elif name not in serialized:rows[name]=dict(row,source=filename);serialized[name]=encoded
     return {k:v for k,v in rows.items() if v is not None}
+
+
+def effect_dependencies(refs,tables):
+    """Find descendants even when a child table precedes its parent table."""
+    wanted={item['row']['m_DamageEffectName'] for clips in refs.values() for items in clips.values() for item in items if item['kind']=='effect'}
+    names={v['m_DamageEffectName'] for t in tables.values() for v in values(t['m_mapDamageEffectData'])}
+    definitions=unique_rows(tables,'m_mapDamageEffectData','m_DamageEffectName',names)
+    pending=list(wanted)
+    while pending:
+        for event in values(definitions.get(pending.pop(),{}).get('m_EventDamageEffect')):
+            child=event.get('m_DamageEffectName') if isinstance(event,dict) else None
+            if isinstance(child,str) and child not in wanted:wanted.add(child);pending.append(child)
+    reached=[row for name,row in definitions.items() if name in wanted]
+    meshes={row['m_MainEffectName'] for row in reached if isinstance(row.get('m_MainEffectName'),str)}
+    meshes.update(item['row']['m_SeqName'] for clips in refs.values() for items in clips.values() for item in items if item['kind']=='mesh' and isinstance(item['row'].get('m_SeqName'),str))
+    meshes.update(e['m_SeqName'] for row in reached for e in values(row.get('m_EventXMeshPlayer')) if isinstance(e,dict) and isinstance(e.get('m_SeqName'),str))
+    return wanted,meshes

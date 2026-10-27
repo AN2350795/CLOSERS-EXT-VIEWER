@@ -184,11 +184,11 @@ def _build(workspace,executable,progress,cancel=None):
             FROM entries e JOIN archives a ON a.id=e.archive_id
             WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
                OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name IN ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA')
-               OR e.name LIKE 'GUST_USER_%.LUA' OR e.name LIKE 'DAMAGE_EFFECT_DATA%.LUA' OR e.name LIKE 'X_MESH_PLAYER_GAME%.LUA' OR e.name LIKE 'PARTICLE_SYSTEM_MAIN%.LUA' OR e.name LIKE 'TEX_ANIM_DATA%.LUA' ORDER BY e.id''').fetchall()
+               OR e.name LIKE 'GUST_USER_%.LUA' OR e.name LIKE 'SOUND%TEMPLET%.LUA' OR e.name LIKE 'DAMAGE_EFFECT_DATA%.LUA' OR e.name LIKE 'X_MESH_PLAYER_GAME%.LUA' OR e.name LIKE 'PARTICLE_SYSTEM_MAIN%.LUA' OR e.name LIKE 'TEX_ANIM_DATA%.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
         check_cancel()
-        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|(?:(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME|PARTICLE_SYSTEM_MAIN)(?:[A-Z0-9_])*|TEX_ANIM_DATA[A-Z0-9_]*)\.LUA)',row['name']):continue
+        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|SOUND_(?:VOICE_)?TEMPLET[A-Z0-9_]*\.LUA|(?:(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME|PARTICLE_SYSTEM_MAIN)(?:[A-Z0-9_])*|TEX_ANIM_DATA[A-Z0-9_]*)\.LUA)',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
             raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
@@ -209,28 +209,41 @@ def _build(workspace,executable,progress,cancel=None):
         sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
         selected.setdefault(row['name'],(dict(row),stored))
     strings={};items={};models=[];counts={};visibility=defaultdict(set);part_visibility=defaultdict(set);patterns=[]
-    emotion_strings={};emotion_skills={};emotion_rigs={}
-    extra_damage={};extra_meshes={};extra_particle_tables={};extra_tex_tables={};wanted_particles=set();wanted_tex=set();extra_refs=None;extra_errors={};wanted_damage=set();wanted_meshes=set()
+    emotion_strings={};emotion_skills={};emotion_rigs={};sound_definitions={}
+    extra_damage={};extra_meshes={};extra_particle_tables={};extra_tex_tables={};wanted_particles=set();wanted_tex=set();extra_refs=None;extra_errors={};wanted_damage=set();wanted_meshes=set();dependencies_ready=False
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),4 if kv[0].startswith('TEX_ANIM_DATA') else 3 if kv[0].startswith('PARTICLE_SYSTEM_MAIN') else 2 if kv[0].startswith('X_MESH_PLAYER_GAME') else 1 if kv[0].startswith('DAMAGE_EFFECT_DATA') else 0,kv[0])):
         check_cancel()
         body=ntf.restore(stored,row['size'],key,iv)
+        if name.startswith('SOUND_'):
+            from .lua_literals import tables
+            sound_definitions[name]=tables(body);counts[name]=len(sound_definitions[name]);continue
         if name.startswith(('DAMAGE_EFFECT_DATA','X_MESH_PLAYER_GAME','PARTICLE_SYSTEM_MAIN','TEX_ANIM_DATA')):
             from .motion_names import character_layers
-            from .motion_extras import references,unique_rows,values
+            from .motion_extras import references,unique_rows,values,effect_dependencies,event_inventory
             from .model_groups import CHARACTERS
             if extra_refs is None:
-                extra_refs=references({character:character_layers(character,emotion_rigs) for character in CHARACTERS})
-                wanted_damage={item['row']['m_DamageEffectName'] for clips in extra_refs.values() for items in clips.values() for item in items if item['kind']=='effect'}
+                from .motion_sound import sound_tables
+                extra_refs=references({character:character_layers(character,emotion_rigs) for character in CHARACTERS},sound_tables(sound_definitions))
+            if not name.startswith('DAMAGE_EFFECT_DATA') and not dependencies_ready:
+                wanted_damage,wanted_meshes=effect_dependencies(extra_refs,extra_damage);dependencies_ready=True
             from .lua_literals import tables
             try:table=tables(body)
             except ValueError as exc:extra_errors[name]=str(exc);counts[name]=0;continue
             if name.startswith('DAMAGE_EFFECT_DATA'):
-                extra_damage[name]={'m_mapDamageEffectData':dict(enumerate(v for v in values(table.get('m_mapDamageEffectData')) if isinstance(v,dict) and v.get('m_DamageEffectName') in wanted_damage))}
+                # Keep presentation fields until the transitive effect closure
+                # is known; a child may be defined before its parent table.
+                keys=('m_DamageEffectName','m_MainEffectName','m_EventParticle','m_EventDamageEffect','m_EventXMeshPlayer','m_EventSound')
+                rows=[]
+                for v in values(table.get('m_mapDamageEffectData')):
+                    if not isinstance(v,dict) or not isinstance(v.get('m_DamageEffectName'),str):continue
+                    extra={k:v[k] for k in keys if k in v}
+                    other={k:event_inventory(value,name) for k,value in v.items() if isinstance(k,str) and k.startswith(('m_Event','m_DieEvent','m_HitEvent')) and k not in keys}
+                    for event in other.values():event.pop('source',None)
+                    if other:extra['_other_events']=other
+                    rows.append(extra)
+                extra_damage[name]={'m_mapDamageEffectData':dict(enumerate(rows))}
             elif name.startswith('X_MESH_PLAYER_GAME'):
-                if not wanted_meshes:
-                    damage=unique_rows(extra_damage,'m_mapDamageEffectData','m_DamageEffectName',wanted_damage)
-                    wanted_meshes={v['m_MainEffectName'] for v in damage.values() if isinstance(v.get('m_MainEffectName'),str)}
                 extra_meshes[name]={'X_MESH_PLAYER':dict(enumerate(v for v in values(table.get('X_MESH_PLAYER')) if isinstance(v,dict) and v.get('m_SeqName') in wanted_meshes))}
             elif name.startswith('PARTICLE_SYSTEM_MAIN'):
                 if not wanted_particles:
@@ -301,8 +314,11 @@ def _build(workspace,executable,progress,cancel=None):
             from .model_groups import CHARACTERS
             layers={character:character_layers(character,emotion_rigs) for character in CHARACTERS}
             motion_names=join(emotion_skills,layers,emotion_strings)
-            from .motion_extras import references,unique_rows,compile_extras
-            if extra_refs is None:extra_refs=references(layers)
+            from .motion_extras import references,unique_rows,compile_extras,effect_dependencies
+            from .motion_sound import sound_tables
+            sounds=sound_tables(sound_definitions)
+            if extra_refs is None:extra_refs=references(layers,sounds)
+            if not dependencies_ready:wanted_damage,wanted_meshes=effect_dependencies(extra_refs,extra_damage)
             damage=unique_rows(extra_damage,'m_mapDamageEffectData','m_DamageEffectName',wanted_damage)
             mesh=unique_rows(extra_meshes,'X_MESH_PLAYER','m_SeqName',wanted_meshes)
             from .motion_extras import particle_rule
@@ -317,7 +333,7 @@ def _build(workspace,executable,progress,cancel=None):
                 try:motion_particles[name]=particle_rule(row,tex_defs)
                 except (ValueError,TypeError,KeyError) as exc:
                     extra_errors['particle:'+name]=str(exc);motion_particles[name]={'error':str(exc),'source':row.get('source','')}
-            motion_extras=compile_extras(extra_refs,damage,mesh,motion_particles)
+            motion_extras=compile_extras(extra_refs,damage,mesh,motion_particles,sounds)
             db.execute('CREATE TABLE motion_particles(name TEXT PRIMARY KEY,details_json TEXT NOT NULL)')
             db.executemany('INSERT INTO motion_particles VALUES(?,?)',[(name,json.dumps(details,ensure_ascii=False)) for name,details in motion_particles.items()])
             db.execute('CREATE TABLE motion_extras(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')

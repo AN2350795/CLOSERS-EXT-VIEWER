@@ -7,6 +7,7 @@ import {createFBXModel,createSpineModel} from './model-effect-formats.js';
 import {installDissolve} from './model-effect-dissolve.js';
 import {applyEmbeddedPose} from './model-x-animation.js';
 import {chooseTextureSequence} from './model-texture-animation.js';
+import {MotionAudio} from './model-motion-audio.js';
 
 export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,onLoadingChange,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
@@ -16,15 +17,22 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   const dialog=element('dialog');dialog.id='motion-extras-dialog';dialog.setAttribute('aria-labelledby','motion-extras-title');
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="motion-extras-title">모션 연출</h2><button type="button" class="secondary">닫기</button></div><div class="motion-extra-switches"><label><input id="show-motion-props" type="checkbox"> 보조 모델 표시</label><label><input id="show-motion-effects" type="checkbox"> 모션 효과 표시</label></div><p class="muted">모델과 파티클을 모션에 맞춰 표시합니다. 게임 전용 물리·셰이더는 근사하며 항목별 안내를 확인할 수 있습니다.</p><p id="motion-extras-status" role="status"></p><div id="motion-extra-items"></div>';
   document.body.append(dialog);
+  const audio=new MotionAudio();
   const $=id=>document.getElementById(id),cache=new TextureCache({maxPixels:64*1024*1024,maxEntries:256}),loader=new THREE.TextureLoader();
   const conditional=element('label'),conditionCheck=element('input');conditionCheck.type='checkbox';conditionCheck.id='show-conditional-extras';conditional.append(conditionCheck,element('span','조건부 연출도 미리보기'));dialog.querySelector('.motion-extra-switches').append(conditional);
+  for(const [id,label] of [['show-motion-sounds','효과음·음악 재생'],['show-motion-voices','보이스 재생'],['show-motion-colors','캐릭터 색상 연출']]){const row=element('label'),input=element('input');input.id=id;input.type='checkbox';input.checked=true;row.append(input,element('span',label));dialog.querySelector('.motion-extra-switches').append(row);}
+  const soundGroup=element('select');soundGroup.id='motion-sound-group';soundGroup.setAttribute('aria-label','변형 음원 선택');soundGroup.hidden=true;dialog.querySelector('.motion-extra-switches').after(soundGroup);
   const stateChoice=element('select');stateChoice.id='motion-extra-state';stateChoice.setAttribute('aria-label','연출 상태 선택');stateChoice.hidden=true;dialog.querySelector('.motion-extra-switches').after(stateChoice);
   let entries=[],assets=new Map(),version=0,controller,packets=[],lastPacket=null,lastTime=0,total=0,stageClock=0,disposed=false;
   let loading=false;
   function setLoading(value){if(loading===value)return;loading=value;progress.hidden=!value;onLoadingChange?.(value);}
   const excluded=new Set(),hiddenEquipment=new Map(),token=document.querySelector('meta[name="explorer-token"]').content;
-  try{const saved=JSON.parse(localStorage.getItem('closers-motion-extras')||'{}');$('show-motion-props').checked=saved.models===true;$('show-motion-effects').checked=saved.effects===true;}catch{}
-  const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
+  const preferences=[['show-motion-props','models'],['show-motion-effects','effects'],['show-motion-sounds','sounds'],['show-motion-voices','voices'],['show-motion-colors','colors']];
+  let saved={};try{saved=JSON.parse(localStorage.getItem('closers-motion-extras')||'{}')||{};}catch{}
+  for(const [id,key] of preferences)$(id).checked=saved[key]!==false;
+  const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='sound'?$(entry.voice?'show-motion-voices':'show-motion-sounds').checked&&(entry.sound_group==null||String(entry.sound_group)===soundGroup.value):entry.kind==='color'?$('show-motion-colors').checked:entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
+  const colors=new Map();
+  function restoreColors(){for(const [m,base] of colors){m.color.copy(base.color);m.opacity=base.opacity;if(m.transparent!==base.transparent){m.transparent=base.transparent;m.needsUpdate=true;}}colors.clear();}
   function equipment(parts=new Set()){
     let changed=false;
     for(const [mesh,visible] of hiddenEquipment)if(!parts.has(mesh.userData.part)){mesh.userData.motionHidden=false;mesh.visible=visible;hiddenEquipment.delete(mesh);changed=true;}
@@ -32,7 +40,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     if(changed)onEquipmentVisibility?.();
   }
   function disposeAsset(asset){asset.anchor.removeFromParent();asset.model?.dispose();asset.owned?.forEach(v=>v.dispose());asset.extraMeshes?.forEach(v=>v.removeFromParent());for(const key of asset.textureKeys)cache.release(key);}
-  function release(){equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
+  function release(){audio.reset();restoreColors();equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
   function reset(){version++;controller?.abort();setLoading(false);release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
   function render(){
     const container=$('motion-extra-items');container.replaceChildren();
@@ -44,12 +52,14 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       row.append(element('small',entry.error||entry.loadError||(entry.kind==='equipment'?'지정된 구간에서 무기를 숨깁니다.':assets.has(entry.id)?'표시 준비됨':entry.status==='ready'?'선택한 표시 옵션에 따라 적용':'연결 확인 필요')));
       const warnings=[...(entry.warnings||[]),...(entry.loadWarnings||[])];if(warnings.length)row.append(element('small',warnings.join(' ')));
       if(Object.keys(entry.conditions||{}).length)row.append(element('small','조건 · '+JSON.stringify(entry.conditions)));
-      for(const resource of [...(entry.resources||[]),...(entry.spine_sources||[]),...(entry.images||[]),...(entry.dissolve_image?[entry.dissolve_image]:[]),...(entry.mask_image?[entry.mask_image]:[])])if(resource.candidates?.length>1){
+      if(entry.kind==='sound'&&entry.sounds?.length>1){const choice=element('select');choice.setAttribute('aria-label','재생할 음원');const random=element('option','후보 중 하나 재생');random.value='';choice.append(random);entry.sounds.forEach((s,i)=>{const option=element('option',s.name);option.value=i;choice.append(option);});choice.value=entry.soundChoice??'';choice.onchange=()=>{entry.soundChoice=choice.value===''?null:Number(choice.value);audio.seek();};row.append(choice);}
+      for(const resource of [...(entry.resources||[]),...(entry.sounds||[]),...(entry.spine_sources||[]),...(entry.images||[]),...(entry.dissolve_image?[entry.dissolve_image]:[]),...(entry.mask_image?[entry.mask_image]:[])])if(resource.candidates?.length>1){
         const select=element('select');select.setAttribute('aria-label',resource.name+' 출처');select.append(element('option','출처 선택 · '+resource.name));select.firstChild.value='';
         for(const candidate of resource.candidates){const option=element('option',candidate.archive+' · '+candidate.ordinal);option.value=candidate.id;select.append(option);}select.value=resource.selected||'';
         select.onchange=()=>{resource.selected=Number(select.value)||null;void refresh();};row.append(select);
       }
       const details=element('details');details.append(element('summary','출처'),element('small',entry.source+(entry.mesh_source?' · '+entry.mesh_source:'')),element('small',entry.state||'모션에 직접 연결'));
+      if(entry.events)details.append(element('pre',JSON.stringify(entry.events,null,2)));
       if(entry.notes)details.append(element('small',entry.notes));row.append(details);container.append(row);
     }
     if(!entries.length)container.append(element('p',packets.some(p=>p.extras_index_available)?'이 동작에 연결된 연출이 없습니다.':'연출 정보가 없습니다. 라이브러리에서 후처리만 실행하면 연결 정보를 갱신할 수 있습니다.'));
@@ -163,10 +173,12 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     const current=++version;controller?.abort();controller=new AbortController();const signal=controller.signal;
     setLoading(true);
     try{
-    release();let count=0,vertices=0,transforms=0;
+    release();let count=0,soundCount=0,colorCount=0,vertices=0,transforms=0;
     $('motion-extras-status').textContent='선택한 연출을 준비하고 있습니다…';
     for(const entry of entries){
       entry.loadError='';entry.loadWarnings=[];if(entry.status!=='ready'||!enabled(entry))continue;
+      if(entry.kind==='sound'){try{const ready=await audio.prepare(entry,token,signal);if(entry.sounds?.length&&!ready)entry.loadError='재생할 음원이 준비되지 않았습니다. 출처와 항목별 안내를 확인하세요.';else soundCount++;}catch(e){if(current!==version)return;entry.loadError=e.message;}if(current!==version)return;continue;}
+      if(entry.kind==='color'){colorCount++;continue;}
       if(entry.kind==='equipment')continue;
       const group=[];
       try{
@@ -182,8 +194,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       }catch(e){for(const asset of group){count--;vertices-=asset.vertices;transforms-=asset.transforms;disposeAsset(asset);}if(current!==version)return;entry.loadError=e.message;}
     }
     if(current!==version)return;
-    const requested=$('show-motion-props').checked||$('show-motion-effects').checked;
-    $('motion-extras-status').textContent=count?`${count}개 모델 준비됨 · 모션에 맞춰 표시합니다.`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.';render();
+    const requested=preferences.some(([id])=>$(id).checked);
+    $('motion-extras-status').textContent=count||soundCount||colorCount?`${count}개 모델 · ${soundCount}개 사운드 · ${colorCount}개 색상 연출 준비됨`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.';render();
     }finally{if(current===version)setLoading(false);}
   }
   function select(clips,steps=[]){
@@ -197,11 +209,14 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
         entry.ambiguous=!known&&states.size>1&&entry.kind!=='model';
         entries.push(entry);
       }
-    });render();return refresh();
+    });
+    soundGroup.replaceChildren();const base=element('option','기본 음원');base.value='';soundGroup.append(base);for(const group of new Set(entries.filter(e=>e.kind==='sound'&&e.sound_group!=null).map(e=>e.sound_group))){const option=element('option','변형 음원 '+group);option.value=group;soundGroup.append(option);}soundGroup.hidden=soundGroup.options.length===1;
+    render();return refresh();
   }
-  function seek(){lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
+  function seek(){audio.seek();lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
   function update(delta=0){
     if(loading)return;
+    restoreColors();
     if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
     if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
@@ -210,6 +225,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     const births=new Map(),restarts=new Map(),hiddenParts=new Set();let frameNeeded=false;
     const frame=asset=>{if(!asset.framed){asset.framed=true;frameNeeded=true;}};
     for(const entry of entries){
+      if(entry.kind==='event_info')continue;
       const active=entry.packet===state.clip,group=assets.get(entry.id)||[];
       const parentId=entry.parent_key?entry.id.split(':')[0]+':'+entry.parent_key:null,parent=parentId?births.get(parentId):null;
       // Child event clocks are relative to their damage effect, even if its mesh is unavailable.
@@ -219,6 +235,11 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       const restart=active&&(changed||(wrapped&&entry.anim_time)||restarts.get(parentId));restarts.set(entry.id,restart);
       if(entry.kind==='equipment'){if(active&&enabled(entry)&&clock>=entry.at&&clock<entry.until)hiddenParts.add(entry.part);continue;}
       if(active&&since>=0)births.set(entry.id,{age:since/rate,speed:entry.speed||1});
+      if(entry.kind==='sound'){audio.sync(entry,{active,since,rate,total,restart,playing:state.playing,speed:Number($('animation-speed').value),enabled:entry.status==='ready'&&enabled(entry)&&!entry.loadError});continue;}
+      if(entry.kind==='color'){
+        if(active&&enabled(entry)&&entry.status==='ready'&&since>=0&&since/rate<entry.life){const age=since/rate,weight=entry.transition?Math.min(1,age/entry.transition,(entry.life-age)/entry.transition):1;for(const m of state.model.materials||[]){if(!colors.has(m))colors.set(m,{color:m.color.clone(),opacity:m.opacity,transparent:m.transparent});m.color.multiply(new THREE.Color(...entry.color.slice(0,3)).multiplyScalar(1+entry.emissive).lerp(new THREE.Color(1,1,1),1-weight));m.opacity*=1+(entry.color[3]-1)*weight;if(m.opacity<1&&!m.transparent){m.transparent=true;m.needsUpdate=true;}}}
+        continue;
+      }
       for(const asset of group){
         if(!enabled(entry)||entry.loadError||(!active&&(entry.kind==='model'||entry.state_end||!asset.begun))){asset.anchor.visible=false;continue;}
         if(restart)asset.begun=false;
@@ -271,6 +292,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
 
   button.onclick=()=>{render();dialog.showModal();};dialog.querySelector('button').onclick=()=>dialog.close();
   conditionCheck.onchange=()=>void refresh();stateChoice.onchange=()=>void refresh();
-  for(const id of ['show-motion-props','show-motion-effects'])$(id).onchange=()=>{try{localStorage.setItem('closers-motion-extras',JSON.stringify({models:$('show-motion-props').checked,effects:$('show-motion-effects').checked}));}catch{}void refresh();};
-  reset();return {select,reset,seek,update,setBusy(value){button.disabled=value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){disposed=true;reset();}};
+  soundGroup.onchange=()=>void refresh();
+  for(const [id] of preferences)$(id).onchange=()=>{try{localStorage.setItem('closers-motion-extras',JSON.stringify(Object.fromEntries(preferences.map(([id,key])=>[key,$(id).checked]))));}catch{}void refresh();};
+  reset();return {select,reset,seek,update,unlockAudio:()=>audio.unlock(),pauseAudio:()=>audio.pause(),setBusy(value){button.disabled=value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){disposed=true;reset();void audio.dispose();}};
 }

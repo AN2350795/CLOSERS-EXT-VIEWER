@@ -4,7 +4,7 @@ const check=(value,message)=>{if(!value)throw Error(message);};
 const until=async fn=>{for(let i=0;i<500;i++){if(fn())return;await new Promise(r=>setTimeout(r,5));}throw Error('Timed out: '+fn);};
 const $=id=>document.getElementById(id),element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 try{
-  localStorage.removeItem('closers-motion-extras');
+  localStorage.setItem('closers-motion-extras',JSON.stringify({models:false,effects:false}));
   const scene=new THREE.Scene(),root=new THREE.Group(),bone=new THREE.Bone();root.scale.z=-1;bone.name='HAND';bone.position.x=2;root.add(bone);scene.add(root);scene.updateMatrixWorld(true);
   const common={state:'S1',source:'state.LUA',status:'ready',error:'',bone:'HAND',offset:[3,0,0],at:0,anim_time:true,follow:true,state_end:true,animation:null,speed:1,loop:false,life:10,color:[1,1,1,1],fades:[],additive:false,depth_test:true,depth_write:true};
   const prop={...common,key:'prop',kind:'model',label:'휴대폰',resources:[{selected:10}]};

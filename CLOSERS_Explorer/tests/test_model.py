@@ -223,7 +223,7 @@ class ModelTests(unittest.TestCase):
             thread=threading.Thread(target=server.serve_forever,daemon=True)
             thread.start()
             try:
-                for name in ('model-core.js','model-stage.js','model-motions.js','model-motion-extras.js','effect-timeline.js','particle-model.js','model-effect-formats.js','model-effect-dissolve.js','model-x-animation.js','model-texture-animation.js','vendor/spine/core/index.js','vendor/spine/threejs/SkeletonMesh.js','vendor/three/addons/FBXLoader.js','vendor/three/addons/NURBSUtils.js','motion-sequence-player.js','face-preview.js','model-memory.js','model-preview.js'):
+                for name in ('model-core.js','model-stage.js','model-motions.js','model-motion-extras.js','model-motion-audio.js','effect-timeline.js','particle-model.js','model-effect-formats.js','model-effect-dissolve.js','model-x-animation.js','model-texture-animation.js','vendor/spine/core/index.js','vendor/spine/threejs/SkeletonMesh.js','vendor/three/addons/FBXLoader.js','vendor/three/addons/NURBSUtils.js','motion-sequence-player.js','face-preview.js','model-memory.js','model-preview.js'):
                     with urllib.request.urlopen(f'http://127.0.0.1:{server.server_port}/{name}') as response:
                         self.assertEqual(response.status,200)
                         self.assertIn(response.headers.get_content_type(),('text/javascript','application/javascript'))

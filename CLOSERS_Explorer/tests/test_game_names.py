@@ -16,6 +16,7 @@ from test_explorer import fixture
 from test_model import binary_model
 from test_model_visibility import lua_patterns
 from test_composition import png
+from test_motion_names import literal_table
 
 
 def table(types,records):
@@ -150,13 +151,16 @@ class NtfTests(unittest.TestCase):
         model_other=model_values.copy();model_other[0]=101
         models=table(types,[model_values,model_other])
         frame_data=lua_patterns([['EQ_LEG2',2],['EQ_LEG',1]])
+        rig_data=literal_table('GAME_UNIT_TEMPLET',{'m_mapUnitStateData':{'1':{'m_StateName':'USN_TEST','m_AnimName':'TEST'}}})
+        def sound_data(name):return literal_table('m_mapUnitStateEventSound',{'1':{'m_GameUnitSubType':'GUST_USER_CASTER','1':{'m_StateName':'USN_TEST','m_EventSound':{'1':{'m_vecSoundName':{'1':name}}}}}})
         types=(8,5,8,8)+(12,)*7+(8,)+(12,)*194
         items=table(types,[('CVN',100,'NAME_A','CLOTH_225_A',*([0]*7),'GUST_USER_CASTER',*([0]*194)),
                            ('CVN',101,'NAME_B','CLOTH_225_B',*([0]*7),'GUST_USER_CASTER',*([0]*194))])
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work');exe=root/'test.exe';exe.write_bytes(b'test')
             source=fixture(root/'source.cmf',[(n,b,1,packed(b)) for n,b in [
-                ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',models),('ITEM_TEMPLET.NTF',items),('FRAME_UNIQUE_ID.LUA',frame_data)]]+[(name,binary_model(),1)])
+                ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',models),('ITEM_TEMPLET.NTF',items),('FRAME_UNIQUE_ID.LUA',frame_data),
+                ('GUST_USER_CASTER.LUA',rig_data),('SOUND_TEMPLET_FUTURE.LUA',sound_data('NEW_SOUND.OGG')),('SOUND_VOICE_TEMPLET3.LUA',sound_data('VOICE_NEW.OGG'))]]+[(name,binary_model(),1)])
             catalog.scan([source]);before=hashlib.sha256(source.read_bytes()).digest()
             with patch.object(ntf,'script_keys',return_value=(key,iv)):
                 result=build_index(catalog.workspace,exe)
@@ -169,6 +173,10 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(catalog.game_names.model_rules[name.upper()],dict(priority=1,groups=[2]))
             self.assertEqual(catalog.game_names.part_overrides[name.upper()],['FOOT'])
             self.assertEqual(catalog.game_names.frame_patterns,[['EQ_LEG2',2],['EQ_LEG',1]])
+            sounds=catalog.game_names.motion_extras['CASTER','TEST']
+            self.assertEqual(len(sounds),2);self.assertEqual({s['kind'] for s in sounds},{'sound'})
+            self.assertEqual({s['source'] for s in sounds},{'SOUND_TEMPLET_FUTURE.LUA','SOUND_VOICE_TEMPLET3.LUA'})
+            self.assertTrue(any(s['voice'] for s in sounds))
             # The web job uses the same source-based builder without a CLI step.
             from closers.server import Jobs
             jobs=Jobs(catalog)
@@ -178,6 +186,7 @@ class NtfTests(unittest.TestCase):
             self.assertFalse(jobs.thread.is_alive())
             self.assertEqual(jobs.snapshot()['status'],'completed')
             self.assertEqual(jobs.snapshot()['result']['postprocess']['steps'][0]['result']['models'],1)
+            self.assertEqual(len(catalog.game_names.motion_extras['CASTER','TEST']),2)
             self.assertIn('[A타입]',row['display_name'])
             self.assertEqual(ModelGroups(catalog).browse({'q':'B타입'})['total'],1)
             with catalog.connect() as db:

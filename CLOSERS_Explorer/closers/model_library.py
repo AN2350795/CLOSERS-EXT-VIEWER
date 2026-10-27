@@ -412,8 +412,24 @@ class Models:
     def extra_sources(self,character,clip,bones):
         import copy
         result=copy.deepcopy(self.catalog.game_names.motion_extras.get((character,clip),[]))
+        audio_names={Path(name.replace('\\','/')).name.upper() for item in result if item['kind']=='sound' for name in item.get('sound_names',[])}
+        audio_candidates={name:[] for name in audio_names}
+        if audio_names:
+            with self.catalog.connect() as db:
+                for row in db.execute('''SELECT e.id,e.name,e.ordinal,a.path archive,e.archive_id FROM entries e
+                    JOIN archives a ON a.id=e.archive_id WHERE e.flag!=2 AND e.category='audio' AND e.name COLLATE NOCASE IN ('''+','.join('?' for _ in audio_names)+')',tuple(audio_names)):
+                    audio_candidates[row['name'].upper()].append(dict(row))
         for item in result:
             if item['status']!='ready':continue
+            if item['kind']=='sound':
+                item['sounds']=[]
+                for name in item['sound_names']:
+                    filename=Path(name.replace('\\','/')).name
+                    candidates=audio_candidates.get(filename.upper(),[])
+                    item['sounds'].append(dict(name=name,candidates=candidates[:100],selected=candidates[0]['id'] if len(candidates)==1 else None))
+                item['resources']=[]
+                if any(not s['selected'] for s in item['sounds']):item.setdefault('warnings',[]).append('음원 누락 또는 출처 중복입니다. 연출 설정에서 확인하세요.')
+                continue
             if item.get('dissolve_texture'):
                 filename=Path(item['dissolve_texture'].replace('\\','/')).name
                 item['dissolve_image']=self.candidates(filename,{})
