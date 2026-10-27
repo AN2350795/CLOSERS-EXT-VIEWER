@@ -19,6 +19,16 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_large_snapshot_is_compressed_and_restores_unicode_after_eviction(self):
+        details=[dict(label='반복 보이스',source='SOUND_VOICE_TEMPLET.LUA',at=.25) for _ in range(500)]
+        encoded=json.dumps(details,ensure_ascii=False)
+        index=ExtraIndex([('STRIKER','LARGE',encoded),*(('STRIKER',str(i),'[]') for i in range(40))])
+        self.assertLess(len(index.raw['STRIKER','LARGE']),len(encoded.encode('utf-8'))//4)
+        self.assertEqual(index['STRIKER','LARGE'],details)
+        index['STRIKER','LARGE'][0]['label']='변경된 미리보기'
+        for i in range(40):index['STRIKER',str(i)]
+        self.assertEqual(index['STRIKER','LARGE'],details)
+
     def test_effect_layers_survive_mesh_and_particle_normalization(self):
         mesh=mesh_rule(dict(m_vecMeshName='PROP.X',m_Layer='ROL_EFFECT_3'))
         particle=particle_rule(dict(m_TexName='WHITE.PNG',m_Layer='ROL_EFFECT_0'))

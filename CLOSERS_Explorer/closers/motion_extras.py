@@ -1,6 +1,7 @@
 """Source-attributed props and mesh effects referenced by character motions."""
 import json
 import math
+import zlib
 from collections import defaultdict,OrderedDict
 from collections.abc import Mapping
 
@@ -8,12 +9,15 @@ from collections.abc import Mapping
 class ExtraIndex(Mapping):
     """Keep the immutable index snapshot compact; decode only requested motions."""
     def __init__(self,rows):
-        self.raw={(character,clip):details for character,clip,details in rows};self.cache=OrderedDict()
+        self.raw={};self.cache=OrderedDict()
+        for character,clip,details in rows:
+            encoded=details.encode('utf-8')
+            self.raw[character,clip]=zlib.compress(encoded,1) if len(encoded)>=2048 else details
     def __len__(self):return len(self.raw)
     def __iter__(self):return iter(self.raw)
     def __getitem__(self,key):
         if key in self.cache:self.cache.move_to_end(key);return self.cache[key]
-        value=json.loads(self.raw[key]);self.cache[key]=value
+        raw=self.raw[key];value=json.loads(zlib.decompress(raw) if isinstance(raw,bytes) else raw);self.cache[key]=value
         while len(self.cache)>32:self.cache.popitem(last=False)
         return value
 
