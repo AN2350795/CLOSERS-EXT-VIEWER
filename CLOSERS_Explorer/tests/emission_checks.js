@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMaterialPreviewMap,setMaterialPreview} from '/model-materials.js';
+import {setMaterialPreviewMap,setMaterialPreview,setMatcapPreviewMap,setMatcapPreview} from '/model-materials.js';
 import {createEmissionRenderer} from '/model-emission.js';
 const check=(v,m)=>{if(!v)throw Error(m);};
 try{
@@ -19,5 +19,14 @@ try{
   check(scene.background===background&&renderer.getRenderTarget()===null&&model.materials.every(m=>m.userData.avatarLighting.avatarEmissionPass.value===0),'render pass restores model and renderer state');
   renderer.setSize(128,64);fx.render(scene,camera,model,{bloom:true});check(!shaderError,'emission and composite shaders compile across resize');
   const aa=new T.WebGLRenderer({antialias:true});aa.setSize(96,96);aa.autoClear=false;const aaFx=createEmissionRenderer(aa);aaFx.render(scene,camera,model,{bloom:true});const aaGl=aa.getContext(),aaPixels=new Uint8Array(96*96*4);aaGl.readPixels(0,0,96,96,aaGl.RGBA,aaGl.UNSIGNED_BYTE,aaPixels);check(aaGl.getError()===aaGl.NO_ERROR&&aaPixels.some((v,i)=>i%4!==3&&v>50),'antialiased viewer can resolve selective emission targets');check(!aa.autoClear,'postprocess restores an existing auto-clear setting');aaFx.dispose();aa.dispose();
+  // A glossy costume without any emissive binding still needs a black solo
+  // pass; otherwise its normal color and MatCap can be mistaken for emission.
+  const unlitData=structuredClone(data);delete unlitData.meshes[0].materials[0].material_preview;
+  unlitData.meshes[0].materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG'};
+  const unlit=buildModel(unlitData);unlit.root.scale.z=1;scene.add(unlit.root);setMatcapPreviewMap(unlit.materials[0],map);setMatcapPreview(unlit.materials[0],true);
+  renderer.setSize(96,96);fx.render(scene,camera,unlit,{solo:true,bloom:true});const empty=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,empty);
+  check(empty.every((v,i)=>i%4===3||v===0),'no-emission costume leaked base color or MatCap into solo view');
+  check(model.root.visible&&scene.background===background&&unlit.materials.every(m=>m.userData.avatarLighting.avatarEmissionPass.value===0),'empty solo pass did not restore scene');
+  scene.remove(unlit.root);unlit.dispose();
   fx.dispose();model.dispose();map.dispose();renderer.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

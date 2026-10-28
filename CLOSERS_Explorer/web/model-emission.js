@@ -23,7 +23,7 @@ void main(){vec4 original=texture2D(baseImage,vUv);gl_FragColor=vec4((original.r
   function render(world,view,model,{bloom=true,solo=false,strength=.8,exposure=1}={}){
     const materials=model?.materials||[],ready=materials.some(m=>m.userData.materialPreview?.uniforms.avatarEmissiveMap.value);
     const active=materials.some(m=>m.userData.materialPreview?.uniforms.avatarMaterialEnabled.value>0);
-    if(!ready||(!solo&&(!bloom||!active))){renderer.render(world,view);return;}
+    if(!model||(!solo&&(!ready||!bloom||!active))){renderer.render(world,view);return;}
     renderer.getDrawingBufferSize(size);if(size.x<1||size.y<1)return;if(base.width!==size.x||base.height!==size.y){base.setSize(size.x,size.y);mask.setSize(size.x,size.y);horizontal.setSize(Math.max(1,Math.ceil(size.x/2)),Math.max(1,Math.ceil(size.y/2)));vertical.setSize(horizontal.width,horizontal.height);}
     const output=renderer.getRenderTarget(),background=world.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
     try{
