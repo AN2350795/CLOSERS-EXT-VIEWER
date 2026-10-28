@@ -33,6 +33,25 @@ try{
     model.dispose();
   }
   constant.dispose();
+  // Source values audited from LIGHT_CONVERT_DATA.NTF. These verify the
+  // viewer's comparison formula, not the game's toon lighting appearance.
+  {
+    const model=buildModel(fixture(0)),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);
+    const material=model.materials[0],index=(48*96+24)*4,original=pixels(scene);
+    setAvatarLight(material,{color:[1,1,1,1],direction:[-30,10,-100],intensity:1});
+    check(pixels(scene).every((v,i)=>v===original[i]),'unit white source lighting must leave diffuse unchanged');
+    setAvatarLight(material,{color:[.3,.3,.3,1],direction:[-30,10,-100],intensity:1.024999976158142});
+    const actual=pixels(scene),directional=100/Math.hypot(30,10,100);
+    const factor=1+(.3*1.024999976158142-1)*directional*.5;
+    for(let c=0;c<3;c++){
+      const expected=Math.round(255*linearToSrgb([.2,.1,.05][c]*factor));
+      check(Math.abs(actual[index+c]-expected)<=1,'netherworld comparison must darken diffuse by the source formula: '+c);
+      check(actual[index+c]<original[index+c],'netherworld comparison unexpectedly brightened diffuse');
+    }
+    setAvatarLight(material,null);
+    check(pixels(scene).every((v,i)=>v===original[i]),'netherworld comparison off must restore exact pixels');
+    model.dispose();
+  }
   const lightMap=new T.DataTexture(new Uint8Array([128,64,32,255]),1,1);lightMap.needsUpdate=true;
   for(const count of [0,4,5]){
     const model=buildModel(fixture(count)),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);setMaterialPreviewMap(model.materials[0],lightMap);
