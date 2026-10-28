@@ -278,12 +278,12 @@ class AvatarTypeTests(unittest.TestCase):
         other=AvatarItems.material_inputs({'texture':'OTHER.PNG'},self.registry.resolve('STRIKER:1:0',self.model))
         self.assertIsNone(matcap_preview(other))
 
-    def test_matcap_normal_is_scoped_to_current_diffuse_and_preserves_ambiguity(self):
-        rules=self.registry.texture_rules();reference=next(iter(rules));target=reference[:-4]+'.PNG'
+    def test_matcap_normal_preserves_original_resource_across_diffuse_change(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules));target='CHANGED_DIFFUSE.PNG'
         rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=self.model[:-2]+'.PNG',m_ChangeTexName=target,m_MultiTexName='CAP.PNG')}))
         self.registry.texture_rules=lambda:rules
-        name=target[:-4]+'_BUMP.PNG'
-        self.catalog.scan([fixture(self.root/'bump1.cmf',[(name,b'bump',0)])])
+        name=self.model[:-2]+'_BUMP.PNG'
+        self.catalog.scan([fixture(self.root/'bump1.cmf',[(name,b'bump',0),(target[:-4]+'_BUMP.PNG',b'wrong bump',0),(target,b'diffuse',0)])])
         item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
         def cap():return self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]['matcap_preview']
         self.assertEqual(cap()['normal_texture'],name)

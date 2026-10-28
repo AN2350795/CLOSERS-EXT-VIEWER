@@ -323,7 +323,9 @@ class Models:
                             preview=mat['matcap_preview']
                             preview['image']=self.candidates(preview['texture'],row)
                             from .model_materials import normal_texture
-                            normal=normal_texture(mat['texture'])
+                            # XET substitutes only the diffuse resource. The
+                            # original r14 normal feeds 0x141747e72/0x1415fb540.
+                            normal=normal_texture(mat.get('material_report',{}).get('source_texture') or mat['texture'])
                             if normal:
                                 info=self.candidates(normal,row)
                                 if info['candidates']:
