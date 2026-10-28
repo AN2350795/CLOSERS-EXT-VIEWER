@@ -23,6 +23,15 @@ def vector(value):
     return result if all(type(v) in (int,float) and math.isfinite(v) for v in result) else None
 
 
+def matcap_preview(inputs):
+    """Explicit XET binding only; vertex-normal preview has no game mask."""
+    texture=inputs.get('m_MultiTexName')
+    if not isinstance(texture,str) or not texture.strip():return None
+    return dict(kind='matcap',texture=texture_key(texture),status='approximate',
+                basis='XET:m_MultiTexName',normal_source='vertex',
+                limitations=['normal_map_alpha_not_bound','runtime_specular_not_bound'])
+
+
 def plan(material,item):
     from .model_items import AvatarItems
     inputs=AvatarItems.material_inputs(material,item)

@@ -3,7 +3,7 @@ import {buildModel,applyPose,restorePose} from './model-core.js';
 import {slots,partLabels} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
 import {setupPreviews} from './model-preview.js';
-import {setMaterialPreview,setMaterialPreviewMap} from './model-materials.js';
+import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreviewMap} from './model-materials.js';
 import {TextureCache,limitedMap} from './model-texture-cache.js';
 import {setupMotions} from './model-motions.js';
 import {MotionSequencePlayer} from './motion-sequence-player.js';
@@ -109,7 +109,7 @@ async function texture(id,materials,role='base'){
     const map=await textureCache.acquire(key,pixels,async()=>{
       const map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);
       if(viewerDisposed){map.dispose();throw Error('뷰어가 종료되었습니다.');}
-      map.colorSpace=THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=THREE.RepeatWrapping;
+      map.colorSpace=THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=role==='matcap'?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
       const started=performance.now();try{renderer.initTexture(map);}catch(e){map.dispose();throw e;}timings.uploadMs+=performance.now()-started;
       return map;
     });
@@ -118,16 +118,16 @@ async function texture(id,materials,role='base'){
   })());
   let map;try{map=await model.textureTasks.get(taskKey);}catch(e){model.textureTasks.delete(taskKey);throw e;}
   if(!map||state.generation!==generation||state.model!==model)return;
-  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
+  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else if(role==='matcap')setMatcapPreviewMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
 }
 function sourceSelector(info,callback){const select=element('select');select.append(element('option',info.candidates.length?'출처를 선택하세요':'일치하는 파일 없음'));select.firstChild.value='';for(const row of info.candidates){const option=element('option',row.archive+' · #'+row.ordinal);option.value=row.id;select.append(option);}if(info.selected)select.value=info.selected;select.onchange=()=>{if(select.value)operation(()=>callback(Number(select.value)));};return select;}
 async function showTextures(){
   const generation=state.generation,model=state.model;
   $('model-textures').replaceChildren();const groups=new Map();
-  for(const material of state.model.materials){for(const role of ['base','auxiliary']){const input=material.userData.input,info=role==='base'?input.image:material.userData.materialPreview?input.material_preview?.image:null;if(!info)continue;const key=role+':'+JSON.stringify(info);if(!groups.has(key))groups.set(key,{info,role,materials:[]});groups.get(key).materials.push(material);}}
+  for(const material of state.model.materials){for(const role of ['base','auxiliary','matcap']){const input=material.userData.input,info=role==='base'?input.image:role==='matcap'?material.userData.matcapPreview?input.matcap_preview?.image:null:material.userData.materialPreview?input.material_preview?.image:null;if(!info)continue;const key=role+':'+JSON.stringify(info);if(!groups.has(key))groups.set(key,{info,role,materials:[]});groups.get(key).materials.push(material);}}
   let failed=0;
   const jobs=[];
-  for(const {info,role,materials} of groups.values()){const row=element('div');row.className='model-row';row.dataset.textureRole=role;row.append(element('span',(role==='auxiliary'?'발광 미리보기 · ':'기본색 · ')+info.name));const message=element('small');const load=async id=>{if(state.generation!==generation||state.model!==model)return;message.textContent='불러오는 중…';try{await texture(id,materials,role);message.textContent=role==='auxiliary'?'발광 입력 연결 · 근사 미리보기 (bloom 미지원)':'원본 해상도 적용';}catch(e){failed++;message.textContent='텍스처 표시 실패: '+e.message;}};row.append(sourceSelector(info,load),message);$('model-textures').append(row);if(info.selected)jobs.push(()=>load(info.selected));else{failed++;message.textContent=info.candidates.length?'여러 출처가 있어 자동으로 선택하지 않았습니다.':'동일한 파일 이름의 이미지가 없습니다.';}}
+  for(const {info,role,materials} of groups.values()){const row=element('div');row.className='model-row';row.dataset.textureRole=role;row.append(element('span',({base:'기본색 · ',auxiliary:'발광 미리보기 · ',matcap:'광택 미리보기 · '}[role])+info.name));const message=element('small');const load=async id=>{if(state.generation!==generation||state.model!==model)return;message.textContent='불러오는 중…';try{await texture(id,materials,role);message.textContent=role==='base'?'원본 해상도 적용':role==='matcap'?'광택 입력 연결 · 재질 설정에서 켜기':'발광 입력 연결 · 근사 미리보기';lighting.refresh();}catch(e){failed++;message.textContent='텍스처 표시 실패: '+e.message;}};row.append(sourceSelector(info,load),message);$('model-textures').append(row);if(info.selected)jobs.push(()=>load(info.selected));else{failed++;message.textContent=info.candidates.length?'여러 출처가 있어 자동으로 선택하지 않았습니다.':'동일한 파일 이름의 이미지가 없습니다.';}}
   await limitedMap(jobs,3,run=>run());
   if(state.generation!==generation||state.model!==model)return failed;
   if(!groups.size)$('model-textures').textContent='모델에 명시된 텍스처가 없습니다.';
@@ -136,7 +136,7 @@ async function showTextures(){
   for(const report of reports.values()){
     const details=element('details');details.append(element('summary','미지원 재질 설정 · '+report.source_texture),element('p','아이템 원본: '+report.reference));
     details.append(element('p','적용하지 않음: '+report.unsupported.join(', ')));
-    for(const aux of report.textures){const info=aux.image;details.append(element('p',aux.field+' · '+aux.texture+' · '+(info?.selected?'출처 확인됨 · 효과 미적용':info?.candidates.length?'출처 중복 · 확인 필요':'원본 누락 · 확인 필요')));}
+    for(const aux of report.textures){const info=aux.image;details.append(element('p',aux.field+' · '+aux.texture+' · '+(info?.selected?(aux.field==='m_MultiTexName'?'출처 확인됨 · 광택 근사 미리보기 제공':'출처 확인됨 · 효과 미적용'):info?.candidates.length?'출처 중복 · 확인 필요':'원본 누락 · 확인 필요')));}
     const values=element('pre');values.textContent=JSON.stringify({source_values:report.source_values,inputs:report.inputs,toon_changes:report.toon_changes},null,2);details.append(values);$('model-textures').append(details);
   }
   return failed;

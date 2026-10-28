@@ -1,6 +1,7 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMaterialPreview,setMaterialPreviewMap} from '/model-materials.js';
+import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreview,setMatcapPreviewMap} from '/model-materials.js';
+import {createEmissionRenderer} from '/model-emission.js';
 import {setAvatarLight} from '/model-lighting.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});
@@ -63,6 +64,36 @@ try{
     model.bones.forEach(b=>b.rotation.y=0);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());setAvatarLight(model.materials[0],null);const restored=pixels(scene);check(restored.every((v,i)=>v===original[i]),'lighting off restores exact pixels');model.dispose();
   }
   lightMap.dispose();
+  // Vertex-normal MatCap: explicit binding, isolated surface, unchanged alpha,
+  // numerical additive color, full skinning, and no emission-mask leakage.
+  for(const count of [0,4,5]){
+    const data=fixture(count);data.meshes[0].materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG'};
+    const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);
+    const material=model.materials[0],original=pixels(scene),index=(48*96+24)*4;
+    setMatcapPreview(material,true);
+    check(pixels(scene).every((v,i)=>v===original[i]),'missing MatCap changed base');
+    const cap=new T.DataTexture(new Uint8Array([32,64,128,255]),1,1);cap.needsUpdate=true;
+    setMatcapPreviewMap(material,cap);const actual=pixels(scene);
+    for(let c=0;c<3;c++)check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255)))<=1,'MatCap numerical contribution: '+count+'/'+c);
+    for(let i=0;i<actual.length;i++)if(i%4===3||(i/4|0)%96>=48)check(actual[i]===original[i],'MatCap changed alpha or unrelated surface');
+    setMaterialPreviewMap(material,cap);const both=pixels(scene);
+    for(let c=0;c<3;c++)check(Math.abs(both[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255*(1+[1,.5,.25][c]*.9))))<=1,'MatCap and emission did not compose');
+    setMaterialPreview(material,false);
+    const emission=createEmissionRenderer(renderer);emission.render(scene,camera,model,{solo:true,bloom:false});
+    const mask=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,mask);
+    check(mask.every((v,i)=>i%4===3||v===0),'MatCap leaked into emission-only render');emission.dispose();
+    setMatcapPreview(material,true,0);check(pixels(scene).every((v,i)=>v===original[i]),'zero MatCap strength did not restore base');
+    setMatcapPreview(material,true);setMatcapPreviewMap(material,sphere);
+    if(count){
+      model.bones.forEach(b=>b.rotation.y=.4);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());
+      const rigid=buildModel({...fixture(0),meshes:data.meshes.map(m=>({...m,skin:[]}))}),reference=new T.Scene();rigid.root.scale.z=1;rigid.root.rotation.y=.4;reference.add(rigid.root);setMatcapPreviewMap(rigid.materials[0],sphere);setMatcapPreview(rigid.materials[0],true);
+      const posed=pixels(scene),expected=pixels(reference);check(posed.filter((v,i)=>Math.abs(v-expected[i])>2).length<12,'MatCap skinned normal mismatch: '+count);rigid.dispose();
+    }
+    model.bones.forEach(b=>b.rotation.y=0);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());
+    setMatcapPreview(material,false);check(pixels(scene).every((v,i)=>v===original[i]),'MatCap OFF failed to restore base');
+    setMatcapPreviewMap(model.materials[1],cap);check(!model.materials[1].userData.matcapPreview,'unbound surface acquired MatCap');
+    model.dispose();cap.dispose();
+  }
   const unverified=fixture(0);unverified.meshes[0].materials[0].material_preview={kind:'skin-sphere',status:'unsupported'};
   const unsupported=buildModel(unverified);setMaterialPreviewMap(unsupported.materials[0],sphere);
   check(!unsupported.materials[0].userData.materialPreview,'unverified skin equation was installed');unsupported.dispose();
@@ -95,7 +126,7 @@ try{
   check(pair.materials[1].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'two items share mutable uniforms');pair.dispose();
 
   // Exercise the real loader, role-specific cache, checkbox and missing maps.
-  const originalFetch=window.fetch;let missing=false,paired=false,failLighting=false;
+  const originalFetch=window.fetch;let missing=false,paired=false,failLighting=false,glossy=false;
   window.fetch=async (url,options)=>{
     const path=String(url);
     if(path.startsWith('/api/model-browser'))return new Response(JSON.stringify({total:0,items:[],facets:{character:[],kind:[],family:[],part:[],variant:[]}}));
@@ -105,6 +136,7 @@ try{
       const data=fixture(0);data.meshes[0].materials[0].image={name:'BASE.PNG',candidates:[{id:71,archive:'fixture',ordinal:0}],selected:71};
       data.meshes[0].materials[0].material_preview.image={name:'MAT_209_SKIN.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71};
       if(paired){data.meshes.forEach((m,i)=>m.source_id=i+1);data.meshes[1].materials[0].material_preview=JSON.parse(JSON.stringify(data.meshes[0].materials[0].material_preview));}
+      if(glossy){for(const m of data.meshes)m.materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG',image:{name:'CAP.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71}};}
       return new Response(JSON.stringify({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{name:'none',candidates:[]},warnings:[]}));
     }
     return originalFetch(url,options);
@@ -129,9 +161,21 @@ try{
   paired=true;checkbox.click();await modelViewer.loadModel([1]);const individual=document.querySelectorAll('#avatar-emission-items input');check(individual.length===2,'emission sources are listed by avatar/material');individual[0].click();
   check(modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0&&modelViewer.state.model.materials[1].userData.materialPreview.uniforms.avatarMaterialEnabled.value===1,'individual emission toggle does not affect another avatar material');
   checkbox.click();checkbox.click();check(modelViewer.state.model.materials[0].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'global emission toggle preserves individual exclusions');
+  glossy=true;await modelViewer.loadModel([1]);
+  const capToggle=document.getElementById('avatar-matcap-enabled'),capSlider=document.getElementById('avatar-matcap-strength');
+  check(!capToggle.disabled&&!capToggle.checked,'MatCap must be opt-in');
+  check(modelViewer.state.textures.size===3,'MatCap texture role not isolated from base/emission');
+  const capMap=modelViewer.state.textures.get('matcap:71');check(capMap!==modelViewer.state.textures.get('base:71')&&capMap.wrapS===T.ClampToEdgeWrapping&&capMap.wrapT===T.ClampToEdgeWrapping,'MatCap clamp/cache invalid');
+  capToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1),'MatCap toggle did not enable loaded maps');
+  capSlider.value='.35';capSlider.dispatchEvent(new Event('input'));check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapStrength.value===.35),'MatCap strength not applied');
+  document.querySelector('#avatar-matcap-items input').click();
+  check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'MatCap individual exclusion lost isolation');
+  capToggle.click();capToggle.click();await modelViewer.loadModel([1]);
+  check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'MatCap reload lost individual preferences');
   missing=true;await modelViewer.loadModel([1]);
+  check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'missing MatCap left a stale map enabled');
   check(modelViewer.state.model.materials[0].map&&document.getElementById('model-status').textContent.includes('텍스처 확인 필요'),'missing auxiliary lost base or notice');
-  document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&modelViewer.state.textures.size===0,'clear left preview enabled');
+  document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&capToggle.disabled&&capSlider.disabled&&modelViewer.state.textures.size===0,'clear left preview enabled');
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}
 finally{sphere.dispose();renderer.dispose();renderer.forceContextLoss();}

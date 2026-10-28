@@ -2,10 +2,19 @@ import copy
 import unittest
 
 from closers.model_items import AvatarItems
-from closers.model_materials import plan
+from closers.model_materials import plan,matcap_preview
 
 
 class MaterialPlanTests(unittest.TestCase):
+    def test_matcap_requires_an_explicit_auxiliary_binding(self):
+        self.assertIsNone(matcap_preview({}))
+        for value in (None,12,'','  '):self.assertIsNone(matcap_preview({'m_MultiTexName':value}))
+        preview=matcap_preview({'m_MultiTexName':'folder/Mat_cloth_158.png'})
+        self.assertEqual(preview['texture'],'MAT_CLOTH_158.PNG')
+        self.assertEqual(preview['status'],'approximate')
+        self.assertEqual(preview['normal_source'],'vertex')
+        self.assertIn('normal_map_alpha_not_bound',preview['limitations'])
+
     def row(self):
         return dict(m_DeviceID='A.XET',m_mapTexChange={1:dict(m_OrgTexName='BASE.TGA',m_ChangeTexName='A.PNG')},
                     m_mapEmissiveMaterial={1:dict(OrgTexName='BASE.TGA',EmissiveTexName='LIGHT.PNG',

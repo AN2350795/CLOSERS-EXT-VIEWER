@@ -235,6 +235,9 @@ class AvatarTypeTests(unittest.TestCase):
         self.assertIsNone(preview['image']['selected'])
         self.assertFalse(any('보조 재질' in warning for warning in scene['warnings']))
         self.assertIn('m_MultiTexName',scene['meshes'][0]['materials'][0]['material_report']['unsupported'])
+        cap=scene['meshes'][0]['materials'][0]['matcap_preview']
+        self.assertEqual(cap['texture'],'MAT_209_SKIN.PNG')
+        self.assertIsNone(cap['image']['selected'])
 
     def test_skin_material_follows_original_texture_and_selected_item(self):
         rules=self.registry.texture_rules();reference=next(iter(rules))
@@ -247,7 +250,9 @@ class AvatarTypeTests(unittest.TestCase):
             scene=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})
             material=scene['meshes'][0]['materials'][0]
             self.assertEqual('material_preview' in material,kind=='A')
+            self.assertEqual('matcap_preview' in material,kind=='A')
             if kind=='A':
+                self.assertEqual(material['matcap_preview']['image']['selected'],material['material_preview']['image']['selected'])
                 self.assertIsNotNone(material['material_preview']['image']['selected'])
                 self.assertEqual(material['texture'],reference[:-4]+'.PNG')
         self.assertEqual(AvatarItems.material_inputs({'texture':'UNCHANGED.PNG'},{'materials':{original:{'m_MultiTexName':'MAT_209_SKIN.PNG'}}}),{})

@@ -197,10 +197,12 @@ class Models:
                     changed=0
                     for mesh in part['meshes']:
                         for mat in mesh['materials']:
-                            from .model_materials import plan
+                            from .model_materials import plan,matcap_preview
                             report,emission=plan(mat,item)
                             mat['material_report']=report
                             inputs=AvatarItems.material_inputs(mat,item)
+                            cap=matcap_preview(inputs)
+                            if cap:mat['matcap_preview']=cap
                             multi=inputs.get('m_MultiTexName','')
                             # Keep the old preview source for inspection only.
                             if re.fullmatch(r'MAT_\d+_SKIN\.(?:PNG|TGA)',multi,re.I):
@@ -316,6 +318,9 @@ class Models:
                             if 'eye_texture_id' in mat:mat['image']['selected']=mat['eye_texture_id']
                         if 'material_preview' in mat:
                             preview=mat['material_preview']
+                            preview['image']=self.candidates(preview['texture'],row)
+                        if 'matcap_preview' in mat:
+                            preview=mat['matcap_preview']
                             preview['image']=self.candidates(preview['texture'],row)
                         for auxiliary in mat.get('material_report',{}).get('textures',[]):
                             auxiliary['image']=self.candidates(auxiliary['texture'],row)
