@@ -7,6 +7,9 @@ import test_picker_browser
 
 class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
     checks_script='matcap_source_checks.js'
+    costume_set='CLOTH_158_C'
+    capture_label='bunny'
+    require_specular=False
 
     def test_picker(self):
         from closers.catalog import Catalog
@@ -20,9 +23,9 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
         definitions=items.definitions();parts={}
         for item in definitions:
             group=classify(item['model_name']);part=group['part']
-            if item['character']=='REAPER' and item['set_name']=='CLOTH_158_C' and group['variant']=='BASE' and part in {'UPBODY','LOWBODY','FOOT'}:
+            if item['character']=='REAPER' and item['set_name']==self.costume_set and group['variant']=='BASE' and part in {'UPBODY','LOWBODY','FOOT'}:
                 parts.setdefault(part,item)
-        if len(parts)!=3:self.skipTest('Holy Night Bunny glossy costume unavailable')
+        if len(parts)!=3:self.skipTest('Local costume unavailable: '+self.costume_set)
         ids=[];keys={}
         for item in parts.values():
             matches=models.matches(item['model_name'])
@@ -39,5 +42,9 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
                     images[info['selected']]=dict(metadata,body=base64.b64encode(path.read_bytes()).decode())
         self.assertTrue(any(m.get('matcap_preview') for mesh in data['meshes'] for m in mesh['materials']))
         self.assertTrue(any(m.get('matcap_preview',{}).get('normal_image',{}).get('selected') for mesh in data['meshes'] for m in mesh['materials']))
-        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images),ensure_ascii=True)+';\n'
+        if self.require_specular:
+            values=[m['matcap_preview']['specular'] for mesh in data['meshes'] for m in mesh['materials'] if m.get('matcap_preview',{}).get('specular')]
+            self.assertEqual({v['power'] for v in values},{300.,500.,800.})
+            self.assertTrue(all(v['color']==[1.,1.,1.,1.] for v in values))
+        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular),ensure_ascii=True)+';\n'
         super().test_picker()

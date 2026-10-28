@@ -1,4 +1,4 @@
-"""Item material plans; sampler roles are never inferred from filenames.
+"""Item material plans with explicit XET and source-verified normal bindings.
 
 Source equations and unresolved bindings: docs/AVATAR_MATERIALS.md.
 """
@@ -24,12 +24,18 @@ def vector(value):
 
 
 def matcap_preview(inputs):
-    """Explicit XET binding only; vertex-normal preview has no game mask."""
+    """Keep explicit XET effects; runtime light and normal bindings are separate."""
     texture=inputs.get('m_MultiTexName')
     if not isinstance(texture,str) or not texture.strip():return None
-    return dict(kind='matcap',texture=texture_key(texture),status='approximate',
+    preview=dict(kind='matcap',texture=texture_key(texture),status='approximate',
                 basis='XET:m_MultiTexName',normal_source='vertex',
                 limitations=['normal_map_alpha_not_bound','runtime_specular_not_bound'])
+    color=vector(inputs.get('SpecularColor'));power=inputs.get('SpecularPower')
+    if color is not None and all(0<=v<=3.402823466e38 for v in color) and type(power) in (int,float) and math.isfinite(power) and 0<=power<=3.402823466e38:
+        preview['specular']=dict(color=color,power=power,status='approximate',
+                                 basis='CW_CARTOONLIGHT.PS.CSO:cb5[25:26]',light_source='viewer-camera')
+        preview['limitations']=['normal_map_alpha_not_bound','runtime_light_position_not_bound']
+    return preview
 
 
 def normal_texture(name):

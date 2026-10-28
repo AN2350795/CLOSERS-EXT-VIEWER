@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap} from '/model-materials.js';
+import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview} from '/model-materials.js';
 import {createEmissionRenderer} from '/model-emission.js';
 import {setAvatarLight} from '/model-lighting.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
@@ -64,6 +64,39 @@ try{
     model.bones.forEach(b=>b.rotation.y=0);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());setAvatarLight(model.materials[0],null);const restored=pixels(scene);check(restored.every((v,i)=>v===original[i]),'lighting off restores exact pixels');model.dispose();
   }
   lightMap.dispose();
+  // Reflection oracle uses a camera-position inspection light (L=V), the
+  // source RGB/exponent and normal alpha, independent of diffuse and emission.
+  for(const count of [0,4,5]){
+    const data=fixture(count),source=data.meshes[0].materials[0];
+    source.matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG',specular:{status:'approximate',color:[1,.5,.25,0],power:300}};
+    const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);
+    const material=model.materials[0],u=material.userData.matcapPreview.uniforms,index=(48*96+24)*4;
+    const cap=new T.DataTexture(new Uint8Array([0,0,0,255]),1,1),bump=new T.DataTexture(new Uint8Array([128,128,255,128]),1,1);cap.needsUpdate=bump.needsUpdate=true;
+    setMatcapPreviewMap(material,cap);setMatcapPreview(material,true);const original=pixels(scene);
+    setSpecularPreview(material,true);check(u.avatarSpecularEnabled.value===0,'reflection must wait for the normal mask');
+    setMatcapNormalMap(material,bump);const actual=pixels(scene);
+    const normal=new T.Vector3(1/255,1/255,1).normalize();
+    const half=new T.Vector3(-((24.5/96)*4-2),-((48.5/96)*4-2),10).normalize();
+    const term=Math.pow(Math.max(0,normal.dot(half)),300)*128/255;
+    for(let c=0;c<3;c++)check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[1,.5,.25][c]*term)))<=2,'reflection color/exponent/mask oracle: '+count+'/'+c);
+    for(let i=0;i<actual.length;i++)if(i%4===3||(i/4|0)%96>=48)check(actual[i]===original[i],'reflection changed alpha or an unrelated surface');
+    u.avatarSpecularPower.value=800;const narrow=pixels(scene);check(narrow[index]<actual[index],'higher source exponent must narrow the highlight');u.avatarSpecularPower.value=300;
+    bump.image.data[3]=0;bump.needsUpdate=true;check(pixels(scene).every((v,i)=>v===original[i]),'zero normal alpha failed to suppress reflection');
+    bump.image.data.set([0,0,0,255]);bump.needsUpdate=true;check(pixels(scene).every((v,i)=>v===original[i]),'zero normal RGB failed to suppress reflection');bump.image.data.set([128,128,255,128]);bump.needsUpdate=true;
+    setMatcapPreview(material,true,1,false);check(u.avatarSpecularEnabled.value===0&&pixels(scene).every((v,i)=>v===original[i]),'reflection cannot use an unmasked vertex-normal fallback');setMatcapPreview(material,true);
+    const emission=createEmissionRenderer(renderer);emission.render(scene,camera,model,{solo:true,bloom:true});const mask=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,mask);check(mask.every((v,i)=>i%4===3||v===0),'reflection leaked into emission/bloom');emission.dispose();
+    if(count){
+      model.bones.forEach(b=>b.rotation.y=.2);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());
+      const rigid=buildModel({...fixture(0),meshes:data.meshes.map(m=>({...m,skin:[]}))}),reference=new T.Scene();rigid.root.scale.z=1;rigid.root.rotation.y=.2;reference.add(rigid.root);
+      setMatcapPreviewMap(rigid.materials[0],cap);setMatcapNormalMap(rigid.materials[0],bump);setMatcapPreview(rigid.materials[0],true);setSpecularPreview(rigid.materials[0],true);
+      const posed=pixels(scene),expected=pixels(reference);check(posed.filter((v,i)=>Math.abs(v-expected[i])>2).length<12,'reflection skinned normal/view position mismatch: '+count);rigid.dispose();
+      model.bones.forEach(b=>b.rotation.y=0);model.root.updateMatrixWorld(true);model.skeletons.forEach(s=>s.update());
+    }
+    setSpecularPreview(material,false);check(pixels(scene).every((v,i)=>v===original[i]),'reflection OFF did not restore exact base');
+    setSpecularPreview(material,true);setMatcapPreview(material,false);check(u.avatarSpecularEnabled.value===0&&pixels(scene).every((v,i)=>v===original[i]),'master gloss toggle left reflection active');
+    setMatcapPreview(material,true,0);check(pixels(scene).every((v,i)=>v===original[i]),'zero strength left reflection visible');
+    model.dispose();cap.dispose();bump.dispose();
+  }
   // Vertex-normal MatCap: explicit binding, isolated surface, unchanged alpha,
   // numerical additive color, full skinning, and no emission-mask leakage.
   for(const count of [0,4,5]){
@@ -145,6 +178,7 @@ try{
       data.meshes[0].materials[0].material_preview.image={name:'MAT_209_SKIN.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71};
       if(paired){data.meshes.forEach((m,i)=>m.source_id=i+1);data.meshes[1].materials[0].material_preview=JSON.parse(JSON.stringify(data.meshes[0].materials[0].material_preview));}
       if(glossy){for(const m of data.meshes)m.materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG',image:{name:'CAP.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71},normal_texture:'BASE_BUMP.PNG',normal_image:{name:'BASE_BUMP.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71}};}
+      if(glossy)data.meshes[0].materials[0].matcap_preview.specular={status:'approximate',color:[1,.5,.25,1],power:300};
       return new Response(JSON.stringify({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{name:'none',candidates:[]},warnings:[]}));
     }
     return originalFetch(url,options);
@@ -178,17 +212,23 @@ try{
   const normalToggle=document.getElementById('avatar-matcap-normal'),normalMap=modelViewer.state.textures.get('matcap-normal:71');
   check(normalMap!==capMap&&normalMap!==modelViewer.state.textures.get('base:71')&&normalMap.colorSpace===T.NoColorSpace&&normalMap.wrapS===T.RepeatWrapping,'normal texture role changed data color/wrapping');
   check(!normalToggle.disabled&&normalToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value===1),'normal source was not enabled');
+  const specularToggle=document.getElementById('avatar-matcap-specular');check(!specularToggle.disabled&&!specularToggle.checked,'reflection comparison must be opt-in');
+  specularToggle.click();check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarSpecularEnabled.value===1&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0,'reflection must require source parameters on each surface');
   normalToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value===0),'normal comparison did not disable source');
+  check(specularToggle.disabled&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0),'reflection must stop when normal comparison is disabled');
   capSlider.value='.35';capSlider.dispatchEvent(new Event('input'));check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapStrength.value===.35),'MatCap strength not applied');
   document.querySelector('#avatar-matcap-items input').click();
   check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'MatCap individual exclusion lost isolation');
   capToggle.click();capToggle.click();await modelViewer.loadModel([1]);
   check(!normalToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value===0),'reload lost normal comparison preference');normalToggle.click();
+  check(specularToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0),'reflection preference or individual surface exclusion lost on reload');
+  document.querySelector('#avatar-matcap-items input').click();check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarSpecularEnabled.value===1,'excluded reflection cannot be restored');document.querySelector('#avatar-matcap-items input').click();
   check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'MatCap reload lost individual preferences');
   missing=true;await modelViewer.loadModel([1]);
   check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'missing MatCap left a stale map enabled');
+  check(specularToggle.disabled&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0),'missing textures left a stale reflection enabled');
   check(modelViewer.state.model.materials[0].map&&document.getElementById('model-status').textContent.includes('텍스처 확인 필요'),'missing auxiliary lost base or notice');
-  document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&capToggle.disabled&&capSlider.disabled&&modelViewer.state.textures.size===0,'clear left preview enabled');
+  document.getElementById('clear-model').click();check(checkbox.disabled&&note.hidden&&capToggle.disabled&&capSlider.disabled&&specularToggle.disabled&&modelViewer.state.textures.size===0,'clear left preview enabled');
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';const pre=document.createElement('pre');pre.textContent=e.stack;document.body.append(pre);}
 finally{sphere.dispose();renderer.dispose();renderer.forceContextLoss();}

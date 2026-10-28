@@ -12,7 +12,7 @@
 | m_MaskTexName | XET 렌더 경로에서 g_tMaskMap으로 바인딩 | 출처 표시. 모든 재질에 알파 마스크로 적용하지 않음 |
 | m_strDyeingMaskTexName | 별도 염색 입력 | 출처 표시, 효과 미적용 |
 | m_mapToonTexChange | 아이템의 원본 툰 이름에서 대상 툰 이름으로 변경 | 변경표 보존·표시, 효과 미적용 |
-| SpecularColor / SpecularPower | 별도 MatCap 반사 설정의 입력 | 원본 수치 표시, 효과 미적용 |
+| SpecularColor / SpecularPower | 별도 MatCap 반사 설정의 입력 | normal/MatCap이 준비된 표면에 선택형 반사 미리보기. 확인용 카메라 광원 사용 |
 | 피부 이외 보조 재질 | m_MultiTexName 입력도 아이템별로 보존 | 명시된 MatCap 입력에만 광택 근사 미리보기 제공 |
 
 미지원은 실패한 기본색 로딩과 구분한다. 발광 텍스처가 없거나 출처가 중복이면 기본색과 모델을 유지하고 확인할 항목을 안내한다. 중복 XET에서 새로 보존한 툰·발광 블록이 다르면 해당 효과만 보류한다. 기본색 변경표 자체가 충돌한 경우는 기존 오류 처리를 유지한다.
@@ -58,6 +58,23 @@
 [공식 아틀리에 안내](https://www.naddic.co.kr/ko/game/cls/notice/detail?contentNo=1230)는 이슬라 리트모 라이트에 7부위 조건을 명시한다. 신발 하나의 XET 보조 재질과 세트 광원효과를 동일시할 수 없다. [공식 GM노트](https://www.naddic.co.kr/ko/game/cls/gmNote/detail?contentNo=1232)의 자료도 동일 캐릭터·타입·카메라·조명에서의 MatCap ON/OFF 기준 화면은 아니므로 수치 대조의 정답으로 사용하지 않았다.
 
 ## 검증과 재실행
+
+### 2026-10-28 3단계: 원본 반사색·반사 지수
+
+**조명 · 재질 → 광택 켜기 → 원본 표면 굴곡·광택 마스크 사용 → 원본 반사색·반사 지수 사용 (근사)**에서 별도 반사를 켠다. 반사 설정은 최초에 꺼져 있고 이후 선택을 저장한다. 광택 강도와 표면별 제외를 함께 따르며, normal/MatCap 이미지가 누락·중복되거나 원본 normal 사용을 끄면 반사도 보류한다. X Material의 일반 specular/power를 XET 반사 수치로 대신 쓰지 않는다.
+
+XET에 `SpecularColor`와 `SpecularPower`가 모두 유효하게 지정된 표면에만 `matcap_preview.specular`를 제공한다. 설치 원본에서 이 입력을 가진 XET 정의 205개를 확인했다. 실행 파일의 `0x141747e72`~`0x141747e8b`는 표면 normal·MatCap과 별도 반사 설정을 `0x1415fb540`으로 넘기며, 이 함수는 normal 리소스 슬롯 `0x128`이 있을 때만 색 4성분·지수를 설정한다. 최신 `CW_CARTOONLIGHT.PS.CSO`는 `cb5[25].rgb` 반사색과 `cb5[26].x` 지수를 사용한다.
+
+원본 반사식은 `clamp(표면색 + SpecularColor.rgb * pow(clamp(dot(N, normalize(L+V)),0,1), SpecularPower) * normal.a,0,1)`이다. 반사색의 네 번째 성분은 광택 마스크나 투명도로 사용하지 않는다. viewer는 기존 MatCap 합성 뒤에 이 반사를 적용하고 발광은 마지막에 더한다. 게임 실행 중의 `g_v4LightPos`는 아직 연결하지 못했으므로 **카메라 위치의 확인용 광원**을 사용한다. 따라서 `L=V`, 반각 벡터는 시선 방향과 같으며 별도 거리 감쇠·임의 강도 배율은 없다. 사용자의 광택 강도(0~1)만 MatCap·반사에 함께 적용한다. 0인 지수의 경계는 일정한 반사 가중치 1로 정의한다. 툰 조명 프리셋의 방향을 위치로 오인해 대입하지 않는다.
+
+원본 TBN은 여전히 화면 미분으로 근사하고, 게임의 광원 위치·툰·후처리는 미연결이다. 이 단계는 원본 재질 반사 수치를 비교하는 기능이며 인게임 외형 일치를 보장하지 않는다. `material_report.unsupported`는 게임 전체 재현의 미지원 입력을 보존하고, 별도 미리보기 상태는 `matcap_preview.specular.status=approximate`, `light_source=viewer-camera`로 표시한다.
+
+실제 미래 아우라 픽시즈 A타입 상의·하의·신발에 지수 300/500/800, 반사색 `(1,1,1,1)`이 연결되는 것을 확인했다. 상의 엔트리 401997/normal 401999, 하의 402003/normal 401872, 신발 402004/normal 401876이다. Chromium에서 앞·옆·뒤 반사 유무·알파 보존·OFF 복원을 검증하고 `diagnostics/specular-20261028/`에 캡처를 남겼다. 원본 수치·연결 응답은 `diagnostics/specular-audit-20261028.json`, `specular-scenes-20261028.json`에 기록한다. 합성 WebGL 검사는 채널별 색·지수·알파 수치식, 지수 증가 시 하이라이트 축소, 일반/5개 가중치 스키닝, 다른 표면 격리, OFF/0 복원, 원본 normal 끄기·이미지 누락·개별 제외·선택 유지 및 발광 패스 격리를 포함한다.
+
+```powershell
+python -m unittest discover -s tests -p test_specular_source_browser.py -v
+python -m unittest discover -s tests -p test_materials_browser.py -v
+```
 
 ### 2026-10-28 2단계: 원본 normal RGB·알파 연결
 

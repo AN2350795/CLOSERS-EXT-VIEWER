@@ -1,11 +1,12 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {setMaterialPreview,setMatcapPreview} from './model-materials.js';
+import {setMaterialPreview,setMatcapPreview,setSpecularPreview} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
   const key='closers-avatar-matcap-v1';let saved={};
   try{saved=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
   let enabled=saved.enabled===true,strength=Number.isFinite(saved.strength)?Math.max(0,Math.min(1,saved.strength)):1;
   let useNormal=saved.useNormal!==false;
+  let useSpecular=saved.useSpecular===true;
   const excluded=new Set(Array.isArray(saved.excluded)?saved.excluded.filter(v=>typeof v==='string'):[]);
   let groups=[];
   const field=element('fieldset');
@@ -13,22 +14,30 @@ function setupMatcapControls({state,element,dialog}){
   dialog.querySelector('fieldset').before(field);
   const toggle=field.querySelector('#avatar-matcap-enabled'),slider=field.querySelector('#avatar-matcap-strength'),output=field.querySelector('output'),status=field.querySelector('#avatar-matcap-status'),list=field.querySelector('#avatar-matcap-items');
   const normalLabel=element('label'),normalToggle=element('input');normalToggle.id='avatar-matcap-normal';normalToggle.type='checkbox';normalToggle.checked=useNormal;normalLabel.append(normalToggle,document.createTextNode(' 원본 표면 굴곡·광택 마스크 사용'));toggle.closest('label').after(normalLabel);
-  field.querySelector('p.muted').textContent='유광 타입 등 아이템에 연결된 광택을 표시합니다. 원본 굴곡·마스크가 있으면 적용하고, 없으면 표면 방향으로 근사합니다. 게임의 반사·조명과는 차이가 있습니다. 끄면 기본 재질로 돌아갑니다.';
+  const specularLabel=element('label'),specularToggle=element('input');specularToggle.id='avatar-matcap-specular';specularToggle.type='checkbox';specularToggle.checked=useSpecular;specularLabel.append(specularToggle,document.createTextNode(' 원본 반사색·반사 지수 사용 (근사)'));normalLabel.after(specularLabel);
+  const specularStatus=element('p');specularStatus.id='avatar-specular-status';specularStatus.className='muted';specularStatus.setAttribute('role','status');specularLabel.after(specularStatus);
+  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 반사는 카메라 위치에 둔 확인용 광원을 사용하며 게임 조명과 차이가 있습니다. 원본 굴곡·마스크가 없는 부위는 MatCap만 표면 방향으로 근사합니다. 광택을 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
-  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,excluded:[...excluded]}));}catch{}}
+  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,excluded:[...excluded]}));}catch{}}
   function apply(){
     toggle.disabled=!groups.length;slider.disabled=!groups.length||!enabled;
     normalToggle.disabled=!enabled||!groups.some(g=>g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
-    let active=0;
+    const specularMaterials=groups.flatMap(g=>g.materials).filter(m=>m.userData.matcapPreview.specular);
+    const specularReady=specularMaterials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value);
+    specularToggle.disabled=!enabled||!useNormal||!specularReady;
+    specularStatus.textContent=!specularMaterials.length?'현재 아이템에 지정된 반사색·반사 지수가 없습니다.':!specularReady?'반사 설정 연결됨 · 광택·표면 굴곡 텍스처 확인 필요':!enabled?'반사를 비교하려면 광택을 켜세요.':!useNormal?'반사에는 원본 표면 굴곡·광택 마스크가 필요합니다.':useSpecular?'반사 켜짐 · 카메라 위치의 확인용 광원':'반사 꺼짐 · 켜면 MatCap과 별도의 하이라이트를 비교합니다.';
+    let active=0,specularActive=0;
     for(const group of groups){
       const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
       const on=enabled&&!excluded.has(group.key);
-      for(const m of group.materials)setMatcapPreview(m,on,strength,useNormal);
+      for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularPreview(m,useSpecular);}
       if(on&&ready&&group.visible&&strength>0)active++;
       const normal=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value>0);
       group.status.textContent=!ready?'광택 텍스처 확인 필요':!on?'광택 꺼짐':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'광택 켜짐 · 정점 법선 근사 (마스크 없음)';
+      if(on&&ready&&group.visible&&strength>0&&group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value>0)){group.status.textContent+=' · 반사 켜짐';specularActive++;}
     }
     status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
+    if(enabled&&useNormal&&specularReady&&useSpecular)specularStatus.textContent=`반사 켜짐 · 현재 표시 ${specularActive}개 · 카메라 위치의 확인용 광원`;
   }
   function refresh(){
     const found=new Map(),sources=state.data?.sources||[];
@@ -47,12 +56,14 @@ function setupMatcapControls({state,element,dialog}){
       label.append(check,element('span',group.label));group.status=element('small');group.status.className='muted';row.append(label,group.status);
       const details=element('details');details.append(element('summary','광택 적용 표면 · 출처'),element('p','표면: '+(group.input.material_report?.source_texture||group.input.texture)),element('p','MatCap: '+group.input.matcap_preview.texture),element('p','아이템 원본: '+(group.input.material_report?.reference||'')));row.append(details);list.append(row);
       if(group.input.matcap_preview.normal_texture)details.append(element('p','표면 굴곡·광택 마스크: '+group.input.matcap_preview.normal_texture));
+      const specular=group.input.matcap_preview.specular;if(specular)details.append(element('p','반사색: '+specular.color.join(', ')+' · 반사 지수: '+specular.power),element('p','반사 광원: 카메라 위치 (게임 광원 위치 미연결)'));
     }
     apply();
   }
   toggle.onchange=()=>{enabled=toggle.checked;save();apply();};
   slider.oninput=()=>{strength=Number(slider.value);output.value=strength.toFixed(2);save();apply();};
   normalToggle.onchange=()=>{useNormal=normalToggle.checked;save();apply();};
+  specularToggle.onchange=()=>{useSpecular=specularToggle.checked;save();apply();};
   return {refresh};
 }
 

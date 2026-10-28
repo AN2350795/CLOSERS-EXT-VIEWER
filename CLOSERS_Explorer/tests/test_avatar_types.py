@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from closers.catalog import Catalog
 from closers.model_items import AvatarItems
+from closers.model_materials import matcap_preview
 from closers.model_library import Models
 from test_explorer import fixture
 from test_game_names import table
@@ -262,6 +263,20 @@ class AvatarTypeTests(unittest.TestCase):
         self.catalog.scan([fixture(self.root/'material1.cmf',files),fixture(self.root/'material2.cmf',files)])
         info=self.models.candidates('MAT_209_SKIN.PNG',{'archive_id':-1})
         self.assertIsNone(info['selected']);self.assertEqual(len(info['candidates']),2)
+
+    def test_specular_parameters_follow_only_the_selected_item_and_surface(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules));original=self.model[:-2]+'.PNG'
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_MultiTexName='CAP.PNG',SpecularColor={1:1,2:.5,3:.25,4:0},SpecularPower=300)}))
+        self.registry.texture_rules=lambda:rules
+        for kind in ('A','B'):
+            item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type=kind))[0]
+            material=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]
+            if kind=='A':
+                specular=material['matcap_preview']['specular']
+                self.assertEqual(specular['color'],[1,.5,.25,0]);self.assertEqual(specular['power'],300)
+            else:self.assertNotIn('matcap_preview',material)
+        other=AvatarItems.material_inputs({'texture':'OTHER.PNG'},self.registry.resolve('STRIKER:1:0',self.model))
+        self.assertIsNone(matcap_preview(other))
 
     def test_matcap_normal_is_scoped_to_current_diffuse_and_preserves_ambiguity(self):
         rules=self.registry.texture_rules();reference=next(iter(rules));target=reference[:-4]+'.PNG'

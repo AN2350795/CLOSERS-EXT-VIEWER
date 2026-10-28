@@ -38,10 +38,11 @@ export function setMaterialPreviewMap(material,map){
 export function installMatcapPreview(material){
   const input=material.userData.input.matcap_preview;
   if(input?.kind!=='matcap'||input.status!=='approximate')return;
-  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0}};
-  material.userData.matcapPreview={uniforms,enabled:false,useNormal:true};
+  const specular=input.specular?.status==='approximate'?input.specular:null;
+  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0},avatarSpecularEnabled:{value:0},avatarSpecularColor:{value:specular?specular.color.slice(0,3):[0,0,0]},avatarSpecularPower:{value:specular?.power??1}};
+  material.userData.matcapPreview={uniforms,enabled:false,useNormal:true,specularEnabled:false,specular};
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|closers-matcap-normal-v2';
+  material.customProgramCacheKey=()=>key+'|closers-matcap-specular-v3';
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
@@ -49,7 +50,7 @@ export function installMatcapPreview(material){
       .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\navatarMatcapNormal = transformedNormal;')
       .replace('#include <uv_vertex>','#include <uv_vertex>\navatarMatcapUv = uv;')
       .replace('#include <project_vertex>','#include <project_vertex>\navatarMatcapPosition = mvPosition.xyz;');
-    shader.fragmentShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\n'+shader.fragmentShader
+    shader.fragmentShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\nuniform float avatarSpecularEnabled;\nuniform vec3 avatarSpecularColor;\nuniform float avatarSpecularPower;\n'+shader.fragmentShader
       .replace('#include <opaque_fragment>',`
 if (avatarMatcapEnabled > 0.5) {
   vec3 capNormal = normalize(avatarMatcapNormal);
@@ -71,6 +72,15 @@ if (avatarMatcapEnabled > 0.5) {
   }
   vec2 matcapUv = capNormal.xy * vec2(0.5, -0.5) + 0.5;
   outgoingLight = clamp(outgoingLight + texture2D(avatarMatcapMap, matcapUv).rgb * capMask * avatarMatcapStrength, 0.0, 1.0);
+  if (avatarSpecularEnabled > 0.5 && dot(avatarMatcapPosition,avatarMatcapPosition) > 1e-10) {
+    // Source: pow(saturate(dot(N,normalize(L+V))),power) * color * bump.a.
+    // Inspection light is at the camera, so L=V and normalize(L+V)=V.
+    // The game's runtime light position is not inferred from preset direction.
+    vec3 halfDirection = normalize(-avatarMatcapPosition);
+    float specularDot = clamp(dot(capNormal,halfDirection),0.0,1.0);
+    float specular = avatarSpecularPower == 0.0 ? 1.0 : pow(specularDot,avatarSpecularPower);
+    outgoingLight = clamp(outgoingLight + avatarSpecularColor * specular * capMask * avatarMatcapStrength,0.0,1.0);
+  }
 }
 #include <opaque_fragment>`);
   };
@@ -82,6 +92,7 @@ export function setMatcapPreview(material,enabled,strength=1,useNormal=true){
   preview.uniforms.avatarMatcapStrength.value=Number.isFinite(strength)?Math.max(0,Math.min(1,strength)):1;
   preview.uniforms.avatarMatcapEnabled.value=enabled&&preview.uniforms.avatarMatcapMap.value?1:0;
   preview.uniforms.avatarMatcapNormalEnabled.value=useNormal&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
+  preview.uniforms.avatarSpecularEnabled.value=enabled&&preview.specularEnabled&&preview.specular&&useNormal&&preview.uniforms.avatarMatcapMap.value&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
 }
 
 export function setMatcapPreviewMap(material,map){
@@ -93,5 +104,11 @@ export function setMatcapPreviewMap(material,map){
 export function setMatcapNormalMap(material,map){
   const preview=material.userData.matcapPreview;if(!preview)return;
   preview.uniforms.avatarMatcapNormalMap.value=map;
+  setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value,preview.useNormal);
+}
+
+export function setSpecularPreview(material,enabled){
+  const preview=material.userData.matcapPreview;if(!preview)return;
+  preview.specularEnabled=enabled;
   setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value,preview.useNormal);
 }

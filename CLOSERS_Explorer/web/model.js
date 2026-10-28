@@ -139,7 +139,7 @@ async function showTextures(){
   for(const material of state.model.materials){const report=material.userData.input.material_report;if(report?.unsupported.length)reports.set(JSON.stringify(report),report);}
   for(const report of reports.values()){
     const details=element('details');details.append(element('summary','미지원 재질 설정 · '+report.source_texture),element('p','아이템 원본: '+report.reference));
-    details.append(element('p','적용하지 않음: '+report.unsupported.join(', ')));
+    details.append(element('p','게임 재현 미지원: '+report.unsupported.join(', ')));
     for(const aux of report.textures){const info=aux.image;details.append(element('p',aux.field+' · '+aux.texture+' · '+(info?.selected?(aux.field==='m_MultiTexName'?'출처 확인됨 · 광택 근사 미리보기 제공':'출처 확인됨 · 효과 미적용'):info?.candidates.length?'출처 중복 · 확인 필요':'원본 누락 · 확인 필요')));}
     const values=element('pre');values.textContent=JSON.stringify({source_values:report.source_values,inputs:report.inputs,toon_changes:report.toon_changes},null,2);details.append(values);$('model-textures').append(details);
   }

@@ -6,6 +6,21 @@ from closers.model_materials import plan,matcap_preview,normal_texture
 
 
 class MaterialPlanTests(unittest.TestCase):
+    def test_specular_preview_requires_explicit_valid_material_values(self):
+        inputs=dict(m_MultiTexName='CAP.PNG',SpecularColor={1:1,2:.5,3:.25,4:0},SpecularPower=300)
+        specular=matcap_preview(inputs)['specular']
+        self.assertEqual(specular['color'],[1,.5,.25,0])
+        self.assertEqual(specular['power'],300)
+        self.assertEqual(specular['light_source'],'viewer-camera')
+        for field in ('SpecularColor','SpecularPower'):
+            missing=dict(inputs);missing.pop(field)
+            self.assertNotIn('specular',matcap_preview(missing))
+        for power in (-1,float('nan'),float('inf'),True,'300',1e39):
+            self.assertNotIn('specular',matcap_preview(dict(inputs,SpecularPower=power)))
+        for color in ({1:1,2:1,3:1},{1:-1,2:1,3:1,4:1},{1:float('nan'),2:1,3:1,4:1}):
+            self.assertNotIn('specular',matcap_preview(dict(inputs,SpecularColor=color)))
+        self.assertIsNone(matcap_preview({k:v for k,v in inputs.items() if k!='m_MultiTexName'}))
+
     def test_normal_texture_follows_verified_bump_insertion_rule(self):
         self.assertEqual(normal_texture('folder/Base.tga'),'BASE_BUMP.TGA')
         self.assertEqual(normal_texture('Base.PNG'),'BASE_BUMP.PNG')
