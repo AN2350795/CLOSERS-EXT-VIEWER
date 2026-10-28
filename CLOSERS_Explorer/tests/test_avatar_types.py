@@ -264,6 +264,31 @@ class AvatarTypeTests(unittest.TestCase):
         info=self.models.candidates('MAT_209_SKIN.PNG',{'archive_id':-1})
         self.assertIsNone(info['selected']);self.assertEqual(len(info['candidates']),2)
 
+    def test_toon_texture_uses_model_power_and_selected_item_mapping(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules))
+        rules[reference]['toon_changes']={1:dict(m_OrgToonTex='CTT_BASIC0',m_ChangeToonTex='CTT_BASIC_BLUE7')}
+        self.registry.texture_rules=lambda:rules
+        self.catalog.scan([fixture(self.root/'toon1.cmf',[('CTT_BASIC_WHITE_BLUE2.BMP',b'toon',0)])])
+        for kind in ('A','B'):
+            item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type=kind))[0]
+            p=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]['toon_preview']
+            self.assertEqual(p['source_index'],0)
+            self.assertEqual(p['index'],7 if kind=='A' else 0)
+            if kind=='A':self.assertIsNotNone(p['image']['selected'])
+        self.catalog.scan([fixture(self.root/'toon2.cmf',[('CTT_BASIC_WHITE_BLUE2.BMP',b'toon2',0)])])
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        p=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]['toon_preview']
+        self.assertIsNone(p['image']['selected']);self.assertEqual(len(p['image']['candidates']),2)
+        bare=self.models.scene([item['id']])['meshes'][0]['materials'][0]['toon_preview']
+        self.assertEqual(bare['index'],0)
+
+    def test_toon_does_not_install_on_face_sdf_or_non_avatar_models(self):
+        for name in (self.model.replace('UPBODY','FACE'),'UNCLASSIFIED.X'):
+            self.catalog.scan([fixture(self.root/(name+'.cmf'),[(name,binary_model('BASE.PNG'),0)])])
+            entry=self.models.matches(name)[0]['id']
+            material=self.models.scene([entry])['meshes'][0]['materials'][0]
+            self.assertNotIn('toon_preview',material)
+
     def test_specular_parameters_follow_only_the_selected_item_and_surface(self):
         rules=self.registry.texture_rules();reference=next(iter(rules));original=self.model[:-2]+'.PNG'
         rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_MultiTexName='CAP.PNG',SpecularColor={1:1,2:.5,3:.25,4:0},SpecularPower=300)}))

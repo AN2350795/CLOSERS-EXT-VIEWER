@@ -182,6 +182,7 @@ class Models:
             for entry_id in entry_ids:
                 body,row,source = self.read(entry_id,'x')
                 part = self.parse(body,source,'x')
+                item=None
                 if str(entry_id) in items:
                     from .model_items import AvatarItems
                     if not hasattr(self.groups,'items'):self.groups.items=AvatarItems(self.catalog)
@@ -213,6 +214,13 @@ class Models:
                                 if not self.matches(target):raise ValueError('선택한 타입의 텍스처가 없습니다: '+target)
                                 mat['texture']=target;changed+=1
                     if item['textures'] and not changed:part['warnings'].append('선택한 타입의 텍스처 변경 대상이 이 메시에는 없습니다.')
+                group=classify(row['name'])
+                if group['kind']=='avatar' and group['part']!='FACE':
+                    from .model_toon import toon_preview
+                    for mesh in part['meshes']:
+                        for mat in mesh['materials']:
+                            toon=toon_preview(mat,item)
+                            if toon:mat['toon_preview']=toon
                 if eye and entry_id==eye_face:
                     source['display_name']=eye['label']
                     if not eye['basic']:
@@ -318,6 +326,9 @@ class Models:
                             if 'eye_texture_id' in mat:mat['image']['selected']=mat['eye_texture_id']
                         if 'material_preview' in mat:
                             preview=mat['material_preview']
+                            preview['image']=self.candidates(preview['texture'],row)
+                        if mat.get('toon_preview',{}).get('status')=='approximate':
+                            preview=mat['toon_preview']
                             preview['image']=self.candidates(preview['texture'],row)
                         if 'matcap_preview' in mat:
                             preview=mat['matcap_preview']

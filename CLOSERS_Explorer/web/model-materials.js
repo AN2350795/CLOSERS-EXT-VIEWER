@@ -16,6 +16,7 @@ export function installMaterialPreview(material){
       .replace('#include <uv_vertex>','#include <uv_vertex>\navatarMaterialUv = uv;');
     shader.fragmentShader='varying vec2 avatarMaterialUv;\nuniform sampler2D avatarEmissiveMap;\nuniform float avatarMaterialEnabled;\nuniform vec3 avatarEmissiveColor;\nuniform float avatarEmissiveStrength;\n'+shader.fragmentShader
       .replace('#include <opaque_fragment>',`
+/* avatar_surface_end */
 if (avatarMaterialEnabled > 0.5) {
   outgoingLight += texture2D(avatarEmissiveMap, avatarMaterialUv).rgb * avatarEmissiveColor * avatarEmissiveStrength;
 }

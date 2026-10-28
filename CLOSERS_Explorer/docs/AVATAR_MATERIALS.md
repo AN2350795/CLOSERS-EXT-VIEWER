@@ -6,12 +6,13 @@
 
 | 입력 | 확인한 의미 | 현재 표시 |
 | --- | --- | --- |
-| X Material의 power, specular RGB, emissive RGB | X 파일에 보관된 원본 수치 | API에 보존. 게임의 활성 조건 확인 없이 조명 값으로 적용하지 않음 |
+| 아바타 X Material의 power | 게임 렌더러가 shininess를 정수로 잘라 툰 번호로 사용 | 원본 툰 할당에 사용. XET의 SpecularPower와 구분 |
+| X Material의 specular RGB, emissive RGB | X 파일에 보관된 원본 수치 | API에 보존. XET 반사·발광 수치로 대체 사용하지 않음 |
 | XET m_mapEmissiveMaterial | OrgTexName별 EmissiveTexName, RGBA, fEmissiveStrength | 선택한 아이템의 원본 텍스처에만 발광 미리보기 연결 |
 | m_MultiTexName | XET 렌더 경로에서 MatCap으로 바인딩 | 선택형 광택 근사 미리보기. 게임의 전체 재질 분기는 미지원 |
 | m_MaskTexName | XET 렌더 경로에서 g_tMaskMap으로 바인딩 | 출처 표시. 모든 재질에 알파 마스크로 적용하지 않음 |
 | m_strDyeingMaskTexName | 별도 염색 입력 | 출처 표시, 효과 미적용 |
-| m_mapToonTexChange | 아이템의 원본 툰 이름에서 대상 툰 이름으로 변경 | 변경표 보존·표시, 효과 미적용 |
+| m_mapToonTexChange | 아이템의 원본 툰 번호에서 대상 툰 번호로 변경 | 선택한 아이템/표면에 원본 툰 근사 미리보기 적용. 불명확한 변경은 보류 |
 | SpecularColor / SpecularPower | 별도 MatCap 반사 설정의 입력 | normal/MatCap이 준비된 표면에 선택형 반사 미리보기. 확인용 카메라 광원 사용 |
 | 피부 이외 보조 재질 | m_MultiTexName 입력도 아이템별로 보존 | 명시된 MatCap 입력에만 광택 근사 미리보기 제공 |
 
@@ -58,6 +59,22 @@
 [공식 아틀리에 안내](https://www.naddic.co.kr/ko/game/cls/notice/detail?contentNo=1230)는 이슬라 리트모 라이트에 7부위 조건을 명시한다. 신발 하나의 XET 보조 재질과 세트 광원효과를 동일시할 수 없다. [공식 GM노트](https://www.naddic.co.kr/ko/game/cls/gmNote/detail?contentNo=1232)의 자료도 동일 캐릭터·타입·카메라·조명에서의 MatCap ON/OFF 기준 화면은 아니므로 수치 대조의 정답으로 사용하지 않았다.
 
 ## 검증과 재실행
+
+### 2026-10-28 4단계: 원본 툰 연결과 의상 조명
+
+**조명 · 재질 → 원본 툰 음영 켜기 → 의상 조명 선택**으로 사용한다. 최초에는 꺼져 있으며, 기존 색상 수치 비교와 상호 배타적이다. 모델·타입 변경 후에도 선택한 모드·조명·밝기를 유지하고, 원본 조명 목록 갱신에 실패하면 이전 조명을 남기지 않는다. 누락·중복 툰 이미지는 기본 재질을 유지한다. 적용/미지원 상태와 표면별 원본 번호·변경 번호·실제 텍스처를 접힌 상세에서 확인한다. 얼굴은 SDF 분기가 별도로 필요해 이번 단계에서 제외하고, 일반 NPC·몬스터에도 아바타 규칙을 임의 적용하지 않는다.
+
+이전에는 X Material `power`와 툰 할당의 연결을 확인하지 못했으나, 렌더 코드 `0x1417498de`는 Assimp 재질의 `$mat.shininess`를 읽고 `0x1417498ef`에서 정수로 자른다. XET 변경표 조회 함수 `0x14171d280`을 한 번 거친 번호가 `0x1415fcd10`으로 전달된다. `power`는 이 경로에서 반사 지수가 아니라 **툰 번호**이며, XET의 `SpecularPower`와 다르다. 범위는 0~15다. 런타임 강제 피격 모드는 구현하지 않는다.
+
+툰 enum 등록(`0x14185dcff` 이후)과 실제 텍스처 선택 점프 테이블(`0x1415fce54`)을 대조했다. 0/5/10은 `CTT_BASIC0.BMP`, 1/6/11은 `CTT_BASIC_SKIN1.BMP`, 2/7/12는 `CTT_BASIC_WHITE_BLUE2.BMP`, 3/8/13은 `CTT_BASIC_MAGENTA3.BMP`, 4/9/14는 `CTT_BASIC_YELLOW4.BMP`, 15는 `CTT_DAMAGE.BMP`를 선택한다. `CTT_BASIC_BLUE7`처럼 동일 이름 BMP가 없는 경우도 이 런타임 매핑으로 해석한다. XET의 오타·알 수 없는 enum·해당 원본 번호의 누락된 변경 대상·충돌은 임의 보정하지 않고 보류한다. 연결 자체가 없는 정상 재질은 X의 원래 툰을 사용한다.
+
+최신 VS대로 스키닝 후 정규화된 정점 법선과 정규화된 조명 방향의 내적을 **정점에서** 계산한다. 이 값을 보간해 `(dot,dot)` 좌표로 툰 맵을 읽는다. half-Lambert나 fragment에서 재정규화한 법선으로 바꾸지 않는다. 가장자리 고정(ClampToEdge)으로 음수 내적을 처리하고 sRGB 이미지로 읽는다. 색공간의 인게임 일치는 아직 검증하지 않았다. `clamp(toon.rgb * 음영 밝기,0,1) * 조명색.rgb * 조명강도`를 MatCap·반사까지 포함한 표면색에 곱하고, 발광은 이후 독립적으로 더한다. 게임의 전체 주변광·glow·rim·전역 specular·SDF·후처리는 포함하지 않는다. 런타임 `CartoonPow`도 미연결이므로 밝기 기본 1은 확인용 값이며 0~2로 비교한다. 조명 프리셋의 착용/옷장 조건은 자동 판정하지 않는다.
+
+실제 미래 아우라 픽시즈 B타입의 상의·하의·신발에서 원본/변경 툰과 BMP를 연결했다. 예를 들어 상의의 12번은 3번으로, 2번은 4번으로 변경된다. Chromium에서 앞·옆·뒤, 중립/황천의 사자 원본 조명, 알파 보존·OFF 복원을 검증했다. `diagnostics/toon-20261028/`에 캡처하고 `toon-audit-20261028.json`, `toon-scenes-20261028.json`에 연결 메타데이터를 보관한다. 합성 검사는 raw 내적·정점 보간·일반/다중 가중치 스키닝, 채널별 툰 수치식·밝기 포화, MatCap 이후/발광 이전 합성, 발광 전용 패스 격리, 두 조명 모드의 상호 배제·로딩 실패/재시도·선택 유지·초기화를 확인한다.
+
+```powershell
+python -m unittest discover -s tests -p 'test_toon*.py' -v
+```
 
 ### 2026-10-28 3단계: 원본 반사색·반사 지수
 

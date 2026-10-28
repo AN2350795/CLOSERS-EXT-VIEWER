@@ -10,6 +10,7 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
     costume_set='CLOTH_158_C'
     capture_label='bunny'
     require_specular=False
+    require_toon=False
 
     def test_picker(self):
         from closers.catalog import Catalog
@@ -34,7 +35,9 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
         data=models.scene(ids,items=keys);images={};composition=CompositionImages(catalog)
         for mesh in data['meshes']:
             for material in mesh['materials']:
-                for info in [material.get('image'),material.get('matcap_preview',{}).get('image'),material.get('matcap_preview',{}).get('normal_image')]:
+                infos=[material.get('image'),material.get('matcap_preview',{}).get('image'),material.get('matcap_preview',{}).get('normal_image')]
+                if self.require_toon:infos.append(material.get('toon_preview',{}).get('image'))
+                for info in infos:
                     if not info:continue
                     self.assertIsNotNone(info['selected'])
                     if info['selected'] in images:continue
@@ -46,5 +49,11 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
             values=[m['matcap_preview']['specular'] for mesh in data['meshes'] for m in mesh['materials'] if m.get('matcap_preview',{}).get('specular')]
             self.assertEqual({v['power'] for v in values},{300.,500.,800.})
             self.assertTrue(all(v['color']==[1.,1.,1.,1.] for v in values))
-        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular),ensure_ascii=True)+';\n'
+        toon_profiles=[]
+        if self.require_toon:
+            from closers.avatar_lighting import read_profiles
+            profiles=read_profiles(items.data)['profiles']
+            toon_profiles=[next(p for p in profiles if p['key']==key) for key in ('CVN_SKIN_COMMON:1411','CVN_COSTUME_UNIQUE_NETHERWORLD:211')]
+            self.assertTrue(any(m.get('toon_preview',{}).get('source_index')!=m.get('toon_preview',{}).get('index') for mesh in data['meshes'] for m in mesh['materials']))
+        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular,toonProfiles=toon_profiles),ensure_ascii=True)+';\n'
         super().test_picker()
