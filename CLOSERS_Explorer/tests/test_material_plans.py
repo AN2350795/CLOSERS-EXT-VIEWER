@@ -2,10 +2,17 @@ import copy
 import unittest
 
 from closers.model_items import AvatarItems
-from closers.model_materials import plan,matcap_preview
+from closers.model_materials import plan,matcap_preview,normal_texture
 
 
 class MaterialPlanTests(unittest.TestCase):
+    def test_normal_texture_follows_verified_bump_insertion_rule(self):
+        self.assertEqual(normal_texture('folder/Base.tga'),'BASE_BUMP.TGA')
+        self.assertEqual(normal_texture('Base.PNG'),'BASE_BUMP.PNG')
+        self.assertIsNone(normal_texture(None))
+        self.assertIsNone(normal_texture('BASE'))
+        self.assertIsNone(normal_texture('BASE.JPEG'))
+
     def test_matcap_requires_an_explicit_auxiliary_binding(self):
         self.assertIsNone(matcap_preview({}))
         for value in (None,12,'','  '):self.assertIsNone(matcap_preview({'m_MultiTexName':value}))

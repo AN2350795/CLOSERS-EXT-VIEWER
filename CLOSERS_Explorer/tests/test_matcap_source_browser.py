@@ -31,12 +31,13 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
         data=models.scene(ids,items=keys);images={};composition=CompositionImages(catalog)
         for mesh in data['meshes']:
             for material in mesh['materials']:
-                for info in [material.get('image'),material.get('matcap_preview',{}).get('image')]:
+                for info in [material.get('image'),material.get('matcap_preview',{}).get('image'),material.get('matcap_preview',{}).get('normal_image')]:
                     if not info:continue
                     self.assertIsNotNone(info['selected'])
                     if info['selected'] in images:continue
                     path,metadata=composition.prepare(info['selected'])
                     images[info['selected']]=dict(metadata,body=base64.b64encode(path.read_bytes()).decode())
         self.assertTrue(any(m.get('matcap_preview') for mesh in data['meshes'] for m in mesh['materials']))
+        self.assertTrue(any(m.get('matcap_preview',{}).get('normal_image',{}).get('selected') for mesh in data['meshes'] for m in mesh['materials']))
         self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images),ensure_ascii=True)+';\n'
         super().test_picker()

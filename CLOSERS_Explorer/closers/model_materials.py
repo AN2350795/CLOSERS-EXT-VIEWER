@@ -32,6 +32,13 @@ def matcap_preview(inputs):
                 limitations=['normal_map_alpha_not_bound','runtime_specular_not_bound'])
 
 
+def normal_texture(name):
+    # CW.EXE 0x1417156a0, type 4: insert "_BUMP" before the final
+    # four-character extension. Do not substitute a similarly named texture.
+    name=texture_key(name);path=Path(name)
+    return path.stem+'_BUMP'+path.suffix if len(path.suffix)==4 else None
+
+
 def plan(material,item):
     from .model_items import AvatarItems
     inputs=AvatarItems.material_inputs(material,item)

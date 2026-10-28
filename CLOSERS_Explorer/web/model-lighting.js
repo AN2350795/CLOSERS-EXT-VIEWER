@@ -5,23 +5,28 @@ function setupMatcapControls({state,element,dialog}){
   const key='closers-avatar-matcap-v1';let saved={};
   try{saved=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
   let enabled=saved.enabled===true,strength=Number.isFinite(saved.strength)?Math.max(0,Math.min(1,saved.strength)):1;
+  let useNormal=saved.useNormal!==false;
   const excluded=new Set(Array.isArray(saved.excluded)?saved.excluded.filter(v=>typeof v==='string'):[]);
   let groups=[];
   const field=element('fieldset');
   field.innerHTML='<legend>광택 미리보기</legend><label><input id="avatar-matcap-enabled" type="checkbox"> 광택 켜기 (근사)</label><label>광택 강도<input id="avatar-matcap-strength" type="range" min="0" max="1" step="0.05"><output id="avatar-matcap-strength-value"></output></label><p class="muted">유광 타입 등 선택한 아이템에 연결된 MatCap을 표면 방향에 따라 표시합니다. 게임의 부위별 광택 마스크와 반사까지 재현하지 않아 적용 범위·밝기가 다를 수 있습니다. 끄면 기본 재질로 돌아갑니다.</p><p id="avatar-matcap-status" role="status"></p><div id="avatar-matcap-items"></div>';
   dialog.querySelector('fieldset').before(field);
   const toggle=field.querySelector('#avatar-matcap-enabled'),slider=field.querySelector('#avatar-matcap-strength'),output=field.querySelector('output'),status=field.querySelector('#avatar-matcap-status'),list=field.querySelector('#avatar-matcap-items');
+  const normalLabel=element('label'),normalToggle=element('input');normalToggle.id='avatar-matcap-normal';normalToggle.type='checkbox';normalToggle.checked=useNormal;normalLabel.append(normalToggle,document.createTextNode(' 원본 표면 굴곡·광택 마스크 사용'));toggle.closest('label').after(normalLabel);
+  field.querySelector('p.muted').textContent='유광 타입 등 아이템에 연결된 광택을 표시합니다. 원본 굴곡·마스크가 있으면 적용하고, 없으면 표면 방향으로 근사합니다. 게임의 반사·조명과는 차이가 있습니다. 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
-  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,excluded:[...excluded]}));}catch{}}
+  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,excluded:[...excluded]}));}catch{}}
   function apply(){
     toggle.disabled=!groups.length;slider.disabled=!groups.length||!enabled;
+    normalToggle.disabled=!enabled||!groups.some(g=>g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
     let active=0;
     for(const group of groups){
       const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
       const on=enabled&&!excluded.has(group.key);
-      for(const m of group.materials)setMatcapPreview(m,on,strength);
+      for(const m of group.materials)setMatcapPreview(m,on,strength,useNormal);
       if(on&&ready&&group.visible&&strength>0)active++;
-      group.status.textContent=!ready?'광택 텍스처 확인 필요':!on?'광택 꺼짐':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':'광택 켜짐 · 근사';
+      const normal=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value>0);
+      group.status.textContent=!ready?'광택 텍스처 확인 필요':!on?'광택 꺼짐':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'광택 켜짐 · 정점 법선 근사 (마스크 없음)';
     }
     status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
   }
@@ -41,11 +46,13 @@ function setupMatcapControls({state,element,dialog}){
       check.onchange=()=>{if(check.checked)excluded.delete(group.key);else excluded.add(group.key);save();apply();};
       label.append(check,element('span',group.label));group.status=element('small');group.status.className='muted';row.append(label,group.status);
       const details=element('details');details.append(element('summary','광택 적용 표면 · 출처'),element('p','표면: '+(group.input.material_report?.source_texture||group.input.texture)),element('p','MatCap: '+group.input.matcap_preview.texture),element('p','아이템 원본: '+(group.input.material_report?.reference||'')));row.append(details);list.append(row);
+      if(group.input.matcap_preview.normal_texture)details.append(element('p','표면 굴곡·광택 마스크: '+group.input.matcap_preview.normal_texture));
     }
     apply();
   }
   toggle.onchange=()=>{enabled=toggle.checked;save();apply();};
   slider.oninput=()=>{strength=Number(slider.value);output.value=strength.toFixed(2);save();apply();};
+  normalToggle.onchange=()=>{useNormal=normalToggle.checked;save();apply();};
   return {refresh};
 }
 

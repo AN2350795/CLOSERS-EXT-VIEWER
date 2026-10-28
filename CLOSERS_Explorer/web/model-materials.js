@@ -33,39 +33,65 @@ export function setMaterialPreviewMap(material,map){
   preview.uniforms.avatarEmissiveMap.value=map;setMaterialPreview(material,preview.enabled);
 }
 
-// Opt-in vertex-normal MatCap approximation. The runtime normal-map alpha,
-// tangent basis and specular branch are not inferred from diffuse filenames.
+// Opt-in MatCap approximation. Explicitly resolved _BUMP RGB/alpha provide
+// normals and the gloss mask; absent maps retain the vertex-normal preview.
 export function installMatcapPreview(material){
   const input=material.userData.input.matcap_preview;
   if(input?.kind!=='matcap'||input.status!=='approximate')return;
-  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1}};
-  material.userData.matcapPreview={uniforms,enabled:false};
+  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0}};
+  material.userData.matcapPreview={uniforms,enabled:false,useNormal:true};
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|closers-vertex-matcap-v1';
+  material.customProgramCacheKey=()=>key+'|closers-matcap-normal-v2';
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);Object.assign(shader.uniforms,uniforms);
-    shader.vertexShader='varying vec3 avatarMatcapNormal;\n'+shader.vertexShader
+    shader.vertexShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
       .replace('#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )','#if 1')
-      .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\navatarMatcapNormal = transformedNormal;');
-    shader.fragmentShader='varying vec3 avatarMatcapNormal;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\n'+shader.fragmentShader
+      .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\navatarMatcapNormal = transformedNormal;')
+      .replace('#include <uv_vertex>','#include <uv_vertex>\navatarMatcapUv = uv;')
+      .replace('#include <project_vertex>','#include <project_vertex>\navatarMatcapPosition = mvPosition.xyz;');
+    shader.fragmentShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\n'+shader.fragmentShader
       .replace('#include <opaque_fragment>',`
 if (avatarMatcapEnabled > 0.5) {
-  vec2 matcapUv = normalize(avatarMatcapNormal).xy * vec2(0.5, -0.5) + 0.5;
-  outgoingLight = clamp(outgoingLight + texture2D(avatarMatcapMap, matcapUv).rgb * avatarMatcapStrength, 0.0, 1.0);
+  vec3 capNormal = normalize(avatarMatcapNormal);
+  float capMask = 1.0;
+  if (avatarMatcapNormalEnabled > 0.5) {
+    vec4 bump = texture2D(avatarMatcapNormalMap, avatarMatcapUv);
+    capMask = any(greaterThan(bump.rgb, vec3(0.0))) ? bump.a : 0.0;
+    vec3 mapNormal = bump.rgb * 2.0 - 1.0;
+    vec3 dp1 = dFdx(avatarMatcapPosition), dp2 = dFdy(avatarMatcapPosition);
+    vec2 duv1 = dFdx(avatarMatcapUv), duv2 = dFdy(avatarMatcapUv);
+    float determinant = duv1.x * duv2.y - duv1.y * duv2.x;
+    vec3 tangent = dp1 * duv2.y - dp2 * duv1.y;
+    vec3 bitangent = -dp1 * duv2.x + dp2 * duv1.x;
+    if (abs(determinant) > 1e-10 && dot(tangent,tangent) > 1e-10 && dot(bitangent,bitangent) > 1e-10 && dot(mapNormal,mapNormal) > 1e-10) {
+      tangent = normalize(tangent) * sign(determinant);
+      bitangent = normalize(bitangent) * sign(determinant);
+      capNormal = normalize(mat3(tangent,bitangent,capNormal) * normalize(mapNormal));
+    }
+  }
+  vec2 matcapUv = capNormal.xy * vec2(0.5, -0.5) + 0.5;
+  outgoingLight = clamp(outgoingLight + texture2D(avatarMatcapMap, matcapUv).rgb * capMask * avatarMatcapStrength, 0.0, 1.0);
 }
 #include <opaque_fragment>`);
   };
 }
 
-export function setMatcapPreview(material,enabled,strength=1){
+export function setMatcapPreview(material,enabled,strength=1,useNormal=true){
   const preview=material.userData.matcapPreview;if(!preview)return;
-  preview.enabled=enabled;
+  preview.enabled=enabled;preview.useNormal=useNormal;
   preview.uniforms.avatarMatcapStrength.value=Number.isFinite(strength)?Math.max(0,Math.min(1,strength)):1;
   preview.uniforms.avatarMatcapEnabled.value=enabled&&preview.uniforms.avatarMatcapMap.value?1:0;
+  preview.uniforms.avatarMatcapNormalEnabled.value=useNormal&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
 }
 
 export function setMatcapPreviewMap(material,map){
   const preview=material.userData.matcapPreview;if(!preview)return;
   preview.uniforms.avatarMatcapMap.value=map;
-  setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value);
+  setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value,preview.useNormal);
+}
+
+export function setMatcapNormalMap(material,map){
+  const preview=material.userData.matcapPreview;if(!preview)return;
+  preview.uniforms.avatarMatcapNormalMap.value=map;
+  setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value,preview.useNormal);
 }

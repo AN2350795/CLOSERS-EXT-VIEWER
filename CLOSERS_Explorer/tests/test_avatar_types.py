@@ -263,6 +263,20 @@ class AvatarTypeTests(unittest.TestCase):
         info=self.models.candidates('MAT_209_SKIN.PNG',{'archive_id':-1})
         self.assertIsNone(info['selected']);self.assertEqual(len(info['candidates']),2)
 
+    def test_matcap_normal_is_scoped_to_current_diffuse_and_preserves_ambiguity(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules));target=reference[:-4]+'.PNG'
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=self.model[:-2]+'.PNG',m_ChangeTexName=target,m_MultiTexName='CAP.PNG')}))
+        self.registry.texture_rules=lambda:rules
+        name=target[:-4]+'_BUMP.PNG'
+        self.catalog.scan([fixture(self.root/'bump1.cmf',[(name,b'bump',0)])])
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        def cap():return self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]['matcap_preview']
+        self.assertEqual(cap()['normal_texture'],name)
+        self.assertIsNotNone(cap()['normal_image']['selected'])
+        self.catalog.scan([fixture(self.root/'bump2.cmf',[(name,b'bump2',0)])])
+        self.assertIsNone(cap()['normal_image']['selected'])
+        self.assertEqual(len(cap()['normal_image']['candidates']),2)
+
     def test_emissive_material_is_item_specific_and_missing_map_keeps_base(self):
         rules=self.registry.texture_rules();reference=next(iter(rules));original=self.model[:-2]+'.PNG'
         rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_ChangeTexName=reference[:-4]+'.PNG')},

@@ -322,6 +322,14 @@ class Models:
                         if 'matcap_preview' in mat:
                             preview=mat['matcap_preview']
                             preview['image']=self.candidates(preview['texture'],row)
+                            from .model_materials import normal_texture
+                            normal=normal_texture(mat['texture'])
+                            if normal:
+                                info=self.candidates(normal,row)
+                                if info['candidates']:
+                                    preview.update(normal_texture=normal,normal_image=info,normal_source='bump-texture',
+                                                   normal_basis='CW.EXE:0x1417156a0:type4:_BUMP',
+                                                   limitations=['derived_tangent_basis','runtime_specular_not_bound'])
                         for auxiliary in mat.get('material_report',{}).get('textures',[]):
                             auxiliary['image']=self.candidates(auxiliary['texture'],row)
                     # Helper/collision geometry remains available as a toggle.

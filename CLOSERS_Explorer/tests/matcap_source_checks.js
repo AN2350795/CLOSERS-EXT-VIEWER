@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMatcapPreview,setMatcapPreviewMap} from '/model-materials.js';
+import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap} from '/model-materials.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
   const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});renderer.setSize(512,512);renderer.setClearColor(0x202630);renderer.outputColorSpace=T.SRGBColorSpace;
@@ -16,6 +16,7 @@ try{
     if(input.image?.selected){material.map=maps.get(input.image.selected);material.map.wrapS=material.map.wrapT=T.RepeatWrapping;material.color.set(0xffffff);material.needsUpdate=true;}
     if(material.userData.matcapPreview){
       const map=maps.get(input.matcap_preview.image.selected);check(map,'original MatCap map resolved');map.wrapS=map.wrapT=T.ClampToEdgeWrapping;setMatcapPreviewMap(material,map);
+      if(input.matcap_preview.normal_image?.selected){const bump=maps.get(input.matcap_preview.normal_image.selected);check(bump,'original normal map resolved');bump.colorSpace=T.NoColorSpace;bump.wrapS=bump.wrapT=T.RepeatWrapping;setMatcapNormalMap(material,bump);}
     }
   }
   const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);
@@ -28,6 +29,8 @@ try{
     model.materials.forEach(m=>setMatcapPreview(m,true));const on=capture(label+'-on');
     let changed=0;for(let i=0;i<on.length;i++){if(i%4===3)check(on[i]===off[i],'real MatCap changed alpha');else if(on[i]!==off[i])changed++;}
     check(changed>100,'visible MatCap contribution missing: '+label+' '+changed);
+    model.materials.forEach(m=>setMatcapPreview(m,true,1,false));const unmasked=capture(label+'-unmasked');
+    check(unmasked.some((v,i)=>i%4!==3&&v!==on[i]),'real normal/alpha did not affect preview');
     model.materials.forEach(m=>setMatcapPreview(m,true,0));check(capture(label+'-zero').every((v,i)=>v===off[i]),'zero strength does not restore real costume');
     model.materials.forEach(m=>setMatcapPreview(m,false));check(capture(label+'-restored').every((v,i)=>v===off[i]),'OFF does not restore real costume');
   }
