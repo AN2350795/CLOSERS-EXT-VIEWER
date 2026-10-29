@@ -43,7 +43,7 @@ export function installMatcapPreview(material){
   const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0},avatarSpecularEnabled:{value:0},avatarSpecularColor:{value:specular?specular.color.slice(0,3):[0,0,0]},avatarSpecularPower:{value:specular?.power??1}};
   material.userData.matcapPreview={uniforms,enabled:false,useNormal:true,specularEnabled:false,specular};
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|closers-matcap-specular-v3';
+  material.customProgramCacheKey=()=>key+'|closers-matcap-lod0-v4';
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
@@ -57,7 +57,8 @@ if (avatarMatcapEnabled > 0.5) {
   vec3 capNormal = normalize(avatarMatcapNormal);
   float capMask = 1.0;
   if (avatarMatcapNormalEnabled > 0.5) {
-    vec4 bump = texture2D(avatarMatcapNormalMap, avatarMatcapUv);
+    // Source PS uses sample_l(..., 0) for both BUMP and MatCap.
+    vec4 bump = textureLod(avatarMatcapNormalMap, avatarMatcapUv, 0.0);
     capMask = any(greaterThan(bump.rgb, vec3(0.0))) ? bump.a : 0.0;
     vec3 mapNormal = bump.rgb * 2.0 - 1.0;
     vec3 dp1 = dFdx(avatarMatcapPosition), dp2 = dFdy(avatarMatcapPosition);
@@ -72,7 +73,7 @@ if (avatarMatcapEnabled > 0.5) {
     }
   }
   vec2 matcapUv = capNormal.xy * vec2(0.5, -0.5) + 0.5;
-  outgoingLight = clamp(outgoingLight + texture2D(avatarMatcapMap, matcapUv).rgb * capMask * avatarMatcapStrength, 0.0, 1.0);
+  outgoingLight = clamp(outgoingLight + textureLod(avatarMatcapMap, matcapUv, 0.0).rgb * capMask * avatarMatcapStrength, 0.0, 1.0);
   if (avatarSpecularEnabled > 0.5 && dot(avatarMatcapPosition,avatarMatcapPosition) > 1e-10) {
     // Source: pow(saturate(dot(N,normalize(L+V))),power) * color * bump.a.
     // Inspection light is at the camera, so L=V and normalize(L+V)=V.
