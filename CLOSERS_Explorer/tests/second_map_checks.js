@@ -29,7 +29,9 @@ try{
     if(path.startsWith('/api/model-scene')){const data=fixture();const image={name:'SHARED.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71};data.meshes[0].materials[0].image=image;data.meshes[0].materials[0].second_preview.image=image;return Response.json({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{candidates:[]},warnings:[]});}
     return originalFetch(url,options);
   };
+  localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify({second:true}));
   await import('/model.js');await modelViewer.loadModel([1]);const $=id=>document.getElementById(id),toggle=$('avatar-second-enabled'),u=()=>modelViewer.state.model.materials[0].userData.avatarLighting;
+  check(toggle.closest('details')?.id==='avatar-state-experiments'&&!$('avatar-state-experiments').open,'state effect must be separate and collapsed');check(u().avatarSecondEnabled.value===0,'old misleading light preference reactivated blue effect');
   check(!toggle.checked&&!toggle.disabled,'SecondMap must start opt-in');check(document.querySelector('[data-texture-role="second"]'),'missing texture source row');
   const m=modelViewer.state.model.materials[0];check(m.map!==u().avatarSecondMap.value,'SecondMap replaced/shared base texture role');check(u().avatarSecondMap.value.wrapS===T.RepeatWrapping&&u().avatarSecondMap.value.colorSpace===T.SRGBColorSpace,'SecondMap texture role');
   toggle.click();check(u().avatarSecondEnabled.value===1,'manual SecondMap requires unrelated light profile');$('avatar-second-u').value='.5';$('avatar-second-u').dispatchEvent(new Event('input'));check(u().avatarSecondOffset.value.x===.5,'UV control');
