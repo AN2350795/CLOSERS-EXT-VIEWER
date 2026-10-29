@@ -11,6 +11,7 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
     capture_label='bunny'
     require_specular=False
     require_toon=False
+    require_position=False
 
     def test_picker(self):
         from closers.catalog import Catalog
@@ -55,5 +56,10 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
             profiles=read_profiles(items.data)['profiles']
             toon_profiles=[next(p for p in profiles if p['key']==key) for key in ('CVN_SKIN_COMMON:1411','CVN_COSTUME_UNIQUE_NETHERWORLD:211')]
             self.assertTrue(any(m.get('toon_preview',{}).get('source_index')!=m.get('toon_preview',{}).get('index') for mesh in data['meshes'] for m in mesh['materials']))
-        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular,toonProfiles=toon_profiles),ensure_ascii=True)+';\n'
+        regional=[]
+        if self.require_position:
+            from closers.avatar_lighting import read_profiles
+            regional=[p for p in read_profiles(items.data)['profiles'] if 'position' in p]
+            self.assertEqual(len(regional),2)
+        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular,toonProfiles=toon_profiles,regionalProfiles=regional),ensure_ascii=True)+';\n'
         super().test_picker()

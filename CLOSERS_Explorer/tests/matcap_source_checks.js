@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview} from '/model-materials.js';
+import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from '/model-materials.js';
 import {setAvatarToon,setAvatarToonMap} from '/model-lighting.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
@@ -40,6 +40,12 @@ try{
       model.materials.forEach(m=>{setMatcapPreview(m,true);setSpecularPreview(m,true);});const reflection=capture(label+'-reflection-on');let reflected=0;
       for(let i=0;i<reflection.length;i++){if(i%4===3)check(reflection[i]===on[i],'real reflection changed alpha');else if(reflection[i]!==on[i])reflected++;}
       check(reflected>20,'source reflection did not produce a visible highlight: '+label+' '+reflected);
+      for(const [index,profile] of (matcapFixture.regionalProfiles||[]).entries()){
+        model.materials.forEach(m=>{setSpecularLight(m,'region',profile.position);setSpecularPreview(m,true);});const regional=capture(label+'-regional-'+index);let changed=0;
+        for(let i=0;i<regional.length;i++){if(i%4===3)check(regional[i]===on[i],'regional source reflection changed alpha');else if(regional[i]!==on[i])changed++;}
+        check(changed>20,'original region position did not produce reflection: '+label+'/'+index+'/'+changed);
+        model.materials.forEach(m=>setSpecularLight(m,'camera'));check(capture(label+'-camera-restored-'+index).every((v,i)=>v===reflection[i]),'regional to camera did not restore source pixels');
+      }
       model.materials.forEach(m=>setSpecularPreview(m,false));check(capture(label+'-reflection-off').every((v,i)=>v===on[i]),'reflection OFF did not restore real MatCap pixels');
     }
     if(matcapFixture.toonProfiles?.length){

@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview} from './model-materials.js';
+import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
   const key='closers-avatar-matcap-v1';let saved={};
@@ -7,6 +7,7 @@ function setupMatcapControls({state,element,dialog}){
   let enabled=saved.enabled===true,strength=Number.isFinite(saved.strength)?Math.max(0,Math.min(1,saved.strength)):1;
   let useNormal=saved.useNormal!==false;
   let useSpecular=saved.useSpecular===true;
+  let lightMode=saved.lightMode==='region'?'region':'camera',lightProfile=null;
   let maskOnly=false;
   const excluded=new Set(Array.isArray(saved.excluded)?saved.excluded.filter(v=>typeof v==='string'):[]);
   let groups=[];
@@ -19,9 +20,11 @@ function setupMatcapControls({state,element,dialog}){
   const maskStatus=element('p');maskStatus.id='avatar-matcap-mask-status';maskStatus.setAttribute('role','status');maskLabel.after(maskStatus);
   const specularLabel=element('label'),specularToggle=element('input');specularToggle.id='avatar-matcap-specular';specularToggle.type='checkbox';specularToggle.checked=useSpecular;specularLabel.append(specularToggle,document.createTextNode(' 원본 반사색·반사 지수 사용 (근사)'));normalLabel.after(specularLabel);
   const specularStatus=element('p');specularStatus.id='avatar-specular-status';specularStatus.className='muted';specularStatus.setAttribute('role','status');specularLabel.after(specularStatus);
-  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 원본 굴곡·광택 마스크가 준비될 때까지 적용을 보류합니다. 마스크 사용을 끄면 표면 전체에 광택을 더하는 별도 비교가 됩니다. 굴곡 접선과 카메라 위치의 확인용 반사 광원은 근사이므로 인게임 외형과 차이가 있습니다. 광택을 끄면 기본 재질로 돌아갑니다.';
+  const lightLabel=element('label','반사 광원'),lightSelect=element('select');lightSelect.id='avatar-specular-light';
+  for(const [value,text] of [['camera','카메라 위치 · 확인용'],['region','선택 지역 · 원본 광원 위치']]){const option=element('option',text);option.value=value;lightSelect.append(option);}lightSelect.value=lightMode;lightLabel.append(lightSelect);specularStatus.before(lightLabel);
+  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 원본 굴곡·광택 마스크가 준비될 때까지 적용을 보류합니다. 마스크 사용을 끄면 표면 전체에 광택을 더하는 별도 비교가 됩니다. 반사 광원은 카메라 확인용 또는 선택 지역의 원본 위치를 사용합니다. 지역 위치는 아바타 원점 기준의 근사 비교이며 인게임 외형과 차이가 있습니다. 광택을 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
-  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,excluded:[...excluded]}));}catch{}}
+  function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,lightMode,excluded:[...excluded]}));}catch{}}
   function apply(){
     maskToggle.disabled=!groups.some(g=>!excluded.has(g.key)&&g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
     if(maskToggle.disabled){maskOnly=false;maskToggle.checked=false;}
@@ -30,6 +33,9 @@ function setupMatcapControls({state,element,dialog}){
     normalToggle.disabled=!enabled||!groups.length;
     const specularMaterials=groups.flatMap(g=>g.materials).filter(m=>m.userData.matcapPreview.specular);
     const specularReady=specularMaterials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value);
+    lightSelect.disabled=!specularMaterials.length;
+    const position=lightProfile?.position,hasPosition=Array.isArray(position)&&position.length===3&&position.every(v=>Number.isFinite(v)&&Math.abs(v)<=3.402823466e38),lightReady=lightMode==='camera'||hasPosition;
+    const lightDescription=lightMode==='camera'?'카메라 위치의 확인용 광원':hasPosition?`${lightProfile.label} · 원본 위치 · 모델 원점 기준 근사`:'원본 광원 위치가 있는 지역 조명을 선택하세요.';
     specularToggle.disabled=!enabled||!useNormal||!specularReady;
     specularStatus.textContent=!specularMaterials.length?'현재 아이템에 지정된 반사색·반사 지수가 없습니다.':!specularReady?'반사 설정 연결됨 · 광택·표면 굴곡 텍스처 확인 필요':!enabled?'반사를 비교하려면 광택을 켜세요.':!useNormal?'반사에는 원본 표면 굴곡·광택 마스크가 필요합니다.':useSpecular?'반사 켜짐 · 카메라 위치의 확인용 광원':'반사 꺼짐 · 켜면 MatCap과 별도의 하이라이트를 비교합니다.';
     let active=0,specularActive=0;
@@ -37,7 +43,8 @@ function setupMatcapControls({state,element,dialog}){
       const capReady=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
       const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&(!useNormal||m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
       const on=enabled&&!excluded.has(group.key);
-      for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularPreview(m,useSpecular);setMatcapMaskPreview(m,maskOnly&&!excluded.has(group.key));if(m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value>0)maskCount++;}
+      for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularLight(m,lightMode,hasPosition?position:null);setSpecularPreview(m,useSpecular);setMatcapMaskPreview(m,maskOnly&&!excluded.has(group.key));if(m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value>0)maskCount++;}
+      if(group.lightStatus)group.lightStatus.textContent='반사 광원: '+lightDescription;
       if(on&&ready&&group.visible&&strength>0)active++;
       const normal=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value>0);
       group.status.textContent=!on?'광택 꺼짐':!capReady?'광택 텍스처 확인 필요':!ready?'원본 굴곡·광택 마스크 확인 필요 · 적용 보류':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'마스크 없는 비교 · 표면 전체에 광택 (인게임 적용 범위 미검증)';
@@ -45,7 +52,7 @@ function setupMatcapControls({state,element,dialog}){
     }
     const waiting=groups.filter(g=>enabled&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&useNormal&&!m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value)).length;
     status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개${waiting?' · 마스크 확인 필요 '+waiting+'개':''}`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
-    if(enabled&&useNormal&&specularReady&&useSpecular)specularStatus.textContent=`반사 켜짐 · 현재 표시 ${specularActive}개 · 카메라 위치의 확인용 광원`;
+    if(enabled&&useNormal&&specularReady&&useSpecular)specularStatus.textContent=lightReady?`반사 켜짐 · 현재 표시 ${specularActive}개 · ${lightDescription}`:`반사 보류 · ${lightDescription} MatCap 광택은 유지합니다.`;
     maskStatus.textContent=maskOnly?`광택 마스크 확인 중 · 연결 ${maskCount}개 · 회색: 부분 허용 · 발광만 보기·번짐 일시 제외 · 끄면 기존 화면 복원`:maskToggle.disabled?'확인할 원본 광택 마스크가 없습니다.':'광택을 켜기 전에도 원본 마스크의 적용 범위를 확인할 수 있습니다.';
   }
   function refresh(){
@@ -65,7 +72,7 @@ function setupMatcapControls({state,element,dialog}){
       label.append(check,element('span',group.label));group.status=element('small');group.status.className='muted';row.append(label,group.status);
       const details=element('details');details.append(element('summary','광택 적용 표면 · 출처'),element('p','표면: '+(group.input.material_report?.source_texture||group.input.texture)),element('p','MatCap: '+group.input.matcap_preview.texture),element('p','아이템 원본: '+(group.input.material_report?.reference||'')));row.append(details);list.append(row);
       if(group.input.matcap_preview.normal_texture)details.append(element('p','표면 굴곡·광택 마스크: '+group.input.matcap_preview.normal_texture));
-      const specular=group.input.matcap_preview.specular;if(specular)details.append(element('p','반사색: '+specular.color.join(', ')+' · 반사 지수: '+specular.power),element('p','반사 광원: 카메라 위치 (게임 광원 위치 미연결)'));
+      const specular=group.input.matcap_preview.specular;if(specular){group.lightStatus=element('p');details.append(element('p','반사색: '+specular.color.join(', ')+' · 반사 지수: '+specular.power),group.lightStatus);}
     }
     apply();
   }
@@ -73,8 +80,9 @@ function setupMatcapControls({state,element,dialog}){
   slider.oninput=()=>{strength=Number(slider.value);output.value=strength.toFixed(2);save();apply();};
   normalToggle.onchange=()=>{useNormal=normalToggle.checked;save();apply();};
   specularToggle.onchange=()=>{useSpecular=specularToggle.checked;save();apply();};
+  lightSelect.onchange=()=>{lightMode=lightSelect.value==='region'?'region':'camera';save();apply();};
   maskToggle.onchange=()=>{maskOnly=maskToggle.checked;apply();};
-  return {refresh,isMaskInspection:()=>maskOnly};
+  return {refresh,isMaskInspection:()=>maskOnly,requiresLightProfile:()=>lightMode==='region'&&enabled&&useSpecular,setLightProfile:profile=>{lightProfile=profile;apply();}};
 }
 
 // Keep the legacy diffuse comparison separate from the source toon lookup.
@@ -309,6 +317,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   function save(){settings.excluded=[...excluded];try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}}
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function apply(){
+    matcap.setLightProfile(selected());
     const secondMaterials=(state.model?.materials||[]).filter(m=>m.userData.secondPreview),secondReady=secondMaterials.filter(m=>m.userData.avatarLighting.avatarSecondMap.value);
     secondToggle.disabled=!secondMaterials.length;secondU.disabled=secondV.disabled=!settings.second||!secondReady.length;
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
@@ -384,7 +393,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   nearInput.oninput=()=>{settings.nearMix=Number(nearInput.value);save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
-  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon)void load();
+  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||matcap.requiresLightProfile())void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};

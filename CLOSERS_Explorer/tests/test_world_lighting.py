@@ -61,6 +61,7 @@ class WorldLightingTests(unittest.TestCase):
         report=unit_light(chunk(source));profile=comparison_profile(report,'source.lua','region')
         self.assertEqual(profile['global_specular'],dict(color=[1,.5,.25,1],intensity=3.98,power=3))
         self.assertEqual(profile['direction'],[-5000,4000,0]);self.assertEqual(profile['activation'],'manual')
+        self.assertEqual(profile['position'],[-5000,4000,0]);self.assertIsNot(profile['position'],report['values']['position'])
         self.assertIsNone(profile['source_cartoon_power'])
         for field in ('m_SpecularColor','m_fSpecularIntensity','m_fSpecularPow'):
             missing=self.source(**{k:v for k,v in source['m_LightData']['m_LightParamUnit'].items() if k not in (field,'m_LightType','m_LightPos')})
