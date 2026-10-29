@@ -52,6 +52,12 @@ def glow_texture(name):
     return path.stem+'_GLOW'+path.suffix if len(path.suffix)==4 else None
 
 
+def ext_texture(name):
+    # CW.EXE type 1 inserts _EXT and stores the result in resource slot 2.
+    name=texture_key(name);path=Path(name)
+    return path.stem+'_EXT'+path.suffix if len(path.suffix)==4 else None
+
+
 def plan(material,item):
     from .model_items import AvatarItems
     inputs=AvatarItems.material_inputs(material,item)

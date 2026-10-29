@@ -2,10 +2,14 @@ import copy
 import unittest
 
 from closers.model_items import AvatarItems
-from closers.model_materials import plan,matcap_preview,normal_texture,glow_texture
+from closers.model_materials import plan,matcap_preview,normal_texture,glow_texture,ext_texture
 
 
 class MaterialPlanTests(unittest.TestCase):
+    def test_ext_texture_uses_the_original_four_character_extension(self):
+        self.assertEqual(ext_texture('folder/Base.png'),'BASE_EXT.PNG')
+        for value in (None,'BASE','BASE.JPEG'):self.assertIsNone(ext_texture(value))
+
     def test_glow_texture_follows_type_three_insertion_rule(self):
         self.assertEqual(glow_texture('folder/Base.png'),'BASE_GLOW.PNG')
         self.assertEqual(glow_texture('Base.TGA'),'BASE_GLOW.TGA')

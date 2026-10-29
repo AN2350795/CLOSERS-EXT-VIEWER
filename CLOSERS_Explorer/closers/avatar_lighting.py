@@ -62,8 +62,16 @@ def read_profiles(data):
         result.append(dict(set_definitions[key],key=f'set:{group}',label=strings.get(name) or f'세트 조명 {group}',name_key=name,
                            group_id=group,light_id=key,required_count=count,characters=[],status='approximate',activation='manual',
                            sources=['SET_ITEM_EFFECT_TEMPLET.NTF','SET_ITEM_UNIT_LIGHT_DATA.NTF']))
-    return dict(profiles=result,note='원본의 색·방향·강도를 사용한 방향광 근사입니다. 게임 툰·MatCap·후처리와 착용 조건의 자동 적용은 포함하지 않습니다.')
+    from .world_lighting import REGIONS,unit_light,comparison_profile
+    unavailable=[]
+    for name,label in REGIONS:
+        try:
+            profile=comparison_profile(unit_light(data.body(name)),name,label)
+            if profile:result.append(profile)
+        except MissingDefinition:pass
+        except ValueError as exc:unavailable.append(dict(name=name,reason=str(exc)))
+    return dict(profiles=result,world_unavailable=unavailable,note='원본 조명의 수동 근사 비교입니다. 지역 선택·회전·거리 보간·착용 조건·후처리는 자동 적용하지 않습니다.')
 
 
 def profiles(data):
-    return data.cached(('avatar-lighting-profiles',1),lambda:read_profiles(data),persistent=True)
+    return data.cached(('avatar-lighting-profiles',2),lambda:read_profiles(data),persistent=True)

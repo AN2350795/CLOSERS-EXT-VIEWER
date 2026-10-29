@@ -334,8 +334,14 @@ class Models:
                             preview=mat['material_preview']
                             preview['image']=self.candidates(preview['texture'],row)
                         if classify(row['name'])['kind']=='avatar':
-                            from .model_materials import glow_texture
+                            from .model_materials import glow_texture,ext_texture
                             original=mat.get('material_report',{}).get('source_texture') or mat['texture']
+                            extra=ext_texture(original)
+                            if extra:
+                                info=self.candidates(extra,row)
+                                if info['candidates']:
+                                    mat['ext_preview']=dict(kind='global-specular',status='approximate',texture=extra,source_texture=original,image=info,
+                                                            basis='CW.EXE:0x141712bd9/CW_CARTOONLIGHT.PS.CSO:t2',channel='r',bloom=False)
                             name=glow_texture(original)
                             if name:
                                 info=self.candidates(name,row)

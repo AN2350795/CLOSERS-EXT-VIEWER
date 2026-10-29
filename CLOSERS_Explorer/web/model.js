@@ -9,7 +9,7 @@ import {setupMotions} from './model-motions.js';
 import {MotionSequencePlayer} from './motion-sequence-player.js';
 import {setupMotionExtras} from './model-motion-extras.js';
 import {setupModelStage} from './model-stage.js';
-import {setupAvatarLighting,setAvatarToonMap,setAvatarGlowMap} from './model-lighting.js';
+import {setupAvatarLighting,setAvatarToonMap,setAvatarGlowMap,setAvatarExtMap} from './model-lighting.js';
 import {createEmissionRenderer} from './model-emission.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
@@ -109,7 +109,7 @@ async function texture(id,materials,role='base'){
     const map=await textureCache.acquire(key,pixels,async()=>{
       const map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);
       if(viewerDisposed){map.dispose();throw Error('뷰어가 종료되었습니다.');}
-      map.colorSpace=role==='matcap-normal'?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
+      map.colorSpace=['matcap-normal','ext'].includes(role)?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
       const started=performance.now();try{renderer.initTexture(map);}catch(e){map.dispose();throw e;}timings.uploadMs+=performance.now()-started;
       return map;
     });
@@ -118,7 +118,7 @@ async function texture(id,materials,role='base'){
   })());
   let map;try{map=await model.textureTasks.get(taskKey);}catch(e){model.textureTasks.delete(taskKey);throw e;}
   if(!map||state.generation!==generation||state.model!==model)return;
-  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else if(role==='matcap')setMatcapPreviewMap(m,map);else if(role==='matcap-normal')setMatcapNormalMap(m,map);else if(role==='toon')setAvatarToonMap(m,map);else if(role==='glow')setAvatarGlowMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
+  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else if(role==='matcap')setMatcapPreviewMap(m,map);else if(role==='matcap-normal')setMatcapNormalMap(m,map);else if(role==='toon')setAvatarToonMap(m,map);else if(role==='glow')setAvatarGlowMap(m,map);else if(role==='ext')setAvatarExtMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
 }
 function sourceSelector(info,callback){const select=element('select');select.append(element('option',info.candidates.length?'출처를 선택하세요':'일치하는 파일 없음'));select.firstChild.value='';for(const row of info.candidates){const option=element('option',row.archive+' · #'+row.ordinal);option.value=row.id;select.append(option);}if(info.selected)select.value=info.selected;select.onchange=()=>{if(select.value)operation(()=>callback(Number(select.value)));};return select;}
 async function showTextures(){
@@ -126,13 +126,13 @@ async function showTextures(){
   $('model-textures').replaceChildren();const groups=new Map();
   for(const material of state.model.materials){
     const input=material.userData.input;
-    const roles={base:input.image,auxiliary:material.userData.materialPreview?input.material_preview?.image:null,matcap:material.userData.matcapPreview?input.matcap_preview?.image:null,'matcap-normal':material.userData.matcapPreview?input.matcap_preview?.normal_image:null,toon:material.userData.toonPreview?input.toon_preview?.image:null,glow:material.userData.glowPreview?input.glow_preview?.image:null};
+    const roles={base:input.image,auxiliary:material.userData.materialPreview?input.material_preview?.image:null,matcap:material.userData.matcapPreview?input.matcap_preview?.image:null,'matcap-normal':material.userData.matcapPreview?input.matcap_preview?.normal_image:null,toon:material.userData.toonPreview?input.toon_preview?.image:null,glow:material.userData.glowPreview?input.glow_preview?.image:null,ext:material.userData.extPreview?input.ext_preview?.image:null};
     for(const [role,info] of Object.entries(roles)){if(!info)continue;const key=role+':'+JSON.stringify(info);if(!groups.has(key))groups.set(key,{info,role,materials:[]});groups.get(key).materials.push(material);}
   }
   let failed=0;
   const jobs=[];
-  const labels={base:'기본색 · ',auxiliary:'발광 미리보기 · ',matcap:'광택 미리보기 · ','matcap-normal':'표면 굴곡 · 광택 마스크 · ',toon:'원본 툰 음영 · ',glow:'원본 GLOW 보조광 · '};
-  const connected={base:'원본 해상도 적용',auxiliary:'발광 입력 연결 · 근사 미리보기',matcap:'광택 입력 연결 · 재질 설정에서 켜기','matcap-normal':'원본 표면 굴곡·광택 마스크 연결',toon:'원본 툰 연결 · 조명 설정에서 켜기',glow:'표면 보조광 연결 · 번짐/발광 전용 화면에서 제외'};
+  const labels={base:'기본색 · ',auxiliary:'발광 미리보기 · ',matcap:'광택 미리보기 · ','matcap-normal':'표면 굴곡 · 광택 마스크 · ',toon:'원본 툰 음영 · ',glow:'원본 GLOW 보조광 · ',ext:'EXT 전역 반사 · '};
+  const connected={base:'원본 해상도 적용',auxiliary:'발광 입력 연결 · 근사 미리보기',matcap:'광택 입력 연결 · 재질 설정에서 켜기','matcap-normal':'원본 표면 굴곡·광택 마스크 연결',toon:'원본 툰 연결 · 조명 설정에서 켜기',glow:'표면 보조광 연결 · 번짐/발광 전용 화면에서 제외',ext:'원본 EXT R 연결 · 지역 조명에서 반사 비교'};
   for(const {info,role,materials} of groups.values()){
     const row=element('div');row.className='model-row';row.dataset.textureRole=role;row.append(element('span',labels[role]+info.name));const message=element('small');
     const load=async id=>{if(state.generation!==generation||state.model!==model)return;message.textContent='불러오는 중…';try{await texture(id,materials,role);message.textContent=connected[role];lighting.refresh();}catch(e){failed++;message.textContent='텍스처 표시 실패: '+e.message;}};

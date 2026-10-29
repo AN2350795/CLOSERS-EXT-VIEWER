@@ -3,7 +3,7 @@ from pathlib import Path
 import struct
 import unittest
 
-from closers.world_lighting import unit_light
+from closers.world_lighting import unit_light,comparison_profile
 
 
 def chunk(value):
@@ -28,6 +28,16 @@ def chunk(value):
 
 
 class WorldLightingTests(unittest.TestCase):
+    def test_comparison_profile_requires_explicit_reflection_inputs(self):
+        source=self.source(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_SpecularColor={1:1,2:.5,3:.25,4:1},m_fSpecularIntensity=3.98,m_fSpecularPow=3)
+        report=unit_light(chunk(source));profile=comparison_profile(report,'source.lua','region')
+        self.assertEqual(profile['global_specular'],dict(color=[1,.5,.25,1],intensity=3.98,power=3))
+        self.assertEqual(profile['direction'],[-5000,4000,0]);self.assertEqual(profile['activation'],'manual')
+        self.assertIsNone(profile['source_cartoon_power'])
+        for field in ('m_SpecularColor','m_fSpecularIntensity','m_fSpecularPow'):
+            missing=self.source(**{k:v for k,v in source['m_LightData']['m_LightParamUnit'].items() if k not in (field,'m_LightType','m_LightPos')})
+            self.assertIsNone(comparison_profile(unit_light(chunk(missing)),'source.lua','region'))
+
     def source(self,**values):
         return dict(m_LightData=dict(m_LightParamUnit=dict(m_LightType='LT_BASIC',m_LightPos={1:-5000,2:4000,3:0},**values)))
 
@@ -38,7 +48,7 @@ class WorldLightingTests(unittest.TestCase):
         self.assertEqual(report['values']['position'],[-5000,4000,0]);self.assertEqual(report['values']['rim_power'],0)
         self.assertNotIn('cartoon_power',report['values']);self.assertIn('m_fCartoonPow',report['missing'])
         self.assertEqual(report['sha256'],hashlib.sha256(body).hexdigest())
-        self.assertIn('unit_overrides',report['runtime_unresolved']);self.assertNotIn('direction',report['values'])
+        self.assertIn('direction_rotation',report['runtime_unresolved']);self.assertNotIn('direction',report['values'])
 
     def test_activation_is_preserved_separately_from_parameter_presence(self):
         for flag in (True,False,'TRUE','FALSE'):

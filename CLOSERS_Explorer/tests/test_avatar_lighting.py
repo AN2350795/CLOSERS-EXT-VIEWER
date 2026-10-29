@@ -24,6 +24,18 @@ class Data:
 
 
 class AvatarLightingTests(unittest.TestCase):
+    def test_regional_reflection_profiles_and_invalid_sources_are_isolated(self):
+        from test_world_lighting import chunk
+        sources=self.fixture()
+        sources['WI_TOWN_SQUARE_OF_PEACE_TWILIGHT.LUA']=chunk(dict(m_LightData=dict(m_LightParamUnit=dict(
+            m_LightType='LT_BASIC',m_LightPos={1:-5000,2:4000,3:0},m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,
+            m_SpecularColor={1:1,2:.5,3:.25,4:1},m_fSpecularIntensity=3.98,m_fSpecularPow=3))))
+        sources['WI_TOWN_MONTMARTRE_TWILIGHT.LUA']=b'not a static Lua chunk'
+        result=read_profiles(Data(sources));self.assertEqual(len(result['profiles']),2)
+        self.assertEqual(result['profiles'][1]['global_specular']['intensity'],3.98)
+        self.assertEqual(len(result['world_unavailable']),1)
+        self.assertNotIn('global_specular',result['profiles'][0])
+
     def test_authenticated_endpoint_and_browser_module(self):
         from closers.catalog import Catalog
         from closers.server import create_server

@@ -282,6 +282,24 @@ class AvatarTypeTests(unittest.TestCase):
         npc=self.models.matches('UNCLASSIFIED_GLOW.X')[0]['id']
         self.assertNotIn('glow_preview',self.models.scene([npc])['meshes'][0]['materials'][0])
 
+    def test_ext_keeps_original_resource_across_types_and_is_not_emission(self):
+        rules=self.registry.texture_rules();reference=next(iter(rules));original=self.model[:-2]+'.PNG';changed='CHANGED_EXT_BASE.PNG'
+        rules[reference]=AvatarItems.parse_texture_rule(dict(m_mapTexChange={1:dict(m_OrgTexName=original,m_ChangeTexName=changed)}))
+        self.registry.texture_rules=lambda:rules;ext=original[:-4]+'_EXT.PNG'
+        self.catalog.scan([fixture(self.root/'ext1.cmf',[(ext,b'ext',0),(changed,b'base',0),(changed[:-4]+'_EXT.PNG',b'wrong ext',0)])])
+        for kind in ('A','B'):
+            item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type=kind))[0]
+            material=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]
+            p=material['ext_preview'];self.assertEqual(p['texture'],ext);self.assertIsNotNone(p['image']['selected']);self.assertFalse(p['bloom'])
+            self.assertNotIn('material_preview',material)
+        self.catalog.scan([fixture(self.root/'ext2.cmf',[(ext,b'other ext',0)])])
+        item=self.models.groups.filtered(dict(character='STRIKER',items='1',costume_type='A'))[0]
+        p=self.models.scene([item['id']],items={str(item['id']):item['appearance_key']})['meshes'][0]['materials'][0]['ext_preview']
+        self.assertIsNone(p['image']['selected']);self.assertEqual(len(p['image']['candidates']),2)
+        self.catalog.scan([fixture(self.root/'npc-ext.cmf',[('UNCLASSIFIED_EXT.X',binary_model(original),0)])])
+        npc=self.models.matches('UNCLASSIFIED_EXT.X')[0]['id']
+        self.assertNotIn('ext_preview',self.models.scene([npc])['meshes'][0]['materials'][0])
+
     def test_toon_texture_uses_model_power_and_selected_item_mapping(self):
         rules=self.registry.texture_rules();reference=next(iter(rules))
         rules[reference]['toon_changes']={1:dict(m_OrgToonTex='CTT_BASIC0',m_ChangeToonTex='CTT_BASIC_BLUE7')}
