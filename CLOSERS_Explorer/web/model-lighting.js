@@ -79,9 +79,11 @@ export function installAvatarLighting(material){
   Object.assign(uniforms,{avatarGlowEnabled:{value:0},avatarGlowMap:{value:null},avatarGlowIntensity:{value:1}});
   const face=material.userData.input?.face_sdf_preview;
   if(material.userData.faceShadingAlpha&&face?.status==='approximate')material.userData.faceSdfPreview={enabled:false,profile:null,power:1,headReady:false};
+  if(material.userData.toonPreview||material.userData.faceSdfPreview)material.userData.rimPreview={enabled:false,profile:null};
+  Object.assign(uniforms,{avatarRimEnabled:{value:0},avatarRimDirection:{value:new THREE.Vector3(0,0,-1)},avatarRimWidth:{value:0},avatarRimPower:{value:0}});
   Object.assign(uniforms,{avatarFaceEnabled:{value:0},avatarFaceSide:{value:new THREE.Vector3(1,0,0)},avatarFaceForward:{value:new THREE.Vector3(0,0,1)},avatarFaceDirection:{value:new THREE.Vector3(0,0,1)},avatarFaceColor:{value:new THREE.Color(1,1,1)},avatarFaceIntensity:{value:1},avatarFacePower:{value:1}});
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|avatar-source-ext-v5';
+  material.customProgramCacheKey=()=>key+'|avatar-source-rim-v6';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarLightingNormal;\nvarying float avatarToonCoordinate;\nuniform vec3 avatarToonDirection;\n'+shader.vertexShader
@@ -101,12 +103,21 @@ if (avatarLightEnabled > 0.5) {
     shader.fragmentShader='uniform float avatarFaceEnabled;\nuniform vec3 avatarFaceSide;\nuniform vec3 avatarFaceForward;\nuniform vec3 avatarFaceDirection;\nuniform vec3 avatarFaceColor;\nuniform float avatarFaceIntensity;\nuniform float avatarFacePower;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarGlowEnabled;\nuniform sampler2D avatarGlowMap;\nuniform float avatarGlowIntensity;\nvarying vec2 avatarGlowUv;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarExtEnabled;\nuniform sampler2D avatarExtMap;\nuniform vec3 avatarExtDirection;\nuniform vec3 avatarExtColor;\nuniform float avatarExtIntensity;\nuniform float avatarExtPower;\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float avatarRimEnabled;\nuniform vec3 avatarRimDirection;\nuniform float avatarRimWidth;\nuniform float avatarRimPower;\n'+shader.fragmentShader;
     shader.vertexShader='varying vec2 avatarGlowUv;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\navatarGlowUv = uv;');
     const marker=material.userData.materialPreview?'/* avatar_surface_end */':'#include <opaque_fragment>';
-    shader.fragmentShader=shader.fragmentShader.replace(marker,`if (avatarToonEnabled > 0.5) {
+    shader.fragmentShader=shader.fragmentShader.replace(marker,`float rimWeight = 0.0;
+if (avatarRimEnabled > 0.5 && avatarEmissionPass < 0.5) {
+  // PS cb1[9] and cb2[13]: source camera forward, not per-fragment eye rays.
+  vec3 rimView = inverseTransformDirection(vec3(0.0,0.0,-1.0),viewMatrix);
+  rimWeight = clamp(1.0-abs(dot(avatarLightingNormal,rimView))*avatarRimWidth,0.0,1.0)
+    * max(-dot(avatarRimDirection,rimView),0.0)*avatarRimPower;
+}
+if (avatarToonEnabled > 0.5) {
   vec3 toon = clamp(texture2D(avatarToonMap, vec2(avatarToonCoordinate)).rgb * avatarToonPower,0.0,1.0);
   vec3 surface = outgoingLight;
   outgoingLight *= toon * avatarToonColor * avatarToonIntensity;
+  outgoingLight += toon*surface*rimWeight;
   if (avatarExtEnabled > 0.5 && avatarEmissionPass < 0.5) {
     // Source t2.R / cb1[7:8]. This uses the geometric world normal, separately
     // from the BUMP normal used by the XET MatCap reflection branch.
@@ -136,7 +147,8 @@ if (avatarFaceEnabled > 0.5) {
   float faceLit = smoothstep(0.0,0.02,faceDistance-faceThreshold);
   vec3 faceShadow = vec3(1.0,0.878,0.784);
   vec3 faceTint = mix(faceShadow,clamp(outgoingLight+faceShadow,0.0,1.0),faceLit);
-  outgoingLight = clamp(outgoingLight * clamp(faceTint*avatarFacePower,0.0,1.0),0.0,1.0) * avatarFaceColor * avatarFaceIntensity;
+  vec3 faceSurface = clamp(outgoingLight * clamp(faceTint*avatarFacePower,0.0,1.0),0.0,1.0);
+  outgoingLight = faceSurface * (avatarFaceColor * avatarFaceIntensity + vec3(rimWeight));
 }
 #endif
 if (avatarGlowEnabled > 0.5 && avatarEmissionPass < 0.5) {
@@ -191,6 +203,13 @@ export function setAvatarExtMap(material,map){
   u.avatarExtMap.value=map;setAvatarExt(material,p.enabled,p.profile);
 }
 
+export function setAvatarRim(material,enabled,profile){
+  const p=material.userData.rimPreview,u=material.userData.avatarLighting;if(!p||!u)return;
+  p.enabled=enabled;p.profile=profile;const rim=profile?.global_rim;
+  u.avatarRimEnabled.value=enabled&&rim?1:0;
+  if(rim){u.avatarRimWidth.value=rim.width;u.avatarRimPower.value=rim.power;u.avatarRimDirection.value.set(-profile.direction[0],-profile.direction[1],profile.direction[2]).normalize();}
+}
+
 export function setAvatarFaceSdf(material,enabled,profile,power=1){
   const preview=material.userData.faceSdfPreview,u=material.userData.avatarLighting;if(!preview||!u)return;
   preview.enabled=enabled;preview.profile=profile;preview.power=Number.isFinite(power)?Math.max(0,Math.min(2,power)):1;
@@ -211,7 +230,7 @@ export function updateAvatarFaceFrame(material,headMatrix){
 
 export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   const $=id=>document.getElementById(id),storageKey='closers-avatar-lighting-v2';
-  let settings={enabled:false,selected:'',excluded:[],bloom:true,bloomStrength:.8,influence:.5,solo:false,soloExposure:4,toon:false,toonPower:1,faceSdf:false,glow:false,ext:false};
+  let settings={enabled:false,selected:'',excluded:[],bloom:true,bloomStrength:.8,influence:.5,solo:false,soloExposure:4,toon:false,toonPower:1,faceSdf:false,glow:false,ext:false,rim:false};
   try{const current=localStorage.getItem(storageKey),saved=JSON.parse(current||localStorage.getItem('closers-avatar-lighting-v1')||'{}');settings={...settings,enabled:!!current&&saved?.enabled===true,selected:typeof saved?.selected==='string'?saved.selected:'',excluded:Array.isArray(saved?.excluded)?saved.excluded.filter(v=>typeof v==='string'):[],bloom:saved?.bloom!==false,bloomStrength:Number.isFinite(saved?.bloomStrength)?Math.max(0,Math.min(2,saved.bloomStrength)):.8,influence:Number.isFinite(saved?.influence)?Math.max(0,Math.min(1,saved.influence)):.5};}catch{}
   const excluded=new Set(settings.excluded);let profiles=[],groups=[],pending=null;
   const button=element('button','조명 · 발광');button.id='open-avatar-lighting';button.type='button';button.className='secondary';button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','avatar-lighting-dialog');document.querySelector('.viewport-actions').prepend(button);
@@ -230,6 +249,9 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   try{settings.ext=JSON.parse(localStorage.getItem(storageKey)||'{}')?.ext===true;}catch{}
   const extLabel=element('label'),extToggle=element('input');extToggle.id='avatar-ext-enabled';extToggle.type='checkbox';extToggle.checked=settings.ext;extLabel.append(extToggle,document.createTextNode(' 원본 EXT 전역 반사 포함 (근사)'));glowStatus.after(extLabel);
   const extStatus=element('p');extStatus.id='avatar-ext-status';extStatus.setAttribute('role','status');extLabel.after(extStatus);
+  try{settings.rim=JSON.parse(localStorage.getItem(storageKey)||'{}')?.rim===true;}catch{}
+  const rimLabel=element('label'),rimToggle=element('input');rimToggle.id='avatar-rim-enabled';rimToggle.type='checkbox';rimToggle.checked=settings.rim;rimLabel.append(rimToggle,document.createTextNode(' 원본 테두리광 포함 (근사)'));extStatus.after(rimLabel);
+  const rimStatus=element('p');rimStatus.id='avatar-rim-status';rimStatus.setAttribute('role','status');rimLabel.after(rimStatus);
   toonField.querySelector('p.muted:not(#avatar-glow-status)').textContent='원본 툰과 선택한 의상 조명으로 음영을 비교합니다. 얼굴 SDF는 얼굴 알파를 음영 정보로 사용하고, GLOW 보조광은 툰 음영 뒤에 표면색으로 더합니다. 게임의 전체 조명·착용 조건·후처리와 차이가 있습니다. 끄면 기존 재질로 돌아갑니다.';
   const exposureLabel=element('label','확인용 밝기'),exposureInput=element('input'),exposureValue=element('output');exposureInput.id='avatar-emission-exposure';exposureInput.type='range';exposureInput.min=1;exposureInput.max=8;exposureInput.step=.5;exposureInput.value=settings.soloExposure;exposureInput.setAttribute('aria-label','발광만 보기의 확인용 밝기');exposureValue.value=settings.soloExposure+'×';exposureLabel.append(exposureInput,exposureValue);$('avatar-emission-solo').closest('label').after(exposureLabel);exposureInput.oninput=()=>{settings.soloExposure=Number(exposureInput.value);exposureValue.value=settings.soloExposure+'×';};
   const master=$('material-preview').closest('label');master.lastChild.textContent=' 발광 켜기';$('avatar-emission-master').append(master,$('material-preview-note'));$('material-preview-note').textContent='발광만 보기에서 실제 발광 부위를 확인하고, 빛 번짐을 따로 비교할 수 있습니다.';
@@ -249,6 +271,11 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
     extToggle.disabled=!settings.toon||!extMaterials.length;
     for(const m of state.model?.materials||[])setAvatarExt(m,settings.toon&&settings.ext,toonProfile);
     extStatus.textContent=!extMaterials.length?'연결된 EXT 전역 반사 맵이 없습니다.':!settings.toon||!settings.ext?`EXT 전역 반사 ${extMaterials.length}개 · 꺼짐`:!toonProfile?.global_specular?'EXT 반사 수치가 있는 지역 조명을 선택하세요.':`EXT 전역 반사 켜짐 · 준비 ${extReady.length} / 연결 ${extMaterials.length}개 · 지역 수동 비교 · 번짐/발광만 보기에서 제외`;
+    const rimMaterials=(state.model?.materials||[]).filter(m=>m.userData.rimPreview),rim=toonProfile?.global_rim;
+    rimToggle.disabled=!settings.toon||!rimMaterials.length;
+    for(const m of state.model?.materials||[])setAvatarRim(m,settings.toon&&settings.rim,toonProfile);
+    const rimReady=rimMaterials.filter(m=>m.userData.avatarLighting.avatarToonEnabled.value||m.userData.avatarLighting.avatarFaceEnabled.value);
+    rimStatus.textContent=!rimMaterials.length?'테두리광을 비교할 툰·얼굴 재질이 없습니다.':!settings.toon||!settings.rim?'테두리광 꺼짐':!rim?'테두리광 수치가 있는 지역 조명을 선택하세요.':!rimReady.length?'활성 툰·얼굴 음영과 텍스처를 확인하세요.':rim.power===0?`원본 테두리광 강도 0 · 화면 변화 없음 · 폭 ${rim.width}`:`원본 테두리광 · 적용 ${rimReady.length} / 연결 ${rimMaterials.length}개 · 폭 ${rim.width} · 강도 ${rim.power} · 카메라 방향 연동 · 번짐/발광만 보기에서 제외`;
     glowStatus.textContent=!glowMaterials.length?'연결된 원본 GLOW 보조광이 없습니다.':!settings.toon||!settings.glow?`보조광 연결 ${glowMaterials.length}개 · 꺼짐`:!toonProfile?'보조광에 사용할 의상 조명을 선택하세요.':`표면 보조광 켜짐 · 준비 ${glowReady.length}개 / 연결 ${glowMaterials.length}개${glowReady.length<glowMaterials.length?' · 텍스처 확인 필요':''} · 번짐/발광만 보기에서 제외`;
     $('avatar-toon-status').textContent=!state.model?'아바타를 선택하면 원본 툰 연결을 확인합니다.':!toonMaterials.length&&!faces.length&&!glowMaterials.length?'현재 모델에 적용 가능한 툰·얼굴 SDF·보조광 연결이 없습니다.':!settings.toon?`툰 연결 ${toonMaterials.length}개 · 얼굴 SDF ${faces.length}개 · 보조광 ${glowMaterials.length}개 · 꺼짐`:!toonProfile?'툰 음영에 사용할 의상 조명을 선택하세요.':`툰 음영 켜짐 · 적용 ${toonReady.length}개 / 연결 ${toonMaterials.length}개${toonReady.length<toonMaterials.length?' · 툰 텍스처 확인 필요':''}${settings.faceSdf?' · 얼굴 SDF '+faceReady.length+' / '+faces.length+'개':''}${settings.faceSdf&&faceReady.length<faces.length?' · 얼굴 텍스처·머리 뼈 확인 필요':''}`;
     const toonList=$('avatar-toon-items');toonList.replaceChildren();const seenToon=new Set();
@@ -295,6 +322,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   faceToggle.onchange=()=>{settings.faceSdf=faceToggle.checked;save();apply();};
   glowToggle.onchange=()=>{settings.glow=glowToggle.checked;save();apply();};
   extToggle.onchange=()=>{settings.ext=extToggle.checked;save();apply();};
+  rimToggle.onchange=()=>{settings.rim=rimToggle.checked;save();apply();};
   button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon)void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};

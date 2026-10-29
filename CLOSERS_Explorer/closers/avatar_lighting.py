@@ -74,4 +74,4 @@ def read_profiles(data):
 
 
 def profiles(data):
-    return data.cached(('avatar-lighting-profiles',2),lambda:read_profiles(data),persistent=True)
+    return data.cached(('avatar-lighting-profiles',3),lambda:read_profiles(data),persistent=True)

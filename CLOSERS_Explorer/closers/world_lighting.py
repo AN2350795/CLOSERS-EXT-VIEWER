@@ -54,11 +54,16 @@ def unit_light(body):
 
 
 def comparison_profile(report,name,label):
-    v=report['values'];required=('position','color','intensity','specular_color','specular_intensity','specular_power')
+    v=report['values'];required=('position','color','intensity')
     if report['light_type']!='LT_BASIC' or any(k not in v for k in required):return None
     if sum(x*x for x in v['position'])<1e-10:return None
-    if any(x<0 for k in ('color','specular_color') for x in v[k]) or any(v[k]<0 for k in ('intensity','specular_intensity','specular_power')):return None
-    return dict(key='world:'+name,label=label,color=v['color'],direction=v['position'],intensity=v['intensity'],
-                global_specular=dict(color=v['specular_color'],intensity=v['specular_intensity'],power=v['specular_power']),
+    if any(x<0 for x in v['color']) or v['intensity']<0:return None
+    profile=dict(key='world:'+name,label=label,color=v['color'],direction=v['position'],intensity=v['intensity'],
                 source_cartoon_power=v.get('cartoon_power'),status='approximate',activation='manual',characters=[],
                 sources=[name],source_sha256=report['sha256'],limitations=report['runtime_unresolved'])
+    spec_fields=('specular_color','specular_intensity','specular_power')
+    if all(k in v for k in spec_fields) and all(x>=0 for x in v['specular_color']) and v['specular_intensity']>=0 and v['specular_power']>=0:
+        profile['global_specular']=dict(color=v['specular_color'],intensity=v['specular_intensity'],power=v['specular_power'])
+    if all(k in v and v[k]>=0 for k in ('rim_width','rim_power')):
+        profile['global_rim']=dict(width=v['rim_width'],power=v['rim_power'])
+    return profile if 'global_specular' in profile or 'global_rim' in profile else None

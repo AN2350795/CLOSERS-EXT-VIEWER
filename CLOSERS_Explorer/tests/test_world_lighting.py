@@ -28,6 +28,24 @@ def chunk(value):
 
 
 class WorldLightingTests(unittest.TestCase):
+    def test_rim_does_not_require_reflection_parameters(self):
+        source=self.source(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_fRimLightWide=1.5,m_fRimLightPower=.5)
+        profile=comparison_profile(unit_light(chunk(source)),'source','region')
+        self.assertEqual(profile['global_rim'],dict(width=1.5,power=.5));self.assertNotIn('global_specular',profile)
+
+    def test_rim_profiles_keep_explicit_zero_and_do_not_fill_partial_values(self):
+        source=self.source(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_SpecularColor={1:1,2:1,3:1,4:1},m_fSpecularIntensity=1,m_fSpecularPow=3)
+        fields=source['m_LightData']['m_LightParamUnit']
+        self.assertNotIn('global_rim',comparison_profile(unit_light(chunk(source)),'source','region'))
+        fields['m_fRimLightWide']=0
+        self.assertNotIn('global_rim',comparison_profile(unit_light(chunk(source)),'source','region'))
+        fields['m_fRimLightPower']=0
+        self.assertEqual(comparison_profile(unit_light(chunk(source)),'source','region')['global_rim'],dict(width=0,power=0))
+        fields['m_fRimLightPower']=.5
+        self.assertEqual(comparison_profile(unit_light(chunk(source)),'source','region')['global_rim'],dict(width=0,power=.5))
+        fields['m_fRimLightPower']=-1
+        self.assertNotIn('global_rim',comparison_profile(unit_light(chunk(source)),'source','region'))
+
     def test_comparison_profile_requires_explicit_reflection_inputs(self):
         source=self.source(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_SpecularColor={1:1,2:.5,3:.25,4:1},m_fSpecularIntensity=3.98,m_fSpecularPow=3)
         report=unit_light(chunk(source));profile=comparison_profile(report,'source.lua','region')
