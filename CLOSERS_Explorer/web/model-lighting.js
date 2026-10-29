@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {setMaterialPreview,setMatcapPreview,setSpecularPreview} from './model-materials.js';
+import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
   const key='closers-avatar-matcap-v1';let saved={};
@@ -7,6 +7,7 @@ function setupMatcapControls({state,element,dialog}){
   let enabled=saved.enabled===true,strength=Number.isFinite(saved.strength)?Math.max(0,Math.min(1,saved.strength)):1;
   let useNormal=saved.useNormal!==false;
   let useSpecular=saved.useSpecular===true;
+  let maskOnly=false;
   const excluded=new Set(Array.isArray(saved.excluded)?saved.excluded.filter(v=>typeof v==='string'):[]);
   let groups=[];
   const field=element('fieldset');
@@ -14,12 +15,17 @@ function setupMatcapControls({state,element,dialog}){
   dialog.querySelector('fieldset').before(field);
   const toggle=field.querySelector('#avatar-matcap-enabled'),slider=field.querySelector('#avatar-matcap-strength'),output=field.querySelector('output'),status=field.querySelector('#avatar-matcap-status'),list=field.querySelector('#avatar-matcap-items');
   const normalLabel=element('label'),normalToggle=element('input');normalToggle.id='avatar-matcap-normal';normalToggle.type='checkbox';normalToggle.checked=useNormal;normalLabel.append(normalToggle,document.createTextNode(' 원본 표면 굴곡·광택 마스크 사용'));toggle.closest('label').after(normalLabel);
+  const maskLabel=element('label'),maskToggle=element('input');maskToggle.id='avatar-matcap-mask-only';maskToggle.type='checkbox';maskLabel.append(maskToggle,document.createTextNode(' 광택 범위 확인 · 흰색: 허용 / 검정: 제외'));normalLabel.after(maskLabel);
+  const maskStatus=element('p');maskStatus.id='avatar-matcap-mask-status';maskStatus.setAttribute('role','status');maskLabel.after(maskStatus);
   const specularLabel=element('label'),specularToggle=element('input');specularToggle.id='avatar-matcap-specular';specularToggle.type='checkbox';specularToggle.checked=useSpecular;specularLabel.append(specularToggle,document.createTextNode(' 원본 반사색·반사 지수 사용 (근사)'));normalLabel.after(specularLabel);
   const specularStatus=element('p');specularStatus.id='avatar-specular-status';specularStatus.className='muted';specularStatus.setAttribute('role','status');specularLabel.after(specularStatus);
   field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 원본 굴곡·광택 마스크가 준비될 때까지 적용을 보류합니다. 마스크 사용을 끄면 표면 전체에 광택을 더하는 별도 비교가 됩니다. 굴곡 접선과 카메라 위치의 확인용 반사 광원은 근사이므로 인게임 외형과 차이가 있습니다. 광택을 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
   function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,excluded:[...excluded]}));}catch{}}
   function apply(){
+    maskToggle.disabled=!groups.some(g=>!excluded.has(g.key)&&g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
+    if(maskToggle.disabled){maskOnly=false;maskToggle.checked=false;}
+    let maskCount=0;
     toggle.disabled=!groups.length;slider.disabled=!groups.length||!enabled;
     normalToggle.disabled=!enabled||!groups.length;
     const specularMaterials=groups.flatMap(g=>g.materials).filter(m=>m.userData.matcapPreview.specular);
@@ -31,7 +37,7 @@ function setupMatcapControls({state,element,dialog}){
       const capReady=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
       const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&(!useNormal||m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
       const on=enabled&&!excluded.has(group.key);
-      for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularPreview(m,useSpecular);}
+      for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularPreview(m,useSpecular);setMatcapMaskPreview(m,maskOnly&&!excluded.has(group.key));if(m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value>0)maskCount++;}
       if(on&&ready&&group.visible&&strength>0)active++;
       const normal=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value>0);
       group.status.textContent=!on?'광택 꺼짐':!capReady?'광택 텍스처 확인 필요':!ready?'원본 굴곡·광택 마스크 확인 필요 · 적용 보류':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'마스크 없는 비교 · 표면 전체에 광택 (인게임 적용 범위 미검증)';
@@ -40,6 +46,7 @@ function setupMatcapControls({state,element,dialog}){
     const waiting=groups.filter(g=>enabled&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&useNormal&&!m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value)).length;
     status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개${waiting?' · 마스크 확인 필요 '+waiting+'개':''}`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
     if(enabled&&useNormal&&specularReady&&useSpecular)specularStatus.textContent=`반사 켜짐 · 현재 표시 ${specularActive}개 · 카메라 위치의 확인용 광원`;
+    maskStatus.textContent=maskOnly?`광택 마스크 확인 중 · 연결 ${maskCount}개 · 회색: 부분 허용 · 발광만 보기·번짐 일시 제외 · 끄면 기존 화면 복원`:maskToggle.disabled?'확인할 원본 광택 마스크가 없습니다.':'광택을 켜기 전에도 원본 마스크의 적용 범위를 확인할 수 있습니다.';
   }
   function refresh(){
     const found=new Map(),sources=state.data?.sources||[];
@@ -66,7 +73,8 @@ function setupMatcapControls({state,element,dialog}){
   slider.oninput=()=>{strength=Number(slider.value);output.value=strength.toFixed(2);save();apply();};
   normalToggle.onchange=()=>{useNormal=normalToggle.checked;save();apply();};
   specularToggle.onchange=()=>{useSpecular=specularToggle.checked;save();apply();};
-  return {refresh};
+  maskToggle.onchange=()=>{maskOnly=maskToggle.checked;apply();};
+  return {refresh,isMaskInspection:()=>maskOnly};
 }
 
 // Keep the legacy diffuse comparison separate from the source toon lookup.
@@ -87,7 +95,7 @@ export function installAvatarLighting(material){
   Object.assign(uniforms,{avatarRimEnabled:{value:0},avatarRimDirection:{value:new THREE.Vector3(0,0,-1)},avatarRimWidth:{value:0},avatarRimPower:{value:0}});
   Object.assign(uniforms,{avatarFaceEnabled:{value:0},avatarFaceSide:{value:new THREE.Vector3(1,0,0)},avatarFaceForward:{value:new THREE.Vector3(0,0,1)},avatarFaceDirection:{value:new THREE.Vector3(0,0,1)},avatarFaceColor:{value:new THREE.Color(1,1,1)},avatarFaceIntensity:{value:1},avatarFacePower:{value:1}});
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|avatar-second-map-v7';
+  material.customProgramCacheKey=()=>key+'|avatar-gloss-mask-v8';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarLightingNormal;\nvarying float avatarToonCoordinate;\nuniform vec3 avatarToonDirection;\n'+shader.vertexShader
@@ -99,7 +107,11 @@ if (avatarLightEnabled > 0.5) {
   float directional = max(dot(normalize(avatarLightingNormal), normalize(avatarLightDirection)), 0.0);
   diffuseColor.rgb *= mix(vec3(1.0), avatarLightColor * avatarLightStrength, directional * avatarLightInfluence);
 }`)
-      .replace('#include <opaque_fragment>',`if (avatarEmissionPass > 0.5) {
+      .replace('#include <opaque_fragment>',`${material.userData.matcapPreview?`if (avatarMatcapMaskOnly > 0.5 && avatarEmissionPass < 0.5) {
+  vec4 inspectionBump = textureLod(avatarMatcapNormalMap,avatarMatcapUv,0.0);
+  outgoingLight = vec3(any(greaterThan(inspectionBump.rgb,vec3(0.0))) ? inspectionBump.a : 0.0);
+}`:''}
+if (avatarEmissionPass > 0.5) {
   outgoingLight = ${material.userData.materialPreview?'avatarMaterialEnabled * texture2D(avatarEmissiveMap, avatarMaterialUv).rgb * avatarEmissiveColor * avatarEmissiveStrength':'vec3(0.0)'};
 }
 #include <opaque_fragment>`);
@@ -377,5 +389,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   $('avatar-lighting-influence').oninput=()=>{settings.influence=Number($('avatar-lighting-influence').value);save();apply();};
-  return {refresh,getRenderOptions:()=>({bloom:settings.bloom,solo:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure})};
+  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure})};
 }

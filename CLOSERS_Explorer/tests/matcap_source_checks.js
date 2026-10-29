@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview} from '/model-materials.js';
+import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview} from '/model-materials.js';
 import {setAvatarToon,setAvatarToonMap} from '/model-lighting.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
@@ -31,6 +31,9 @@ try{
     model.materials.forEach(m=>setMatcapPreview(m,true));const on=capture(label+'-on');
     let changed=0;for(let i=0;i<on.length;i++){if(i%4===3)check(on[i]===off[i],'real MatCap changed alpha');else if(on[i]!==off[i])changed++;}
     check(changed>100,'visible MatCap contribution missing: '+label+' '+changed);
+    model.materials.forEach(m=>setMatcapMaskPreview(m,true));const mask=capture(label+'-mask-inspection');let maskChanged=0;
+    for(let i=0;i<mask.length;i++){if(i%4===3)check(mask[i]===on[i],'real mask inspection changed alpha');else if(mask[i]!==on[i])maskChanged++;}
+    check(maskChanged>100,'real mask inspection did not affect costume');model.materials.forEach(m=>setMatcapMaskPreview(m,false));check(capture(label+'-mask-restored').every((v,i)=>v===on[i]),'real mask OFF failed to restore costume');
     model.materials.forEach(m=>setMatcapPreview(m,true,1,false));const unmasked=capture(label+'-unmasked');
     check(unmasked.some((v,i)=>i%4!==3&&v!==on[i]),'real normal/alpha did not affect preview');
     if(matcapFixture.specular){

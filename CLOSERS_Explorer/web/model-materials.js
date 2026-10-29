@@ -41,7 +41,7 @@ export function installMatcapPreview(material){
   const input=material.userData.input.matcap_preview;
   if(input?.kind!=='matcap'||input.status!=='approximate')return;
   const specular=input.specular?.status==='approximate'?input.specular:null;
-  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0},avatarSpecularEnabled:{value:0},avatarSpecularColor:{value:specular?specular.color.slice(0,3):[0,0,0]},avatarSpecularPower:{value:specular?.power??1}};
+  const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0},avatarMatcapMaskOnly:{value:0},avatarSpecularEnabled:{value:0},avatarSpecularColor:{value:specular?specular.color.slice(0,3):[0,0,0]},avatarSpecularPower:{value:specular?.power??1}};
   material.userData.matcapPreview={uniforms,enabled:false,useNormal:true,specularEnabled:false,specular};
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
   material.customProgramCacheKey=()=>key+'|closers-matcap-vertex-basis-v5';
@@ -62,7 +62,7 @@ if (dot(avatarMatcapTangent,avatarMatcapTangent) > 1e-10) avatarMatcapTangent = 
 if (dot(avatarMatcapBitangent,avatarMatcapBitangent) > 1e-10) avatarMatcapBitangent = normalize(avatarMatcapBitangent);`)
       .replace('#include <uv_vertex>','#include <uv_vertex>\navatarMatcapUv = uv;')
       .replace('#include <project_vertex>','#include <project_vertex>\navatarMatcapPosition = mvPosition.xyz;');
-    shader.fragmentShader='varying vec3 avatarMatcapTangent;\nvarying vec3 avatarMatcapBitangent;\nvarying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\nuniform float avatarSpecularEnabled;\nuniform vec3 avatarSpecularColor;\nuniform float avatarSpecularPower;\n'+shader.fragmentShader
+    shader.fragmentShader='varying vec3 avatarMatcapTangent;\nvarying vec3 avatarMatcapBitangent;\nvarying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\nuniform float avatarMatcapMaskOnly;\nuniform float avatarSpecularEnabled;\nuniform vec3 avatarSpecularColor;\nuniform float avatarSpecularPower;\n'+shader.fragmentShader
       .replace('#include <opaque_fragment>',`
 if (avatarMatcapEnabled > 0.5) {
   vec3 capNormal = normalize(avatarMatcapNormal);
@@ -121,6 +121,12 @@ export function setMatcapNormalMap(material,map){
   const preview=material.userData.matcapPreview;if(!preview)return;
   preview.uniforms.avatarMatcapNormalMap.value=map;
   setMatcapPreview(material,preview.enabled,preview.uniforms.avatarMatcapStrength.value,preview.useNormal);
+  setMatcapMaskPreview(material,preview.maskOnly);
+}
+
+export function setMatcapMaskPreview(material,enabled){
+  const preview=material.userData.matcapPreview;if(!preview)return;
+  preview.maskOnly=!!enabled;preview.uniforms.avatarMatcapMaskOnly.value=enabled&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
 }
 
 export function setSpecularPreview(material,enabled){

@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview} from '/model-materials.js';
+import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview} from '/model-materials.js';
 import {createEmissionRenderer} from '/model-emission.js';
 import {setAvatarLight} from '/model-lighting.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
@@ -118,6 +118,14 @@ try{
     setMatcapNormalMap(material,bump);check(pixels(scene).every((v,i)=>v===original[i]),'zero normal alpha must suppress MatCap without hiding diffuse');
     bump.image.data[3]=128;bump.needsUpdate=true;const masked=pixels(scene);
     for(let c=0;c<3;c++)check(Math.abs(masked[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255*128/255)))<=1,'normal alpha mask equation: '+count+'/'+c);
+    setMatcapMaskPreview(material,true);const inspected=pixels(scene);
+    for(let c=0;c<3;c++)check(Math.abs(inspected[index+c]-Math.round(255*linearToSrgb(128/255)))<=1,'mask inspection must show source alpha alone: '+count+'/'+c);
+    for(let i=0;i<inspected.length;i++)if(i%4===3||(i/4|0)%96>=48)check(inspected[i]===masked[i],'mask inspection changed opacity or unrelated material');
+    setMaterialPreview(material,true);check(pixels(scene).every((v,i)=>v===inspected[i]),'emission contaminated mask inspection');
+    const inspectionFx=createEmissionRenderer(renderer),readInspection=()=>{const p=new Uint8Array(inspected.length);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;};
+    inspectionFx.render(scene,camera,model,{solo:true,bloom:true});const inspectionSolo=readInspection();setMatcapMaskPreview(material,false);inspectionFx.render(scene,camera,model,{solo:true,bloom:true});check(readInspection().every((v,i)=>v===inspectionSolo[i]),'mask inspection leaked into actual emission pass');inspectionFx.dispose();setMaterialPreview(material,false);setMatcapMaskPreview(material,true);
+    bump.image.data.set([0,0,0,255]);bump.needsUpdate=true;check(pixels(scene)[index]===0,'invalid normal RGB must display a black mask');bump.image.data.set([128,128,255,128]);bump.needsUpdate=true;
+    setMatcapMaskPreview(material,false);check(pixels(scene).every((v,i)=>v===masked[i]),'mask inspection OFF did not restore material');
     setMatcapNormalMap(material,null);check(pixels(scene).every((v,i)=>v===original[i]),'lost BUMP mask left full-surface gloss active');setMatcapNormalMap(material,bump);check(pixels(scene).every((v,i)=>v===masked[i]),'recovered BUMP mask did not restore gloss');
     setMatcapPreview(material,true,1,false);check(pixels(scene).every((v,i)=>v===actual[i]),'normal mask comparison did not restore unmasked preview');
     setMatcapPreview(material,true);bump.image.data.set([0,0,0,255]);bump.needsUpdate=true;
@@ -211,6 +219,9 @@ try{
   glossy=true;await modelViewer.loadModel([1]);
   const capToggle=document.getElementById('avatar-matcap-enabled'),capSlider=document.getElementById('avatar-matcap-strength');
   check(!capToggle.disabled&&!capToggle.checked,'MatCap must be opt-in');
+  const maskToggle=document.getElementById('avatar-matcap-mask-only');check(!maskToggle.disabled&&!maskToggle.checked,'mask inspection must be independent and opt-in');maskToggle.click();
+  check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value===1&&m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'mask inspection must work before gloss is enabled');
+  check(document.getElementById('avatar-matcap-mask-status').textContent.includes('발광만 보기·번짐 일시 제외'),'mask diagnostic did not explain temporary rendering mode');maskToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value===0),'mask inspection OFF left stale override');
   check(modelViewer.state.textures.size===4,'MatCap/normal texture roles not isolated from base/emission');
   const capMap=modelViewer.state.textures.get('matcap:71');check(capMap!==modelViewer.state.textures.get('base:71')&&capMap.wrapS===T.ClampToEdgeWrapping&&capMap.wrapT===T.ClampToEdgeWrapping,'MatCap clamp/cache invalid');
   capToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1),'MatCap toggle did not enable loaded maps');
@@ -232,6 +243,7 @@ try{
   missingNormal=true;await modelViewer.loadModel([1]);
   check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'missing only BUMP must defer loaded MatCap');
   check(document.getElementById('avatar-matcap-status').textContent.includes('현재 표시 0개')&&document.getElementById('avatar-matcap-status').textContent.includes('마스크 확인 필요'),'missing mask status/count incorrect');
+  check(maskToggle.disabled&&!maskToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value===0),'missing source left mask inspection available');
   check(!normalToggle.disabled&&normalToggle.checked,'user cannot choose explicit unmasked comparison');normalToggle.click();
   check(modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1&&document.getElementById('avatar-matcap-items').textContent.includes('마스크 없는 비교'),'explicit unmasked comparison/notice missing');normalToggle.click();
   missingNormal=false;await modelViewer.loadModel([1]);check(modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'mask recovery did not restore saved gloss');
