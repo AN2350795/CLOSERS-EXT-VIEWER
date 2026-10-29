@@ -45,6 +45,13 @@ def normal_texture(name):
     return path.stem+'_BUMP'+path.suffix if len(path.suffix)==4 else None
 
 
+def glow_texture(name):
+    # CW.EXE 0x141715751: type 3 inserts _GLOW before the extension.
+    # Binding 0x141712c46 uses the original resource's slot 0x120.
+    name=texture_key(name);path=Path(name)
+    return path.stem+'_GLOW'+path.suffix if len(path.suffix)==4 else None
+
+
 def plan(material,item):
     from .model_items import AvatarItems
     inputs=AvatarItems.material_inputs(material,item)

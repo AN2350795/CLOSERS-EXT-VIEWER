@@ -2,10 +2,15 @@ import copy
 import unittest
 
 from closers.model_items import AvatarItems
-from closers.model_materials import plan,matcap_preview,normal_texture
+from closers.model_materials import plan,matcap_preview,normal_texture,glow_texture
 
 
 class MaterialPlanTests(unittest.TestCase):
+    def test_glow_texture_follows_type_three_insertion_rule(self):
+        self.assertEqual(glow_texture('folder/Base.png'),'BASE_GLOW.PNG')
+        self.assertEqual(glow_texture('Base.TGA'),'BASE_GLOW.TGA')
+        for value in (None,'','BASE','BASE.JPEG'):self.assertIsNone(glow_texture(value))
+
     def test_specular_preview_requires_explicit_valid_material_values(self):
         inputs=dict(m_MultiTexName='CAP.PNG',SpecularColor={1:1,2:.5,3:.25,4:0},SpecularPower=300)
         specular=matcap_preview(inputs)['specular']

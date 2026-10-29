@@ -333,6 +333,16 @@ class Models:
                         if 'material_preview' in mat:
                             preview=mat['material_preview']
                             preview['image']=self.candidates(preview['texture'],row)
+                        if classify(row['name'])['kind']=='avatar':
+                            from .model_materials import glow_texture
+                            original=mat.get('material_report',{}).get('source_texture') or mat['texture']
+                            name=glow_texture(original)
+                            if name:
+                                info=self.candidates(name,row)
+                                if info['candidates']:
+                                    mat['glow_preview']=dict(kind='surface-glow',status='approximate',texture=name,source_texture=original,image=info,
+                                                             basis='CW.EXE:0x141712c46/CW_CARTOONLIGHT.PS.CSO:t3',
+                                                             light_factor='g_v4LightIntensity.x',bloom=False)
                         if mat.get('toon_preview',{}).get('status')=='approximate':
                             preview=mat['toon_preview']
                             preview['image']=self.candidates(preview['texture'],row)
