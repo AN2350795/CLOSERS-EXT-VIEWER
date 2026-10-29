@@ -20,6 +20,25 @@
 
 미지원은 실패한 기본색 로딩과 구분한다. 발광 텍스처가 없거나 출처가 중복이면 기본색과 모델을 유지하고 확인할 항목을 안내한다. 중복 XET에서 새로 보존한 툰·발광 블록이 다르면 해당 효과만 보류한다. 기본색 변경표 자체가 충돌한 경우는 기존 오류 처리를 유지한다.
 
+## 2026-10-29 9단계: 지역 조명의 전역 반사·테두리광 입력 조사
+
+`WORLD_TEMPLET.m_LightData.m_LightParamUnit`에서 지역의 원본 반사색·강도·지수와 테두리광 폭·강도를 복원했다. 컴파일된 Lua 5.1은 기존 정적 리터럴 파서로 읽으며 게임 스크립트를 실행하지 않는다. `closers.world_lighting.unit_light`와 감사 도구는 위치·색·계수·활성 플래그·누락 필드를 구분해 보존한다. 원본 본문 SHA-256과 모든 중복 출처의 CMF·순번도 기록한다. 서로 다른 중복 정의는 기존 LoadingData 검증에서 거부한다. 위치를 방향으로 재해석하거나 누락값을 임의 기본값으로 채우지 않는다.
+
+실행 파일 `0x1415f9bb0`의 조명 구조 로더에서 `m_fSpecularIntensity`/`m_fSpecularPow`는 +0x50/+0x54, `m_fRimLightWide`/`m_fRimLightPower`는 +0x58/+0x5c에 들어간다. `0x14166f328`은 `m_LightParamUnit`을 같은 로더에 전달한다. 최신 PS의 t2는 `_EXT` 리소스 슬롯 2이고, R은 전역 반사의 지수·강도 계산에, B는 `cb5[18].x`를 곱한 표면 가산 항에 쓰인다. XET `SpecularColor/SpecularPower`를 쓰는 별도 MatCap 반사와는 다른 입력이다.
+
+평화의 광장·몽마르트르·ORIGIN_WHEEL의 TWILIGHT 원본에서 반사 강도는 각각 3.98/10.1/9.4, 지수는 3/3/1.822이며 테두리광 강도는 모두 0이다. 몽마르트르에는 CartoonPow가 명시되지 않아 누락으로 남긴다. 숫자 0, 필드 누락, 지역 활성 플래그 미지정을 서로 바꾸지 않는다. 진단 결과는 `status=source-only`, `rendering_enabled=false`다.
+
+**이 단계는 조사·진단 도구 추가이며 새 화면 효과를 켜지 않는다.** `0x1416749e9` 이후의 아바타 경로는 캐릭터 키와 옵션 비트에 따라 테두리광 값을 별도로 조회하고 기본 키로 재조회한다(`0x141674a1d`/`0x141674a35`). `0x141674b42` 이후에는 방향 입력도 별도로 덮어쓴다. 따라서 지역 원본 값만으로 아바타의 최종 반사·rim을 확정할 수 없다. 캐릭터별 덮어쓰기, 광원 방향의 좌표 변환, 활성 조건과 최종 셰이더 업로드를 연결한 뒤 렌더링에 적용해야 한다. 기존 의상 조명·MatCap 반사 동작은 그대로 유지한다.
+
+지역 3종의 실제 원본과 합성 Lua를 사용한 6개 테스트로 누락·0·활성 플래그·색 채널·잘못된 수치·정적 테이블 외 입력을 검증했다. 로컬 결과는 `diagnostics/world-lighting-20261029.json`, 실행 파일 근거는 `diagnostics/world-lighting-source-20261029.txt`에 보관한다.
+
+```powershell
+python CLOSERS_Explorer/tests/audit_world_lighting.py --workspace results --output diagnostics/world-lighting-20261029.json
+# --source WI_TOWN_MONTMARTRE_TWILIGHT.LUA 등 정확한 원본 이름을 반복 지정할 수 있다.
+cd CLOSERS_Explorer
+python -m unittest discover -s tests -p test_world_lighting.py -v
+```
+
 ## 2026-10-29 8단계: 광택의 정점 접선 기반 굴곡 방향
 
 원본 `CW_DEFAULT.VS.CSO`는 tangent·bitangent 입력(v7/v8)을 법선과 함께 스킨 변형하고 정규화해 PS로 보낸다. `CW_CARTOONLIGHT.PS.CSO`는 보간된 세 축을 각각 정규화한 뒤 BUMP RGB를 이 기저로 변환한다. 기존 미리보기는 화면 위치·UV의 삼각형 미분으로 tangent·bitangent를 구성해, 매끄러운 정점 법선과 접선이 수직을 이루지 않을 수 있었다.
