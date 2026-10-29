@@ -35,7 +35,8 @@ export function setMaterialPreviewMap(material,map){
 }
 
 // Opt-in MatCap approximation. Explicitly resolved _BUMP RGB/alpha provide
-// normals and the gloss mask; absent maps retain the vertex-normal preview.
+// normals and the gloss mask; wait for both maps unless the user explicitly
+// selects the unmasked vertex-normal comparison.
 export function installMatcapPreview(material){
   const input=material.userData.input.matcap_preview;
   if(input?.kind!=='matcap'||input.status!=='approximate')return;
@@ -105,7 +106,7 @@ export function setMatcapPreview(material,enabled,strength=1,useNormal=true){
   const preview=material.userData.matcapPreview;if(!preview)return;
   preview.enabled=enabled;preview.useNormal=useNormal;
   preview.uniforms.avatarMatcapStrength.value=Number.isFinite(strength)?Math.max(0,Math.min(1,strength)):1;
-  preview.uniforms.avatarMatcapEnabled.value=enabled&&preview.uniforms.avatarMatcapMap.value?1:0;
+  preview.uniforms.avatarMatcapEnabled.value=enabled&&preview.uniforms.avatarMatcapMap.value&&(!useNormal||preview.uniforms.avatarMatcapNormalMap.value)?1:0;
   preview.uniforms.avatarMatcapNormalEnabled.value=useNormal&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
   preview.uniforms.avatarSpecularEnabled.value=enabled&&preview.specularEnabled&&preview.specular&&useNormal&&preview.uniforms.avatarMatcapMap.value&&preview.uniforms.avatarMatcapNormalMap.value?1:0;
 }

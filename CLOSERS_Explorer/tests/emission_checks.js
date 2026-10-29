@@ -23,7 +23,7 @@ try{
   // pass; otherwise its normal color and MatCap can be mistaken for emission.
   const unlitData=structuredClone(data);delete unlitData.meshes[0].materials[0].material_preview;
   unlitData.meshes[0].materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG'};
-  const unlit=buildModel(unlitData);unlit.root.scale.z=1;scene.add(unlit.root);setMatcapPreviewMap(unlit.materials[0],map);setMatcapPreview(unlit.materials[0],true);
+  const unlit=buildModel(unlitData);unlit.root.scale.z=1;scene.add(unlit.root);setMatcapPreviewMap(unlit.materials[0],map);setMatcapPreview(unlit.materials[0],true,1,false);
   renderer.setSize(96,96);fx.render(scene,camera,unlit,{solo:true,bloom:true});const empty=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,empty);
   check(empty.every((v,i)=>i%4===3||v===0),'no-emission costume leaked base color or MatCap into solo view');
   check(model.root.visible&&scene.background===background&&unlit.materials.every(m=>m.userData.avatarLighting.avatarEmissionPass.value===0),'empty solo pass did not restore scene');

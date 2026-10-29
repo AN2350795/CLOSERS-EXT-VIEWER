@@ -36,7 +36,7 @@ try{
   {
     const data=fixture(),v=data.meshes[0].materials[0];v.material_preview={kind:'emissive',status:'approximate',color:[1,.5,.25,1],strength:.5};v.matcap_preview={kind:'matcap',status:'approximate'};
     const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);const m=model.materials[0],index=(48*96+24)*4;
-    setMaterialPreviewMap(m,map);setMatcapPreviewMap(m,map);setMatcapPreview(m,true);setAvatarToonMap(m,map);setAvatarToon(m,true,profile);const on=capture(scene);
+    setMaterialPreviewMap(m,map);setMatcapPreviewMap(m,map);setMatcapPreview(m,true,1,false);setAvatarToonMap(m,map);setAvatarToon(m,true,profile);const on=capture(scene);
     for(let c=0;c<3;c++){const tex=[128,64,32][c]/255,value=([.2,.1,.05][c]+tex)*tex*profile.color[c]*profile.intensity+tex*[1,.5,.25][c]*.5;check(Math.abs(on[index+c]-srgb(value))<=1,'toon must shade MatCap before independent emission');}
     const fx=createEmissionRenderer(renderer);fx.render(scene,camera,model,{solo:true,bloom:false});const solo=new Uint8Array(96*96*4);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,solo);for(let c=0;c<3;c++)check(Math.abs(solo[index+c]-srgb([128,64,32][c]/255*[1,.5,.25][c]*.5))<=1,'toon leaked into emission-only render');fx.dispose();model.dispose();
   }

@@ -106,16 +106,19 @@ try{
     setMatcapPreview(material,true);
     check(pixels(scene).every((v,i)=>v===original[i]),'missing MatCap changed base');
     const cap=new T.DataTexture(new Uint8Array([32,64,128,255]),1,1);cap.needsUpdate=true;
-    setMatcapPreviewMap(material,cap);const actual=pixels(scene);
+    setMatcapPreviewMap(material,cap);check(pixels(scene).every((v,i)=>v===original[i]),'missing BUMP mask must defer gloss instead of coating the whole surface');
+    setMatcapPreview(material,true,1,false);const actual=pixels(scene);
     for(let c=0;c<3;c++)check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255)))<=1,'MatCap numerical contribution: '+count+'/'+c);
     for(let i=0;i<actual.length;i++)if(i%4===3||(i/4|0)%96>=48)check(actual[i]===original[i],'MatCap changed alpha or unrelated surface');
     setMaterialPreviewMap(material,cap);const both=pixels(scene);
     for(let c=0;c<3;c++)check(Math.abs(both[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255*(1+[1,.5,.25][c]*.9))))<=1,'MatCap and emission did not compose');
     setMaterialPreview(material,false);
     const bump=new T.DataTexture(new Uint8Array([128,128,255,0]),1,1);bump.needsUpdate=true;
+    setMatcapPreview(material,true);
     setMatcapNormalMap(material,bump);check(pixels(scene).every((v,i)=>v===original[i]),'zero normal alpha must suppress MatCap without hiding diffuse');
     bump.image.data[3]=128;bump.needsUpdate=true;const masked=pixels(scene);
     for(let c=0;c<3;c++)check(Math.abs(masked[index+c]-Math.round(255*linearToSrgb([.2,.1,.05][c]+[32,64,128][c]/255*128/255)))<=1,'normal alpha mask equation: '+count+'/'+c);
+    setMatcapNormalMap(material,null);check(pixels(scene).every((v,i)=>v===original[i]),'lost BUMP mask left full-surface gloss active');setMatcapNormalMap(material,bump);check(pixels(scene).every((v,i)=>v===masked[i]),'recovered BUMP mask did not restore gloss');
     setMatcapPreview(material,true,1,false);check(pixels(scene).every((v,i)=>v===actual[i]),'normal mask comparison did not restore unmasked preview');
     setMatcapPreview(material,true);bump.image.data.set([0,0,0,255]);bump.needsUpdate=true;
     check(pixels(scene).every((v,i)=>v===original[i]),'zero normal RGB must suppress the normal branch');
@@ -167,7 +170,7 @@ try{
   check(pair.materials[1].userData.materialPreview.uniforms.avatarMaterialEnabled.value===0,'two items share mutable uniforms');pair.dispose();
 
   // Exercise the real loader, role-specific cache, checkbox and missing maps.
-  const originalFetch=window.fetch;let missing=false,paired=false,failLighting=false,glossy=false;
+  const originalFetch=window.fetch;let missing=false,missingNormal=false,paired=false,failLighting=false,glossy=false;
   window.fetch=async (url,options)=>{
     const path=String(url);
     if(path.startsWith('/api/model-browser'))return new Response(JSON.stringify({total:0,items:[],facets:{character:[],kind:[],family:[],part:[],variant:[]}}));
@@ -179,6 +182,7 @@ try{
       if(paired){data.meshes.forEach((m,i)=>m.source_id=i+1);data.meshes[1].materials[0].material_preview=JSON.parse(JSON.stringify(data.meshes[0].materials[0].material_preview));}
       if(glossy){for(const m of data.meshes)m.materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG',image:{name:'CAP.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71},normal_texture:'BASE_BUMP.PNG',normal_image:{name:'BASE_BUMP.PNG',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71}};}
       if(glossy)data.meshes[0].materials[0].matcap_preview.specular={status:'approximate',color:[1,.5,.25,1],power:300};
+      if(glossy&&missingNormal)for(const m of data.meshes){m.materials[0].matcap_preview.normal_image.candidates=[];m.materials[0].matcap_preview.normal_image.selected=null;}
       return new Response(JSON.stringify({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{name:'none',candidates:[]},warnings:[]}));
     }
     return originalFetch(url,options);
@@ -224,6 +228,12 @@ try{
   check(specularToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0),'reflection preference or individual surface exclusion lost on reload');
   document.querySelector('#avatar-matcap-items input').click();check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarSpecularEnabled.value===1,'excluded reflection cannot be restored');document.querySelector('#avatar-matcap-items input').click();
   check(modelViewer.state.model.materials[0].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0&&modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'MatCap reload lost individual preferences');
+  missingNormal=true;await modelViewer.loadModel([1]);
+  check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'missing only BUMP must defer loaded MatCap');
+  check(document.getElementById('avatar-matcap-status').textContent.includes('현재 표시 0개')&&document.getElementById('avatar-matcap-status').textContent.includes('마스크 확인 필요'),'missing mask status/count incorrect');
+  check(!normalToggle.disabled&&normalToggle.checked,'user cannot choose explicit unmasked comparison');normalToggle.click();
+  check(modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1&&document.getElementById('avatar-matcap-items').textContent.includes('마스크 없는 비교'),'explicit unmasked comparison/notice missing');normalToggle.click();
+  missingNormal=false;await modelViewer.loadModel([1]);check(modelViewer.state.model.materials[1].userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1,'mask recovery did not restore saved gloss');
   missing=true;await modelViewer.loadModel([1]);
   check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===0),'missing MatCap left a stale map enabled');
   check(specularToggle.disabled&&modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value===0),'missing textures left a stale reflection enabled');

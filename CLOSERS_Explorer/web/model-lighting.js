@@ -16,27 +16,29 @@ function setupMatcapControls({state,element,dialog}){
   const normalLabel=element('label'),normalToggle=element('input');normalToggle.id='avatar-matcap-normal';normalToggle.type='checkbox';normalToggle.checked=useNormal;normalLabel.append(normalToggle,document.createTextNode(' 원본 표면 굴곡·광택 마스크 사용'));toggle.closest('label').after(normalLabel);
   const specularLabel=element('label'),specularToggle=element('input');specularToggle.id='avatar-matcap-specular';specularToggle.type='checkbox';specularToggle.checked=useSpecular;specularLabel.append(specularToggle,document.createTextNode(' 원본 반사색·반사 지수 사용 (근사)'));normalLabel.after(specularLabel);
   const specularStatus=element('p');specularStatus.id='avatar-specular-status';specularStatus.className='muted';specularStatus.setAttribute('role','status');specularLabel.after(specularStatus);
-  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 굴곡 방향은 원본 법선·UV로 만든 정점 접선으로 근사하며, 반사는 카메라 위치에 둔 확인용 광원을 사용합니다. 게임의 접선 생성·조명과 차이가 있습니다. 원본 굴곡·마스크가 없는 부위는 MatCap만 표면 방향으로 근사합니다. 광택을 끄면 기본 재질로 돌아갑니다.';
+  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 원본 굴곡·광택 마스크가 준비될 때까지 적용을 보류합니다. 마스크 사용을 끄면 표면 전체에 광택을 더하는 별도 비교가 됩니다. 굴곡 접선과 카메라 위치의 확인용 반사 광원은 근사이므로 인게임 외형과 차이가 있습니다. 광택을 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
   function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,excluded:[...excluded]}));}catch{}}
   function apply(){
     toggle.disabled=!groups.length;slider.disabled=!groups.length||!enabled;
-    normalToggle.disabled=!enabled||!groups.some(g=>g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
+    normalToggle.disabled=!enabled||!groups.length;
     const specularMaterials=groups.flatMap(g=>g.materials).filter(m=>m.userData.matcapPreview.specular);
     const specularReady=specularMaterials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value);
     specularToggle.disabled=!enabled||!useNormal||!specularReady;
     specularStatus.textContent=!specularMaterials.length?'현재 아이템에 지정된 반사색·반사 지수가 없습니다.':!specularReady?'반사 설정 연결됨 · 광택·표면 굴곡 텍스처 확인 필요':!enabled?'반사를 비교하려면 광택을 켜세요.':!useNormal?'반사에는 원본 표면 굴곡·광택 마스크가 필요합니다.':useSpecular?'반사 켜짐 · 카메라 위치의 확인용 광원':'반사 꺼짐 · 켜면 MatCap과 별도의 하이라이트를 비교합니다.';
     let active=0,specularActive=0;
     for(const group of groups){
-      const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
+      const capReady=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value);
+      const ready=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&(!useNormal||m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value));
       const on=enabled&&!excluded.has(group.key);
       for(const m of group.materials){setMatcapPreview(m,on,strength,useNormal);setSpecularPreview(m,useSpecular);}
       if(on&&ready&&group.visible&&strength>0)active++;
       const normal=group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapNormalEnabled.value>0);
-      group.status.textContent=!ready?'광택 텍스처 확인 필요':!on?'광택 꺼짐':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'광택 켜짐 · 정점 법선 근사 (마스크 없음)';
+      group.status.textContent=!on?'광택 꺼짐':!capReady?'광택 텍스처 확인 필요':!ready?'원본 굴곡·광택 마스크 확인 필요 · 적용 보류':!group.visible?'현재 숨겨진 메시의 광택':strength===0?'강도 0 · 기본 재질 표시':normal?'광택 켜짐 · 원본 굴곡·마스크 적용':'마스크 없는 비교 · 표면 전체에 광택 (인게임 적용 범위 미검증)';
       if(on&&ready&&group.visible&&strength>0&&group.materials.some(m=>m.userData.matcapPreview.uniforms.avatarSpecularEnabled.value>0)){group.status.textContent+=' · 반사 켜짐';specularActive++;}
     }
-    status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
+    const waiting=groups.filter(g=>enabled&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.matcapPreview.uniforms.avatarMatcapMap.value&&useNormal&&!m.userData.matcapPreview.uniforms.avatarMatcapNormalMap.value)).length;
+    status.textContent=groups.length?`광택 연결 ${groups.length}개 · 현재 표시 ${active}개${waiting?' · 마스크 확인 필요 '+waiting+'개':''}`:'연결된 광택 재질이 없습니다. 유광 타입 등 아이템별 목록에서 선택하세요.';
     if(enabled&&useNormal&&specularReady&&useSpecular)specularStatus.textContent=`반사 켜짐 · 현재 표시 ${specularActive}개 · 카메라 위치의 확인용 광원`;
   }
   function refresh(){
