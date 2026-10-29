@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {isFaceShadingMaterial} from './face-preview.js';
 import {installMaterialPreview,installMatcapPreview} from './model-materials.js';
-import {installAvatarLighting} from './model-lighting.js';
+import {installAvatarLighting,updateAvatarFaceFrame} from './model-lighting.js';
 
 // Store a sparse list rather than reserving a fixed number of influences per
 // vertex. WebGL2 vertex shaders can fetch every influence without truncation.
@@ -92,10 +92,14 @@ export function buildModel(data){
         mesh=new THREE.SkinnedMesh(g,mats);const skeleton=new THREE.Skeleton(bones,inverses);mesh.bind(skeleton,new THREE.Matrix4());skeletons.push(skeleton);root.add(mesh);
         if(extended)extendSkinning(mesh,weights,textures);
       }else{mesh=new THREE.Mesh(g,mats);(m.frame<0?root:bones[m.frame]).add(mesh);}
+      const faceHeads=new Map();
+      for(const mat of mats)if(mat.userData.faceSdfPreview){const matches=bones.filter(b=>b.name===mat.userData.input.face_sdf_preview.head_bone);faceHeads.set(mat,matches.length===1?matches[0]:null);}
+      if(faceHeads.size){mesh.userData.faceHeads=faceHeads;mesh.onBeforeRender=(_renderer,_scene,_camera,_geometry,material)=>{if(faceHeads.has(material))updateAvatarFaceFrame(material,faceHeads.get(material)?.matrixWorld);};}
       mesh.name=m.name;mesh.userData.helper=m.helper;mesh.userData.equipmentHidden=!!m.equipment_hidden;mesh.userData.part=data.sources?.find(s=>s.entry_id===m.source_id)?.model_group?.part;mesh.visible=!m.helper&&!m.equipment_hidden;mesh.frustumCulled=false;meshes.push(mesh);
     }
   }catch(e){geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());skeletons.forEach(s=>s.dispose());textures.forEach(t=>t.dispose());throw e;}
   root.scale.z=-1;root.updateMatrixWorld(true);skeletons.forEach(s=>s.update());
+  for(const mesh of meshes)for(const [material,head] of mesh.userData.faceHeads||[])updateAvatarFaceFrame(material,head?.matrixWorld);
   return {root,bones,meshes,materials,skeletons,dispose(){geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());skeletons.forEach(s=>s.dispose());textures.forEach(t=>t.dispose());}};
 }
 

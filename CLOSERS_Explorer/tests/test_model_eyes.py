@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from closers import ntf
 from closers.catalog import Catalog
-from closers.model import parse_x
+from closers.model import parse_x,IDENTITY
 from closers.model_library import Models
 from test_explorer import fixture
 from test_game_names import table
@@ -64,6 +64,20 @@ class EyeAvatarTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.models.scene([face_id],eye_key='STRIKER:10',eye_face=face_id,eye_texture=face_id)
         with self.assertRaises(ValueError):self.models.scene([face_id],eye_key='CASTER:basic',eye_face=face_id)
         with self.assertRaises(ValueError):self.models.scene([face_id],eye_key='STRIKER:10',eye_face=999,eye_texture=texture_id)
+
+    def test_face_sdf_binding_survives_eye_change_without_touching_eye_material(self):
+        eye=next(r for r in self.eye.resources() if r['key']=='STRIKER:10')
+        part=parse_x(binary_model(self.default));skin=copy.deepcopy(part['meshes'][0]);skin['name']='FACE_SDF'
+        skin['materials'][0]['texture']='BASIC_FACE.TGA';part['meshes'].append(skin)
+        part['frames'].append(dict(name='BIP01_HEAD',parent=0,matrix=IDENTITY.copy()))
+        with patch('closers.model_library.parse_x',side_effect=lambda body:copy.deepcopy(part)):
+            scene=self.models.scene([eye['face_id']],eye_key=eye['key'],eye_face=eye['face_id'],eye_texture=eye['texture_id'])
+            pupil=scene['meshes'][0]['materials'][0];face=scene['meshes'][1]['materials'][0]
+            self.assertEqual(pupil['texture'],'RED.PNG');self.assertNotIn('face_sdf_preview',pupil)
+            self.assertEqual(face['texture'],'BASIC_FACE.TGA')
+            self.assertEqual(face['face_sdf_preview']['status'],'approximate')
+            self.assertEqual(face['face_sdf_preview']['head_bone'],'BIP01_HEAD')
+            self.assertNotIn('toon_preview',face)
 
     def test_duplicate_sources_require_an_explicit_choice(self):
         extra=fixture(self.root/'duplicate.cmf',[('RED.PNG',b'other',0)])

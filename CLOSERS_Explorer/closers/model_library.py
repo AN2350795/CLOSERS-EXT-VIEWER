@@ -232,6 +232,12 @@ class Models:
                                 if eye_material(mat) or eye['geometry'] and Path(mat['texture'].replace('\\','/')).stem.upper() in eye['texture_targets']:
                                     mat['texture']=texture_row['name'];mat['eye_texture_id']=eye_texture;count+=1
                         if not count:raise ValueError('이 얼굴에서 눈동자 텍스처를 찾지 못했습니다.')
+                if group['kind']=='avatar' and group['part']=='FACE':
+                    from .model_face import face_sdf_preview
+                    for mesh in part['meshes']:
+                        for mat in mesh['materials']:
+                            preview=face_sdf_preview(mesh,mat,part['frames'])
+                            if preview:mat['face_sdf_preview']=preview
                 vertices += sum(len(mesh['vertices'])//3 for mesh in part['meshes'])
                 if vertices > 250_000:
                     raise ValueError('선택한 모델의 정점 합계가 250,000개를 초과했습니다.')
