@@ -43,15 +43,25 @@ export function installMatcapPreview(material){
   const uniforms={avatarMatcapMap:{value:null},avatarMatcapEnabled:{value:0},avatarMatcapStrength:{value:1},avatarMatcapNormalMap:{value:null},avatarMatcapNormalEnabled:{value:0},avatarSpecularEnabled:{value:0},avatarSpecularColor:{value:specular?specular.color.slice(0,3):[0,0,0]},avatarSpecularPower:{value:specular?.power??1}};
   material.userData.matcapPreview={uniforms,enabled:false,useNormal:true,specularEnabled:false,specular};
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|closers-matcap-lod0-v4';
+  material.customProgramCacheKey=()=>key+'|closers-matcap-vertex-basis-v5';
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);Object.assign(shader.uniforms,uniforms);
-    shader.vertexShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
+    shader.vertexShader='attribute vec3 avatarUvTangent;\nattribute vec3 avatarUvBitangent;\nvarying vec3 avatarMatcapTangent;\nvarying vec3 avatarMatcapBitangent;\nvarying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
       .replace('#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )','#if 1')
-      .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\navatarMatcapNormal = transformedNormal;')
+      .replace('#include <defaultnormal_vertex>',`#include <defaultnormal_vertex>
+avatarMatcapNormal = transformedNormal;
+vec3 capTangent = avatarUvTangent, capBitangent = avatarUvBitangent;
+#ifdef USE_SKINNING
+  capTangent = (skinMatrix * vec4(capTangent,0.0)).xyz;
+  capBitangent = (skinMatrix * vec4(capBitangent,0.0)).xyz;
+#endif
+avatarMatcapTangent = (modelViewMatrix * vec4(capTangent,0.0)).xyz;
+avatarMatcapBitangent = (modelViewMatrix * vec4(capBitangent,0.0)).xyz;
+if (dot(avatarMatcapTangent,avatarMatcapTangent) > 1e-10) avatarMatcapTangent = normalize(avatarMatcapTangent);
+if (dot(avatarMatcapBitangent,avatarMatcapBitangent) > 1e-10) avatarMatcapBitangent = normalize(avatarMatcapBitangent);`)
       .replace('#include <uv_vertex>','#include <uv_vertex>\navatarMatcapUv = uv;')
       .replace('#include <project_vertex>','#include <project_vertex>\navatarMatcapPosition = mvPosition.xyz;');
-    shader.fragmentShader='varying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\nuniform float avatarSpecularEnabled;\nuniform vec3 avatarSpecularColor;\nuniform float avatarSpecularPower;\n'+shader.fragmentShader
+    shader.fragmentShader='varying vec3 avatarMatcapTangent;\nvarying vec3 avatarMatcapBitangent;\nvarying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\nuniform sampler2D avatarMatcapMap;\nuniform float avatarMatcapEnabled;\nuniform float avatarMatcapStrength;\nuniform sampler2D avatarMatcapNormalMap;\nuniform float avatarMatcapNormalEnabled;\nuniform float avatarSpecularEnabled;\nuniform vec3 avatarSpecularColor;\nuniform float avatarSpecularPower;\n'+shader.fragmentShader
       .replace('#include <opaque_fragment>',`
 if (avatarMatcapEnabled > 0.5) {
   vec3 capNormal = normalize(avatarMatcapNormal);
@@ -66,10 +76,13 @@ if (avatarMatcapEnabled > 0.5) {
     float determinant = duv1.x * duv2.y - duv1.y * duv2.x;
     vec3 tangent = dp1 * duv2.y - dp2 * duv1.y;
     vec3 bitangent = -dp1 * duv2.x + dp2 * duv1.x;
-    if (abs(determinant) > 1e-10 && dot(tangent,tangent) > 1e-10 && dot(bitangent,bitangent) > 1e-10 && dot(mapNormal,mapNormal) > 1e-10) {
-      tangent = normalize(tangent) * sign(determinant);
-      bitangent = normalize(bitangent) * sign(determinant);
-      capNormal = normalize(mat3(tangent,bitangent,capNormal) * normalize(mapNormal));
+    bool vertexBasis = dot(avatarMatcapTangent,avatarMatcapTangent) > 1e-10 && dot(avatarMatcapBitangent,avatarMatcapBitangent) > 1e-10;
+    if (vertexBasis || (abs(determinant) > 1e-10 && dot(tangent,tangent) > 1e-10 && dot(bitangent,bitangent) > 1e-10)) {
+      tangent = vertexBasis ? normalize(avatarMatcapTangent) : normalize(tangent) * sign(determinant);
+      bitangent = vertexBasis ? normalize(avatarMatcapBitangent) : normalize(bitangent) * sign(determinant);
+      if (dot(mapNormal,mapNormal) > 1e-10) {
+        capNormal = normalize(mat3(tangent,bitangent,capNormal) * normalize(mapNormal));
+      }
     }
   }
   vec2 matcapUv = capNormal.xy * vec2(0.5, -0.5) + 0.5;

@@ -16,7 +16,7 @@ function setupMatcapControls({state,element,dialog}){
   const normalLabel=element('label'),normalToggle=element('input');normalToggle.id='avatar-matcap-normal';normalToggle.type='checkbox';normalToggle.checked=useNormal;normalLabel.append(normalToggle,document.createTextNode(' 원본 표면 굴곡·광택 마스크 사용'));toggle.closest('label').after(normalLabel);
   const specularLabel=element('label'),specularToggle=element('input');specularToggle.id='avatar-matcap-specular';specularToggle.type='checkbox';specularToggle.checked=useSpecular;specularLabel.append(specularToggle,document.createTextNode(' 원본 반사색·반사 지수 사용 (근사)'));normalLabel.after(specularLabel);
   const specularStatus=element('p');specularStatus.id='avatar-specular-status';specularStatus.className='muted';specularStatus.setAttribute('role','status');specularLabel.after(specularStatus);
-  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 반사는 카메라 위치에 둔 확인용 광원을 사용하며 게임 조명과 차이가 있습니다. 원본 굴곡·마스크가 없는 부위는 MatCap만 표면 방향으로 근사합니다. 광택을 끄면 기본 재질로 돌아갑니다.';
+  field.querySelector('p.muted:not(#avatar-specular-status)').textContent='아이템의 광택·반사를 비교합니다. 굴곡 방향은 원본 법선·UV로 만든 정점 접선으로 근사하며, 반사는 카메라 위치에 둔 확인용 광원을 사용합니다. 게임의 접선 생성·조명과 차이가 있습니다. 원본 굴곡·마스크가 없는 부위는 MatCap만 표면 방향으로 근사합니다. 광택을 끄면 기본 재질로 돌아갑니다.';
   toggle.checked=enabled;slider.value=strength;output.value=strength.toFixed(2);
   function save(){try{localStorage.setItem(key,JSON.stringify({enabled,strength,useNormal,useSpecular,excluded:[...excluded]}));}catch{}}
   function apply(){

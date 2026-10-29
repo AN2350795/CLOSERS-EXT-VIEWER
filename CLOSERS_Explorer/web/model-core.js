@@ -2,6 +2,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import {isFaceShadingMaterial} from './face-preview.js';
 import {installMaterialPreview,installMatcapPreview} from './model-materials.js';
 import {installAvatarLighting,updateAvatarFaceFrame} from './model-lighting.js';
+import {prepareMatcapBasis} from './model-tangents.js';
 
 // Store a sparse list rather than reserving a fixed number of influences per
 // vertex. WebGL2 vertex shaders can fetch every influence without truncation.
@@ -65,6 +66,8 @@ export function buildModel(data){
       if(m.uv.length)g.setAttribute('uv',new THREE.Float32BufferAttribute(m.uv,2));
       if(m.normals?.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(m.normals,3));
       else g.computeVertexNormals();
+      for(const group of m.groups)g.addGroup(...group);
+      if(m.materials.some(v=>v.matcap_preview?.status==='approximate'))prepareMatcapBasis(g);
       const mats=m.materials.map(v=>{
         // Observed face SDF maps store shading data in alpha. Cutting them out
         // removes a cheek. Keep opacity testing for eyes, hair and other maps.
@@ -74,7 +77,6 @@ export function buildModel(data){
         const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(...v.color.slice(0,3)),opacity:faceShadingAlpha?1:v.color[3],transparent:!faceShadingAlpha&&v.color[3]<1,side:THREE.FrontSide,alphaTest:faceShadingAlpha?0:.1});
         mat.userData.input=v;mat.userData.faceShadingAlpha=faceShadingAlpha;mat.userData.avatarSourceId=m.source_id;mat.userData.avatarMeshName=m.name;installMatcapPreview(mat);installMaterialPreview(mat);installAvatarLighting(mat);materials.push(mat);return mat;
       });
-      for(const group of m.groups)g.addGroup(...group);
       let mesh;
       if(m.skin.length){
         const names=new Map(bones.map((b,i)=>[b.name,i])),n=m.vertices.length/3,weights=Array.from({length:n},()=>[]),inverses=bones.map(()=>new THREE.Matrix4());
