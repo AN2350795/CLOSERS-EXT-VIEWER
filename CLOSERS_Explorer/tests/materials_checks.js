@@ -196,6 +196,7 @@ try{
   check(document.querySelectorAll('#model-textures [data-texture-role]').length===2,'texture roles missing');
   document.getElementById('open-avatar-lighting').click();for(let i=0;i<100&&!document.querySelector('#avatar-lighting-profile option[value="light-test"]');i++)await new Promise(r=>setTimeout(r,5));
   const lightChoice=document.getElementById('avatar-lighting-profile'),lightToggle=document.getElementById('avatar-lighting-enabled');lightChoice.value='light-test';lightChoice.dispatchEvent(new Event('change'));
+  check(!lightToggle.checked&&modelViewer.state.model.materials.every(m=>m.userData.avatarLighting.avatarLightEnabled.value===0),'light selection silently enabled legacy color comparison');lightToggle.click();
   check(modelViewer.state.model.materials.every(m=>m.userData.avatarLighting.avatarLightEnabled.value===1),'selected light applies to avatar materials');lightToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.avatarLighting.avatarLightEnabled.value===0),'light toggle disables only scene lighting');
   lightToggle.click();await modelViewer.loadModel([1]);check(modelViewer.state.model.materials.every(m=>m.userData.avatarLighting.avatarLightEnabled.value===1),'selected lighting survives avatar reload');
   document.querySelector('#avatar-lighting-dialog button').click();
