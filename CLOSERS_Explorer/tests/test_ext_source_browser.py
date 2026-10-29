@@ -24,7 +24,7 @@ class ExtSourceBrowserTests(test_picker_browser.PickerBrowserTests):
             self.assertTrue(any(v.get('ext_preview') for m in data['meshes'] for v in m['materials']))
             for mesh in data['meshes']:
                 for material in mesh['materials']:
-                    for info in (material.get('image'),material.get('ext_preview',{}).get('image'),material.get('toon_preview',{}).get('image')):
+                    for info in (material.get('image'),material.get('ext_preview',{}).get('image'),material.get('toon_preview',{}).get('image'),material.get('second_preview',{}).get('image')):
                         if not info:continue
                         self.assertIsNotNone(info['selected'],str(info))
                         if info['selected'] in images:continue

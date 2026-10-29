@@ -77,13 +77,15 @@ export function installAvatarLighting(material){
   if(material.userData.input?.ext_preview?.status==='approximate')material.userData.extPreview={enabled:false,profile:null};
   Object.assign(uniforms,{avatarExtEnabled:{value:0},avatarExtMap:{value:null},avatarExtDirection:{value:new THREE.Vector3(0,0,-1)},avatarExtColor:{value:new THREE.Color()},avatarExtIntensity:{value:0},avatarExtPower:{value:1}});
   Object.assign(uniforms,{avatarGlowEnabled:{value:0},avatarGlowMap:{value:null},avatarGlowIntensity:{value:1}});
+  if(material.userData.input?.second_preview?.status==='approximate')material.userData.secondPreview={enabled:false,offset:[0,0]};
+  Object.assign(uniforms,{avatarSecondEnabled:{value:0},avatarSecondMap:{value:null},avatarSecondOffset:{value:new THREE.Vector2()}});
   const face=material.userData.input?.face_sdf_preview;
   if(material.userData.faceShadingAlpha&&face?.status==='approximate')material.userData.faceSdfPreview={enabled:false,profile:null,power:1,headReady:false};
   if(material.userData.toonPreview||material.userData.faceSdfPreview)material.userData.rimPreview={enabled:false,profile:null};
   Object.assign(uniforms,{avatarRimEnabled:{value:0},avatarRimDirection:{value:new THREE.Vector3(0,0,-1)},avatarRimWidth:{value:0},avatarRimPower:{value:0}});
   Object.assign(uniforms,{avatarFaceEnabled:{value:0},avatarFaceSide:{value:new THREE.Vector3(1,0,0)},avatarFaceForward:{value:new THREE.Vector3(0,0,1)},avatarFaceDirection:{value:new THREE.Vector3(0,0,1)},avatarFaceColor:{value:new THREE.Color(1,1,1)},avatarFaceIntensity:{value:1},avatarFacePower:{value:1}});
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|avatar-source-rim-v6';
+  material.customProgramCacheKey=()=>key+'|avatar-second-map-v7';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarLightingNormal;\nvarying float avatarToonCoordinate;\nuniform vec3 avatarToonDirection;\n'+shader.vertexShader
@@ -102,6 +104,7 @@ if (avatarLightEnabled > 0.5) {
     shader.fragmentShader='varying float avatarToonCoordinate;\nuniform float avatarToonEnabled;\nuniform sampler2D avatarToonMap;\nuniform vec3 avatarToonColor;\nuniform float avatarToonIntensity;\nuniform float avatarToonPower;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarFaceEnabled;\nuniform vec3 avatarFaceSide;\nuniform vec3 avatarFaceForward;\nuniform vec3 avatarFaceDirection;\nuniform vec3 avatarFaceColor;\nuniform float avatarFaceIntensity;\nuniform float avatarFacePower;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarGlowEnabled;\nuniform sampler2D avatarGlowMap;\nuniform float avatarGlowIntensity;\nvarying vec2 avatarGlowUv;\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float avatarSecondEnabled;\nuniform sampler2D avatarSecondMap;\nuniform vec2 avatarSecondOffset;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarExtEnabled;\nuniform sampler2D avatarExtMap;\nuniform vec3 avatarExtDirection;\nuniform vec3 avatarExtColor;\nuniform float avatarExtIntensity;\nuniform float avatarExtPower;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarRimEnabled;\nuniform vec3 avatarRimDirection;\nuniform float avatarRimWidth;\nuniform float avatarRimPower;\n'+shader.fragmentShader;
     shader.vertexShader='varying vec2 avatarGlowUv;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\navatarGlowUv = uv;');
@@ -155,8 +158,23 @@ if (avatarGlowEnabled > 0.5 && avatarEmissionPass < 0.5) {
   // PS t3 * cb1[4].x is added after toon; this is not the MRT1 emissive output.
   outgoingLight += texture2D(avatarGlowMap,avatarGlowUv).rgb * avatarGlowIntensity;
 }
+if (avatarSecondEnabled > 0.5 && avatarEmissionPass < 0.5) {
+  // Source t8.rgb adds after toon, independently of light color/intensity.
+  outgoingLight += texture2D(avatarSecondMap,avatarGlowUv+avatarSecondOffset).rgb;
+}
 `+marker);
   };
+}
+
+export function setAvatarSecond(material,enabled,offset=[0,0]){
+  const p=material.userData.secondPreview,u=material.userData.avatarLighting;if(!p||!u)return;
+  p.enabled=enabled;p.offset=[0,1].map(i=>Number.isFinite(offset?.[i])?Math.max(-1,Math.min(1,offset[i])):0);
+  u.avatarSecondOffset.value.set(...p.offset);u.avatarSecondEnabled.value=enabled&&u.avatarSecondMap.value?1:0;
+}
+
+export function setAvatarSecondMap(material,map){
+  const p=material.userData.secondPreview,u=material.userData.avatarLighting;if(!p||!u)return;
+  u.avatarSecondMap.value=map;setAvatarSecond(material,p.enabled,p.offset);
 }
 
 export function setAvatarLight(material,profile,influence=.5){
@@ -257,6 +275,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   nearInput.setAttribute('aria-label','원거리와 근거리 원본 조명 강도의 수동 혼합 비율');nearInput.setAttribute('aria-describedby','avatar-lighting-near-status');
   nearStatus.id='avatar-lighting-near-status';nearStatus.setAttribute('role','status');nearLabel.append(nearInput);
   $('avatar-toon-power').closest('label').after(nearLabel);nearLabel.after(nearStatus);
+  settings.second=false;settings.secondOffset=[0,0];
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');settings.second=saved?.second===true;if(Array.isArray(saved?.secondOffset)&&saved.secondOffset.length===2&&saved.secondOffset.every(Number.isFinite))settings.secondOffset=saved.secondOffset.map(v=>Math.max(-1,Math.min(1,v)));}catch{}
+  const secondField=element('fieldset');secondField.innerHTML='<legend>하이퍼 모드 표면 보조광 · 정지 미리보기 (근사)</legend><label><input id="avatar-second-enabled" type="checkbox"> 원본 SecondMap 켜기</label><label>UV 가로 이동<input id="avatar-second-u" type="range" min="-1" max="1" step="0.05"></label><label>UV 세로 이동<input id="avatar-second-v" type="range" min="-1" max="1" step="0.05"></label><p id="avatar-second-status" role="status"></p><p>캐릭터 원본에 지정된 보조 텍스처를 표면에 더합니다. 정지 화면의 UV 위치를 수동 비교하며 하이퍼 모드 자동 발동·UV 애니메이션은 포함하지 않습니다. 발광·빛 번짐과 별개입니다.</p>';
+  toonField.after(secondField);const secondToggle=$('avatar-second-enabled'),secondU=$('avatar-second-u'),secondV=$('avatar-second-v');secondToggle.checked=settings.second;secondU.value=settings.secondOffset[0];secondV.value=settings.secondOffset[1];
   const faceLabel=element('label'),faceToggle=element('input');faceToggle.id='avatar-face-sdf-enabled';faceToggle.type='checkbox';faceToggle.checked=settings.faceSdf;faceLabel.append(faceToggle,document.createTextNode(' 얼굴 SDF 음영 포함 (근사)'));$('avatar-toon-enabled').closest('label').after(faceLabel);
   const glowLabel=element('label'),glowToggle=element('input');glowToggle.id='avatar-glow-enabled';glowToggle.type='checkbox';glowToggle.checked=settings.glow;glowLabel.append(glowToggle,document.createTextNode(' 원본 GLOW 표면 보조광 포함 (근사)'));faceLabel.after(glowLabel);
   const glowStatus=element('p');glowStatus.id='avatar-glow-status';glowStatus.className='muted';glowStatus.setAttribute('role','status');glowLabel.after(glowStatus);
@@ -273,6 +295,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   function save(){settings.excluded=[...excluded];try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}}
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function apply(){
+    const secondMaterials=(state.model?.materials||[]).filter(m=>m.userData.secondPreview),secondReady=secondMaterials.filter(m=>m.userData.avatarLighting.avatarSecondMap.value);
+    secondToggle.disabled=!secondMaterials.length;secondU.disabled=secondV.disabled=!settings.second||!secondReady.length;
+    for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
+    $('avatar-second-status').textContent=!secondMaterials.length?'현재 모델에 연결된 하이퍼 모드 SecondMap이 없습니다.':!settings.second?`SecondMap 연결 ${secondMaterials.length}개 · 꺼짐`:!secondReady.length?'SecondMap 텍스처 출처를 확인하세요.':`정지 보조광 켜짐 · 준비 ${secondReady.length} / 연결 ${secondMaterials.length}개 · UV ${settings.secondOffset.map(v=>v.toFixed(2)).join(', ')} · 수동 비교`;
     const profile=settings.enabled?selected():null;
     const sourceProfile=selected(),toonProfile=interpolateAvatarLight(sourceProfile,settings.nearMix),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
     const faces=(state.model?.materials||[]).filter(m=>m.userData.faceSdfPreview),faceReady=faces.filter(m=>m.map&&m.userData.faceSdfPreview.headReady);
@@ -296,6 +322,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
     glowStatus.textContent=!glowMaterials.length?'연결된 원본 GLOW 보조광이 없습니다.':!settings.toon||!settings.glow?`보조광 연결 ${glowMaterials.length}개 · 꺼짐`:!toonProfile?'보조광에 사용할 의상 조명을 선택하세요.':`표면 보조광 켜짐 · 준비 ${glowReady.length}개 / 연결 ${glowMaterials.length}개${glowReady.length<glowMaterials.length?' · 텍스처 확인 필요':''} · 번짐/발광만 보기에서 제외`;
     $('avatar-toon-status').textContent=!state.model?'아바타를 선택하면 원본 툰 연결을 확인합니다.':!toonMaterials.length&&!faces.length&&!glowMaterials.length?'현재 모델에 적용 가능한 툰·얼굴 SDF·보조광 연결이 없습니다.':!settings.toon?`툰 연결 ${toonMaterials.length}개 · 얼굴 SDF ${faces.length}개 · 보조광 ${glowMaterials.length}개 · 꺼짐`:!toonProfile?'툰 음영에 사용할 의상 조명을 선택하세요.':`툰 음영 켜짐 · 적용 ${toonReady.length}개 / 연결 ${toonMaterials.length}개${toonReady.length<toonMaterials.length?' · 툰 텍스처 확인 필요':''}${settings.faceSdf?' · 얼굴 SDF '+faceReady.length+' / '+faces.length+'개':''}${settings.faceSdf&&faceReady.length<faces.length?' · 얼굴 텍스처·머리 뼈 확인 필요':''}`;
     const toonList=$('avatar-toon-items');toonList.replaceChildren();const seenToon=new Set();
+    for(const m of state.model?.materials||[]){const p=m.userData.input.second_preview;if(!p)continue;const key=JSON.stringify(p);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','SecondMap · '+p.source+' · '+(p.status==='approximate'?p.texture+' · 원본 UV 속도 '+p.speed.join(', ')+' (애니메이션 미적용)':p.reason)));}
     for(const m of extMaterials){const p=m.userData.input.ext_preview,key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','EXT 전역 반사 · '+p.source_texture+' → '+p.texture+' · R 채널 반사 지원 · B 채널 표면 가산 미지원'));}
     for(const m of state.model?.materials||[]){const p=m.userData.input.toon_preview;if(!p)continue;const key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);const source=state.data?.sources?.find(s=>s.entry_id===m.userData.avatarSourceId);toonList.append(element('p',(source?.display_name||source?.name||m.userData.avatarMeshName||'아바타')+' · '+p.source_name+' → '+p.name+' · '+(p.status!=='approximate'?p.reason:m.userData.avatarLighting.avatarToonMap.value?p.texture:'텍스처 확인 필요: '+p.texture)));}
     for(const m of state.model?.materials||[]){const p=m.userData.input.face_sdf_preview;if(!p)continue;const key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','얼굴 SDF · '+p.texture+' · '+(p.status!=='approximate'?p.reason:m.userData.faceSdfPreview?.headReady?p.head_bone+' · 머리 회전 연동':'머리 뼈 확인 필요')));}
@@ -341,6 +368,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   extToggle.onchange=()=>{settings.ext=extToggle.checked;save();apply();};
   rimToggle.onchange=()=>{settings.rim=rimToggle.checked;save();apply();};
   nearInput.oninput=()=>{settings.nearMix=Number(nearInput.value);save();apply();};
+  secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
+  secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
   button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon)void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};

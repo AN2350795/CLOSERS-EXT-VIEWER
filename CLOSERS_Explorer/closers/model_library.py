@@ -334,6 +334,12 @@ class Models:
                             preview=mat['material_preview']
                             preview['image']=self.candidates(preview['texture'],row)
                         if classify(row['name'])['kind']=='avatar':
+                            from .avatar_second_map import read_second_map
+                            character=classify(row['name'])['character']
+                            second=read_second_map(self.eyes.data,character) if character else None
+                            if second:
+                                mat['second_preview']=dict(second)
+                                if second['status']=='approximate':mat['second_preview']['image']=self.candidates(second['texture'],row)
                             from .model_materials import glow_texture,ext_texture
                             original=mat.get('material_report',{}).get('source_texture') or mat['texture']
                             extra=ext_texture(original)

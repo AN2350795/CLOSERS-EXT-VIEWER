@@ -6,7 +6,7 @@ import unittest
 from closers.world_lighting import unit_light,comparison_profile
 
 
-def chunk(value):
+def chunk(value,root='WORLD_TEMPLET'):
     def string(s):
         raw=s.encode()+b'\0';return struct.pack('<Q',len(raw))+raw
     constants=[];code=[]
@@ -17,7 +17,7 @@ def chunk(value):
             emit(10,reg)
             for k,child in v.items():build(child,reg+1);emit(9,reg,b=256+constant(k),c=reg+1)
         else:emit(1,reg,bx=constant(v))
-    build(value,0);emit(7,bx=constant('WORLD_TEMPLET'));emit(30)
+    build(value,0);emit(7,bx=constant(root));emit(30)
     body=b'\x1bLuaQ\0\x01\x04\x08\x04\x08\0'+string('@fixture')+b'\0'*12
     body+=struct.pack('<I',len(code))+struct.pack('<'+'I'*len(code),*code)+struct.pack('<I',len(constants))
     for v in constants:
