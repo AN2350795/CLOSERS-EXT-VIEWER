@@ -228,6 +228,13 @@ export function updateAvatarFaceFrame(material,headMatrix){
   setAvatarFaceSdf(material,preview.enabled,preview.profile,preview.power);
 }
 
+export function interpolateAvatarLight(profile,mix=0){
+  if(!profile||!Number.isFinite(profile.intensity)||profile.intensity<0||!Number.isFinite(profile.near_intensity)||profile.near_intensity<0)return profile;
+  const weight=Number.isFinite(mix)?Math.max(0,Math.min(1,mix)):0;
+  if(weight===0)return profile;
+  return {...profile,intensity:weight===1?profile.near_intensity:profile.intensity*(1-weight)+profile.near_intensity*weight};
+}
+
 export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   const $=id=>document.getElementById(id),storageKey='closers-avatar-lighting-v2';
   let settings={enabled:false,selected:'',excluded:[],bloom:true,bloomStrength:.8,influence:.5,solo:false,soloExposure:4,toon:false,toonPower:1,faceSdf:false,glow:false,ext:false,rim:false};
@@ -243,6 +250,13 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   const toonField=element('fieldset');toonField.innerHTML='<legend>원본 툰 음영 (근사)</legend><label><input id="avatar-toon-enabled" type="checkbox"> 원본 툰 음영 켜기</label><div id="avatar-toon-profile"></div><label>음영 밝기<input id="avatar-toon-power" type="range" min="0" max="2" step="0.05"><output id="avatar-toon-power-value"></output></label><p class="muted">모델과 아이템 타입에 연결된 툰 텍스처를 사용합니다. 의상 조명을 선택하세요. 얼굴 전용 음영·착용 조건·게임 후처리는 포함하지 않습니다. 끄면 기존 재질로 돌아갑니다.</p><p id="avatar-toon-status" role="status"></p><details><summary>툰 연결 · 적용 상태</summary><div id="avatar-toon-items"></div></details>';
   const legacy=$('avatar-lighting-enabled').closest('details');legacy.before(toonField);legacy.querySelector('summary').textContent='기존 색상 수치 비교 (실험)';$('avatar-toon-profile').append($('avatar-lighting-profile').closest('label'));
   $('avatar-toon-enabled').checked=settings.toon;$('avatar-toon-power').value=settings.toonPower;$('avatar-toon-power-value').value=settings.toonPower.toFixed(2);
+  settings.nearMix=0;
+  try{const value=JSON.parse(localStorage.getItem(storageKey)||'{}')?.nearMix;if(Number.isFinite(value))settings.nearMix=Math.max(0,Math.min(1,value));}catch{}
+  const nearLabel=element('label','원거리 → 근거리 조명 강도 · 수동 비교'),nearInput=element('input'),nearStatus=element('p');
+  nearInput.id='avatar-lighting-near-mix';nearInput.type='range';nearInput.min=0;nearInput.max=1;nearInput.step=.05;nearInput.value=settings.nearMix;
+  nearInput.setAttribute('aria-label','원거리와 근거리 원본 조명 강도의 수동 혼합 비율');nearInput.setAttribute('aria-describedby','avatar-lighting-near-status');
+  nearStatus.id='avatar-lighting-near-status';nearStatus.setAttribute('role','status');nearLabel.append(nearInput);
+  $('avatar-toon-power').closest('label').after(nearLabel);nearLabel.after(nearStatus);
   const faceLabel=element('label'),faceToggle=element('input');faceToggle.id='avatar-face-sdf-enabled';faceToggle.type='checkbox';faceToggle.checked=settings.faceSdf;faceLabel.append(faceToggle,document.createTextNode(' 얼굴 SDF 음영 포함 (근사)'));$('avatar-toon-enabled').closest('label').after(faceLabel);
   const glowLabel=element('label'),glowToggle=element('input');glowToggle.id='avatar-glow-enabled';glowToggle.type='checkbox';glowToggle.checked=settings.glow;glowLabel.append(glowToggle,document.createTextNode(' 원본 GLOW 표면 보조광 포함 (근사)'));faceLabel.after(glowLabel);
   const glowStatus=element('p');glowStatus.id='avatar-glow-status';glowStatus.className='muted';glowStatus.setAttribute('role','status');glowLabel.after(glowStatus);
@@ -260,9 +274,12 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function apply(){
     const profile=settings.enabled?selected():null;
-    const toonProfile=selected(),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
+    const sourceProfile=selected(),toonProfile=interpolateAvatarLight(sourceProfile,settings.nearMix),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
     const faces=(state.model?.materials||[]).filter(m=>m.userData.faceSdfPreview),faceReady=faces.filter(m=>m.map&&m.userData.faceSdfPreview.headReady);
     const glowMaterials=(state.model?.materials||[]).filter(m=>m.userData.glowPreview),glowReady=glowMaterials.filter(m=>m.userData.avatarLighting.avatarGlowMap.value);
+    const hasNear=sourceProfile&&Number.isFinite(sourceProfile.near_intensity)&&sourceProfile.near_intensity>=0;
+    nearInput.disabled=!settings.toon||!hasNear||(!toonReady.length&&(!settings.faceSdf||!faceReady.length)&&(!settings.glow||!glowReady.length));
+    nearStatus.textContent=!sourceProfile?'조명을 선택하면 원본 원거리·근거리 강도를 비교합니다.':!hasNear?'원본 근거리 강도가 없습니다. 원거리 강도를 유지합니다.':!state.model?'아바타를 선택하면 강도를 비교합니다.':!settings.toon?'원거리·근거리 강도 비교 꺼짐 · 원본 툰 음영을 켜세요.':`원거리 ${sourceProfile.intensity} → 근거리 ${sourceProfile.near_intensity} · 수동 혼합 ${Math.round(settings.nearMix*100)}% · 비교 강도 ${toonProfile.intensity.toFixed(3)}${sourceProfile.intensity===sourceProfile.near_intensity?' · 양쪽 강도 같음':''} · 카메라 거리 자동 연동 아님`;
     $('avatar-toon-enabled').disabled=!toonMaterials.length&&!faces.length&&!glowMaterials.length;faceToggle.disabled=!settings.toon||!faces.length;glowToggle.disabled=!settings.toon||!glowMaterials.length;$('avatar-toon-power').disabled=!settings.toon||(!toonReady.length&&(!settings.faceSdf||!faceReady.length));
     for(const m of state.model?.materials||[])setAvatarToon(m,settings.toon,toonProfile,settings.toonPower);
     for(const m of faces)setAvatarFaceSdf(m,settings.toon&&settings.faceSdf,toonProfile,settings.toonPower);
@@ -323,6 +340,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   glowToggle.onchange=()=>{settings.glow=glowToggle.checked;save();apply();};
   extToggle.onchange=()=>{settings.ext=extToggle.checked;save();apply();};
   rimToggle.onchange=()=>{settings.rim=rimToggle.checked;save();apply();};
+  nearInput.oninput=()=>{settings.nearMix=Number(nearInput.value);save();apply();};
   button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon)void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};

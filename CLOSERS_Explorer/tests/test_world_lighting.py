@@ -28,6 +28,16 @@ def chunk(value):
 
 
 class WorldLightingTests(unittest.TestCase):
+    def test_comparison_near_intensity_preserves_zero_and_missing(self):
+        values=dict(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_fRimLightWide=1,m_fRimLightPower=0)
+        for near in (0,1.2):
+            report=unit_light(chunk(self.source(**values,m_fLightIntensityNear=near)))
+            self.assertEqual(comparison_profile(report,'source','region')['near_intensity'],near)
+            self.assertIn('near_interpolation',report['runtime_unresolved'])
+        for extra in ({},{'m_fLightIntensityNear':-1}):
+            report=unit_light(chunk(self.source(**values,**extra)))
+            self.assertNotIn('near_intensity',comparison_profile(report,'source','region'))
+
     def test_rim_does_not_require_reflection_parameters(self):
         source=self.source(m_LightColor={1:1,2:1,3:1,4:1},m_fLightIntensity=.9,m_fRimLightWide=1.5,m_fRimLightPower=.5)
         profile=comparison_profile(unit_light(chunk(source)),'source','region')

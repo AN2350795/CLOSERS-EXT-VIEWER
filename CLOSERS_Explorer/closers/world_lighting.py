@@ -61,6 +61,8 @@ def comparison_profile(report,name,label):
     profile=dict(key='world:'+name,label=label,color=v['color'],direction=v['position'],intensity=v['intensity'],
                 source_cartoon_power=v.get('cartoon_power'),status='approximate',activation='manual',characters=[],
                 sources=[name],source_sha256=report['sha256'],limitations=report['runtime_unresolved'])
+    if 'near_intensity' in v and v['near_intensity']>=0:
+        profile['near_intensity']=v['near_intensity']
     spec_fields=('specular_color','specular_intensity','specular_power')
     if all(k in v for k in spec_fields) and all(x>=0 for x in v['specular_color']) and v['specular_intensity']>=0 and v['specular_power']>=0:
         profile['global_specular']=dict(color=v['specular_color'],intensity=v['specular_intensity'],power=v['specular_power'])
