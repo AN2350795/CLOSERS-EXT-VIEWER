@@ -2,6 +2,7 @@ import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
 import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from '/model-materials.js';
 import {setAvatarToon,setAvatarToonMap} from '/model-lighting.js';
+import {applyAvatarColorSpace} from '/model-emission.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
   const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});renderer.setSize(512,512);renderer.setClearColor(0x202630);renderer.outputColorSpace=T.SRGBColorSpace;
@@ -54,6 +55,11 @@ try{
       check(shaded>100,'real toon texture did not change surface pixels');
       model.materials.forEach(m=>setAvatarToon(m,true,matcapFixture.toonProfiles[1]));const netherworld=capture(label+'-toon-netherworld');check(netherworld.some((v,i)=>i%4!==3&&v<toon[i]),'original netherworld profile did not change toon light color');
       model.materials.forEach(m=>setAvatarToon(m,false,null));check(capture(label+'-toon-restored').every((v,i)=>v===on[i]),'toon OFF does not restore real surface');
+    }
+    if(matcapFixture.colorDomain){
+      const roles=new Map();let id=0;for(const m of model.materials){if(m.map)roles.set('base:'+id++,m.map);const p=m.userData.matcapPreview,u=m.userData.avatarLighting;if(p?.uniforms.avatarMatcapMap.value)roles.set('matcap:'+id++,p.uniforms.avatarMatcapMap.value);if(p?.uniforms.avatarMatcapNormalMap.value)roles.set('matcap-normal:'+id++,p.uniforms.avatarMatcapNormalMap.value);if(u?.avatarToonMap.value)roles.set('toon:'+id++,u.avatarToonMap.value);}
+      model.materials.forEach(m=>{setMatcapPreview(m,true);setAvatarToon(m,true,matcapFixture.toonProfiles[0]);});applyAvatarColorSpace(renderer,roles,false);const viewer=capture(label+'-domain-viewer');applyAvatarColorSpace(renderer,roles,true);const raw=capture(label+'-domain-raw');let changed=0;
+      for(let i=0;i<raw.length;i++){if(i%4===3)check(raw[i]===viewer[i],'source domain changed alpha');else{const p=i-i%4,visible=[32,38,48].some((v,c)=>Math.abs(viewer[p+c]-v)>1);if(visible&&raw[i]!==viewer[i])changed++;}}check(changed>100,'source domain did not change real costume pixels');applyAvatarColorSpace(renderer,roles,false);check(capture(label+'-domain-restored').every((v,i)=>v===viewer[i]),'source domain OFF failed real costume restoration');model.materials.forEach(m=>setAvatarToon(m,false,null));
     }
     model.materials.forEach(m=>setMatcapPreview(m,true,0));check(capture(label+'-zero').every((v,i)=>v===off[i]),'zero strength does not restore real costume');
     model.materials.forEach(m=>setMatcapPreview(m,false));check(capture(label+'-restored').every((v,i)=>v===off[i]),'OFF does not restore real costume');

@@ -1,5 +1,16 @@
 import * as THREE from './vendor/three/three.module.min.js';
 
+// Keep input sampling and output transfer paired for the explicit raw-UNORM
+// comparison. Reused GPU-cache entries must follow the active frame's domain.
+export function applyAvatarColorSpace(renderer,textures,sourceColor=false){
+  renderer.outputColorSpace=sourceColor?THREE.LinearSRGBColorSpace:THREE.SRGBColorSpace;
+  for(const [key,map] of textures){
+    const role=key.split(':')[0],color=!sourceColor&&(role==='base'||role==='second');
+    const space=color?THREE.SRGBColorSpace:THREE.NoColorSpace;
+    if(map.colorSpace!==space){map.colorSpace=space;map.needsUpdate=true;}
+  }
+}
+
 // Selective avatar emission, including the avatar's own depth occlusion. White
 // clothing, backgrounds and motion particles are never a bloom brightness mask.
 export function createEmissionRenderer(renderer){

@@ -61,5 +61,5 @@ class MatcapSourceBrowserTests(test_picker_browser.PickerBrowserTests):
             from closers.avatar_lighting import read_profiles
             regional=[p for p in read_profiles(items.data)['profiles'] if 'position' in p]
             self.assertEqual(len(regional),2)
-        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular,toonProfiles=toon_profiles,regionalProfiles=regional),ensure_ascii=True)+';\n'
+        self.script_prefix='const matcapFixture='+json.dumps(dict(data=data,images=images,label=self.capture_label,specular=self.require_specular,toonProfiles=toon_profiles,regionalProfiles=regional,colorDomain=getattr(self,'color_domain',False)),ensure_ascii=True)+';\n'
         super().test_picker()

@@ -285,6 +285,9 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="avatar-lighting-title">아바타 조명 · 발광</h2><button type="button" class="secondary">닫기</button></div><p id="avatar-lighting-summary" role="status"></p><fieldset><legend>발광 확인</legend><div id="avatar-emission-master"></div><label><input id="avatar-emission-solo" type="checkbox"> 발광만 보기 · 검은 배경에서 발광 부위 확인</label><label><input id="avatar-emission-bloom" type="checkbox"> 빛 번짐</label><label>번짐 강도<input id="avatar-emission-strength" type="range" min="0" max="2" step="0.05"><output id="avatar-emission-strength-value"></output></label><p class="muted">번짐은 발광 텍스처가 지정된 부위에만 적용하는 뷰어 미리보기입니다.</p><div id="avatar-emission-items"></div></fieldset><details><summary>원본 조명 수치 비교 (실험)</summary><fieldset><label><input id="avatar-lighting-enabled" type="checkbox"> 조명 수치 비교 켜기</label><label>참조할 원본<select id="avatar-lighting-profile" aria-label="의상 조명 선택"><option value="">조명 목록 불러오기</option></select></label><label>비교 강도<input id="avatar-lighting-influence" type="range" min="0" max="1" step="0.05"></label><p id="avatar-lighting-status" class="muted" role="status"></p><p class="muted">게임 조명 재현이 아닙니다. 기존 텍스처의 음영을 유지하며 원본 색·강도의 영향을 비교합니다. 세트 착용 조건·툰·MatCap은 자동 적용하지 않습니다.</p><details><summary>선택한 조명 출처</summary><pre id="avatar-lighting-source"></pre></details></fieldset></details>';
   document.body.append(dialog);$('avatar-lighting-enabled').checked=settings.enabled;
   const matcap=setupMatcapControls({state,element,dialog});
+  settings.sourceColor=false;try{settings.sourceColor=JSON.parse(localStorage.getItem(storageKey)||'{}')?.sourceColor===true;}catch{}
+  const colorField=element('fieldset');colorField.innerHTML='<legend>색상 계산 비교</legend><label><input id="avatar-source-color" type="checkbox"> 원본 형식의 색상 계산 비교 (후처리 미포함)</label><p id="avatar-source-color-status" role="status"></p><p>화면 전체의 입력·출력 색상 계산을 함께 전환합니다. 기본색과 조명·광택의 합성 결과가 달라질 수 있습니다. 실제 게임의 후처리·장면 상태는 포함하지 않습니다. 끄면 기존 뷰어 화면으로 돌아갑니다.</p>';
+  dialog.querySelector('fieldset').before(colorField);const sourceColorToggle=$('avatar-source-color');sourceColorToggle.checked=settings.sourceColor;
   $('avatar-lighting-title').textContent='아바타 조명 · 재질';
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');settings.toon=saved?.toon===true;settings.faceSdf=saved?.faceSdf===true;settings.glow=saved?.glow===true;settings.toonPower=Number.isFinite(saved?.toonPower)?Math.max(0,Math.min(2,saved.toonPower)):1;if(settings.toon){settings.enabled=false;$('avatar-lighting-enabled').checked=false;}}catch{}
   const toonField=element('fieldset');toonField.innerHTML='<legend>원본 툰 음영 (근사)</legend><label><input id="avatar-toon-enabled" type="checkbox"> 원본 툰 음영 켜기</label><div id="avatar-toon-profile"></div><label>음영 밝기<input id="avatar-toon-power" type="range" min="0" max="2" step="0.05"><output id="avatar-toon-power-value"></output></label><p class="muted">모델과 아이템 타입에 연결된 툰 텍스처를 사용합니다. 의상 조명을 선택하세요. 얼굴 전용 음영·착용 조건·게임 후처리는 포함하지 않습니다. 끄면 기존 재질로 돌아갑니다.</p><p id="avatar-toon-status" role="status"></p><details><summary>툰 연결 · 적용 상태</summary><div id="avatar-toon-items"></div></details>';
@@ -318,6 +321,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function apply(){
     matcap.setLightProfile(selected());
+    sourceColorToggle.disabled=!state.model;
+    $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?'원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · 게임 후처리 미포함':'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
     const secondMaterials=(state.model?.materials||[]).filter(m=>m.userData.secondPreview),secondReady=secondMaterials.filter(m=>m.userData.avatarLighting.avatarSecondMap.value);
     secondToggle.disabled=!secondMaterials.length;secondU.disabled=secondV.disabled=!settings.second||!secondReady.length;
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
@@ -391,6 +396,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   extToggle.onchange=()=>{settings.ext=extToggle.checked;save();apply();};
   rimToggle.onchange=()=>{settings.rim=rimToggle.checked;save();apply();};
   nearInput.oninput=()=>{settings.nearMix=Number(nearInput.value);save();apply();};
+  sourceColorToggle.onchange=()=>{settings.sourceColor=sourceColorToggle.checked;save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
   button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||matcap.requiresLightProfile())void load();
@@ -398,5 +404,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   $('avatar-lighting-influence').oninput=()=>{settings.influence=Number($('avatar-lighting-influence').value);save();apply();};
-  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure})};
+  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model})};
 }

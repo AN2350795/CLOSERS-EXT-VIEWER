@@ -10,7 +10,7 @@ import {MotionSequencePlayer} from './motion-sequence-player.js';
 import {setupMotionExtras} from './model-motion-extras.js';
 import {setupModelStage} from './model-stage.js';
 import {setupAvatarLighting,setAvatarToonMap,setAvatarGlowMap,setAvatarExtMap,setAvatarSecondMap} from './model-lighting.js';
-import {createEmissionRenderer} from './model-emission.js';
+import {createEmissionRenderer,applyAvatarColorSpace} from './model-emission.js';
 
 const $=id=>document.getElementById(id),token=document.querySelector('meta[name="explorer-token"]').content;
 const state={eye:null,ids:[],skeleton:null,data:null,model:null,animation:null,clip:null,time:0,playing:false,busy:false,page:1,textures:new Map(),textureKeys:new Set(),texturePixels:0,generation:0,timings:null};
@@ -88,7 +88,7 @@ function initRenderer(){
   $('model-canvas').addEventListener('wheel',e=>{e.preventDefault();orbit.distance=THREE.MathUtils.clamp(orbit.distance*Math.exp(e.deltaY*.001),.1,100000);},{passive:false});
   $('model-canvas').addEventListener('webglcontextlost',e=>{e.preventDefault();stop();status('3D 그래픽 연결이 끊겼습니다. 이 페이지를 새로고침해 주세요.');});
   let previous=performance.now();
-  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip&&!extras.loading)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);emissionRenderer.render(scene,camera,state.model,lighting.getRenderOptions());});
+  renderer.setAnimationLoop(now=>{const delta=Math.min(.1,(now-previous)/1000);previous=now;if(state.playing&&state.clip&&!extras.loading)advanceAnimation(delta);extras.update(delta);const c=Math.cos(orbit.pitch);camera.position.set(target.x+Math.sin(orbit.yaw)*c*orbit.distance,target.y+Math.sin(orbit.pitch)*orbit.distance,target.z+Math.cos(orbit.yaw)*c*orbit.distance);camera.lookAt(target);const options=lighting.getRenderOptions();applyAvatarColorSpace(renderer,state.textures,options.sourceColor);emissionRenderer.render(scene,camera,state.model,options);});
 }
 function resetCamera(){if(!state.model)return;const bounds=new THREE.Box3();for(const m of [...state.model.meshes,...extras.meshes]){if(m.visible)bounds.expandByObject(m,true);}if(bounds.isEmpty())bounds.setFromObject(state.model.root);bounds.getCenter(target);const size=bounds.getSize(new THREE.Vector3());orbit.distance=Math.max(size.length()*1.45,1);orbit.yaw=0;orbit.pitch=.12;camera.near=Math.max(.01,orbit.distance/1000);camera.far=Math.max(1000,orbit.distance*100);camera.updateProjectionMatrix();}
 function avatarCharacter(data){
@@ -110,7 +110,7 @@ async function texture(id,materials,role='base'){
       const map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);
       if(viewerDisposed){map.dispose();throw Error('뷰어가 종료되었습니다.');}
       // Verified companion, XET and toon lookup paths use UNORM resources.
-      map.colorSpace=['matcap-normal','ext','glow','matcap','auxiliary','toon'].includes(role)?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
+      map.colorSpace=lighting.getRenderOptions().sourceColor||['matcap-normal','ext','glow','matcap','auxiliary','toon'].includes(role)?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
       const started=performance.now();try{renderer.initTexture(map);}catch(e){map.dispose();throw e;}timings.uploadMs+=performance.now()-started;
       return map;
     });
