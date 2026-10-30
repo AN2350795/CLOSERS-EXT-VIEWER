@@ -26,6 +26,29 @@ EVIDENCE = (
     ('resize_rtv_call', 0x1417bd8ee, 'e8 5d e9 ff ff'),
     ('gamma_flag_constructor_default', 0x1417af2bd, 'c6 83 97 04 00 00 01'),
     ('separate_srgb_conversion_branch', 0x1417c67c6, 'b8 1d 00 00 00'),
+    ('color_grading_activation_bit_5', 0x1406d4ec0,
+     '80 bf ab 00 00 00 01 75 09 83 88 90 02 00 00 20 eb 07 83 a0 90 02 00 00 df'),
+    ('color_grading_final_pass_dispatch', 0x141576132,
+     '8b 83 90 02 00 00 c1 e8 05 a8 01 74 1e 8b 44 24 70 4d 8b cd 4c 8b c6 '
+     '41 8b d4 48 8b cb 40 88 6c 24 28 89 44 24 20 e8 c3 bd ff ff'),
+    ('color_grading_technique_16', 0x141571fbf, 'ba 10 00 00 00 e8 47 ac 08 00'),
+    ('color_grading_shader_registration', 0x141606bfb,
+     '41 b9 04 00 00 00 4c 8d 05 b8 f4 fb 00 48 8d 15 d9 eb fb 00 48 8b cb e8 f9 ed ff ff'),
+    ('color_grading_shader_name', 0x1425c57e8, ('CW_ColorGrading.PS.cso\0').encode('utf-16-le').hex()),
+    ('postprocess_staging_buffer_table_entry', 0x141602670, '27 25 60 01'),
+    ('postprocess_staging_buffer_address', 0x141602527,
+     '48 8d 05 e2 40 9b 01 4a 89 84 db 70 01 00 00'),
+    ('color_grading_constant_update_gate', 0x141674a56,
+     'e8 b5 9d ef ff 8b 88 90 02 00 00 c1 e9 05 33 ff f6 c1 01 0f 84 d3 00 00 00'),
+    ('color_grading_empty_data_defaults', 0x141674a8b,
+     'f3 0f 11 35 3d 1d 94 01 48 3b 4c 24 30 75 42 f3 0f 11 35 32 1d 94 01 '
+     'f3 0f 10 05 12 58 d2 00 f3 0f 11 05 26 1d 94 01 f3 0f 11 35 22 1d 94 01 '
+     'f3 0f 11 05 1e 1d 94 01 f3 0f 11 05 1a 1d 94 01 f3 0f 11 05 16 1d 94 01 '
+     'f3 0f 11 35 12 1d 94 01 eb 4d'),
+    ('color_grading_populated_data_mapping', 0x141674adc,
+     'f3 0f 10 41 10 f3 0f 11 05 eb 1c 94 01 f3 0f 10 49 14 f3 0f 11 0d e2 1c 94 01 '
+     'f3 0f 10 41 0c f3 0f 11 05 d9 1c 94 01 f3 0f 10 09 f3 0f 11 0d d1 1c 94 01 '
+     'f3 0f 10 41 04 f3 0f 11 05 c8 1c 94 01 f3 0f 10 49 08 f3 0f 11 0d bf 1c 94 01'),
 )
 
 
@@ -56,9 +79,14 @@ def audit(executable):
         checks.append(dict(name=name, address=hex(address), matches=actual == expected))
     return dict(
         sha256=digest, status='verified' if all(c['matches'] for c in checks) else 'mismatch',
-        checks=checks, scope='Investigated normal device creation and back-buffer RTV path only.',
-        unresolved=['Runtime scene flags and color-grading values',
-                    'Complete postprocess shader mapping and final presentation path',
+        checks=checks, scope='Normal back-buffer RTV path and the conditional color-grading pass.',
+        color_grading=dict(activation_bit=5, technique=16, shader='CW_ColorGrading.PS.cso',
+                           staging_buffer='0x142fb6610', constant_offset=448,
+                           first_vector=['exposure_fixed_0', 'contrast', 'saturation', 'brightness'],
+                           second_vector=['red', 'green', 'blue', 'unused'],
+                           empty_data_defaults=[[0, 0, 1, 0], [1, 1, 1, 0]]),
+        unresolved=['Runtime scene activation, preset overrides and effective color-grading values',
+                    'Remaining postprocess shader mapping and final presentation path',
                     'In-game image parity'],
         game_executed=False, viewer_defaults_changed=False,
     )
