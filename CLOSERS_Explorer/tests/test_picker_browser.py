@@ -15,6 +15,7 @@ class PickerBrowserTests(unittest.TestCase):
     page_file = 'model.html'
     entry_script = '<script type="module" src="/model.js"></script>'
     extra_images = ('/api/media/71','/api/media/72')
+    image_color = (0,200,0,255)
     animation_export = False
     responsive_checks = False
     script_prefix = ''
@@ -32,6 +33,7 @@ class PickerBrowserTests(unittest.TestCase):
         script = self.script_prefix+(Path(__file__).parent / self.checks_script).read_text(encoding='utf-8-sig')
         page_file, entry_script, extra_images = self.page_file, self.entry_script, self.extra_images
         animation_export = self.animation_export
+        image_color = self.image_color
 
         class Handler(http.server.SimpleHTTPRequestHandler):
             def log_message(self, *args):
@@ -50,7 +52,7 @@ class PickerBrowserTests(unittest.TestCase):
                     self.send_error(404)
                 elif self.path.startswith('/api/model-icon/'+'a'*64) or self.path.split('?')[0] in extra_images:
                     from test_composition import png
-                    data=png(4,4,lambda x,y:(0,200,0,255))
+                    data=png(4,4,lambda x,y:image_color)
                     self.send_response(200)
                     self.send_header('Content-Type','image/png')
                     self.send_header('Content-Length',str(len(data)))
