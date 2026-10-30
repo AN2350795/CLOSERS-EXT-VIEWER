@@ -7,6 +7,8 @@ class FaceSdfPlanTests(unittest.TestCase):
         mesh=dict(name='FACE_SDF_MC',uv=[0,0]);mat=dict(texture='folder/BASIC_FACE.TGA');frames=[dict(name='BIP01_HEAD')]
         p=face_sdf_preview(mesh,mat,frames)
         self.assertEqual(p['status'],'approximate');self.assertEqual(p['head_bone'],'BIP01_HEAD')
+        self.assertEqual(p['head_binding'],dict(status='source-verified',slot=7,matrix='frame-world',side_column=1,forward_column=2))
+        self.assertNotIn('head_bone_frame_approximation',p['limitations'])
         for current in ([],frames*2):self.assertEqual(face_sdf_preview(mesh,mat,current)['status'],'unsupported')
         self.assertEqual(face_sdf_preview(dict(mesh,uv=[]),mat,frames)['status'],'unsupported')
 

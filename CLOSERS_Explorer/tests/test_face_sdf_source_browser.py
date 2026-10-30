@@ -30,6 +30,7 @@ class FaceSdfSourceBrowserTests(test_picker_browser.PickerBrowserTests):
             data=models.scene([faces[0]['id']],skeleton_id=skeleton)
             sdf=[m for mesh in data['meshes'] for m in mesh['materials'] if m.get('face_sdf_preview')]
             self.assertTrue(sdf);self.assertTrue(all(m['face_sdf_preview']['status']=='approximate' for m in sdf))
+            self.assertTrue(all(m['face_sdf_preview']['head_binding']['slot']==7 for m in sdf))
             for mesh in data['meshes']:
                 for material in mesh['materials']:
                     info=material.get('image')
