@@ -46,7 +46,8 @@ class AvatarLightingTests(unittest.TestCase):
                 html=urlopen(base+'/model').read().decode();token=re.search(r'name="explorer-token" content="([^"]+)"',html)[1]
                 with self.assertRaises(HTTPError) as error:urlopen(base+'/api/model-lighting')
                 self.assertEqual(error.exception.code,403)
-                with urlopen(Request(base+'/api/model-lighting',headers={'X-Explorer-Token':token})) as response:self.assertEqual(json.load(response)['profiles'],[])
+                with urlopen(Request(base+'/api/model-lighting',headers={'X-Explorer-Token':token})) as response:
+                    report=json.load(response);self.assertEqual(report['profiles'],[]);self.assertEqual(report['color_grading_presets'],[])
                 with urlopen(base+'/model-lighting.js') as response:self.assertIn(b'installAvatarLighting',response.read())
                 with urlopen(base+'/model-color-grading.js') as response:self.assertIn(b'colorGradingFragment',response.read())
             finally:server.shutdown();server.server_close();thread.join()

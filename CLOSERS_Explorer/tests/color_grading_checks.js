@@ -40,18 +40,24 @@ try{
   const invalid=normalizeColorGrading({enabled:true,rgb:[NaN,1,1],bcs:[null,0,1]});check(invalid.rgb.join(',')==='1,1,1'&&invalid.bcs.join(',')==='0,0,1','invalid saved vectors did not restore neutral defaults');
   const originalFetch=window.fetch;window.fetch=async(url,options)=>{const path=String(url);
     if(path.startsWith('/api/model-browser'))return Response.json({total:0,items:[],facets:{character:[],kind:[],family:[],part:[],variant:[]}});
-    if(path.startsWith('/api/model-lighting'))return Response.json({profiles:[]});
+    if(path.startsWith('/api/model-lighting'))return Response.json({profiles:[],color_grading_presets:[{key:'5',label:'원본 프리셋 5',scope:'color-grading-only',source_enabled:true,rgb:[1,1,1.100000023841858],bcs:[0,.05000000074505806,1.2999999523162842]},{key:'4',label:'원본 프리셋 4',scope:'color-grading-only',source_enabled:true,rgb:[1,1,1],bcs:[0,0,0]}]});
     if(path.startsWith('/api/model-scene'))return Response.json({...fixture(),sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{candidates:[]},warnings:[]});
     return originalFetch(url,options);
   };
-  if(window.restoreColorGrading)localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify({sourceColor:true,colorGrading:grade}));
+  if(window.restoreColorGrading)localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify({sourceColor:true,colorGrading:grade,colorGradingManual:{enabled:false,rgb:[.4,.5,.6],bcs:[0,0,1]}}));
   await import('/model.js');await modelViewer.loadModel([1]);
   const $=id=>document.getElementById(id),toggle=$('avatar-grade-enabled'),rawToggle=$('avatar-source-color'),red=$('avatar-grade-rgb-0'),frame=()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))),change=(input,value)=>{input.value=value;input.dispatchEvent(new Event('change'));};
   check(toggle.checked===!!window.restoreColorGrading,'grading default/saved preference');
   if(!window.restoreColorGrading){check(toggle.disabled&&red.disabled,'grading should wait for raw mode');rawToggle.click();toggle.click();change(red,.7);}else check(red.value==='0.7','saved grading vector not restored');
   await frame();check(!red.disabled&&$('avatar-grade-status').textContent.includes('비교 중'),'grading controls not active');
   check(JSON.parse(localStorage.getItem('closers-avatar-lighting-v2')).colorGrading.rgb[0]===.7,'grading choice not saved');
+  if(window.restoreColorGrading){check(!$('avatar-grade-manual-restore').disabled,'saved manual backup was not restored');$('avatar-grade-manual-restore').click();check(red.value==='0.4'&&toggle.checked,'manual backup restoration changed enabled choice');change(red,.7);}
   change(red,'');check(red.value==='0.7','empty input corrupted saved coefficient');change(red,99);check(red.value==='2','coefficient outside UI range');
+  $('open-avatar-lighting').click();for(let i=0;i<100&&$('avatar-grade-preset').options.length<3;i++)await frame();
+  const preset=$('avatar-grade-preset'),bloom=$('avatar-emission-bloom').checked;
+  change(preset,'5');$('avatar-grade-preset-apply').click();check(red.value==='1'&&$('avatar-grade-rgb-2').value==='1.1'&&$('avatar-grade-bcs-1').value==='0.05','preset source coefficients not copied');check(toggle.checked&&$('avatar-emission-bloom').checked===bloom,'preset changed enabled choice or bloom');
+  change(preset,'4');$('avatar-grade-preset-apply').click();check($('avatar-grade-bcs-2').value==='0','zero saturation preset was replaced with a default');$('avatar-grade-manual-restore').click();check(red.value==='2'&&toggle.checked,'switching presets lost original manual values');
+  toggle.click();change(preset,'5');$('avatar-grade-preset-apply').click();check(!toggle.checked,'applying preset silently enabled grading');$('avatar-grade-manual-restore').click();toggle.click();
   $('avatar-emission-solo').click();check($('avatar-grade-status').textContent.includes('보류'),'solo grading not marked paused');$('avatar-emission-solo').click();
   const bump=new T.DataTexture(new Uint8Array([128,128,255,128]),1,1);bump.needsUpdate=true;setMatcapNormalMap(modelViewer.state.model.materials[0],bump);$('open-avatar-lighting').click();$('avatar-matcap-mask-only').click();check($('avatar-grade-status').textContent.includes('보류'),'mask grading not marked paused');$('avatar-matcap-mask-only').click();
   $('avatar-grade-reset').click();check(red.value==='1'&&$('avatar-grade-bcs-2').value==='1'&&toggle.checked,'neutral reset changed enabled choice or values');

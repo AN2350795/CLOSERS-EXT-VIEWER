@@ -12,6 +12,17 @@ import struct
 
 SOURCE_SHA256 = '8ea0ce3ba885f3044103c8e071e627b52a0e93cf56cc44b0e03dffed7c440283'
 EVIDENCE = (
+    ('graphic_preset_numeric_columns_5_to_14', 0x1406dd4dd,
+     '89 85 98 02 00 00 4c 8d a5 9c 02 00 00 41 be 0a 00 00 00 48 8b b5 f0 01 00 00 '
+     'e8 94 e0 49 01 46 8b 0c ae 4d 8b c4'),
+    ('graphic_preset_color_values_start', 0x1400928f2, 'f3 0f 10 44 38 64 f3 0f 11 44 24 48'),
+    ('graphic_preset_range_and_positive_count', 0x14009297c,
+     '0f 2f ca 77 13 0f 2f d5 77 0e 0f 2f d6 f3 0f 11 17 76 60 41 ff c7 eb 5b'),
+    ('graphic_preset_color_assignment_and_activation', 0x140092a11,
+     'f3 0f 10 45 b0 f3 0f 10 4d b4 32 c0 45 85 ff 0f b6 c0 41 0f 4f c4 40 32 ff '
+     'f3 0f 11 83 ac 00 00 00 f3 0f 10 45 b8 f3 0f 11 8b b0 00 00 00 88 83 ab 00 00 00 '
+     '48 8b 45 98 f3 0f 10 4d bc f3 0f 11 83 b4 00 00 00 f3 0f 10 45 c0 f3 0f 11 8b b8 00 00 00 '
+     'f3 0f 10 4d c4 f3 0f 11 83 bc 00 00 00 f3 0f 11 8b c0 00 00 00'),
     ('default_format_28', 0x1417b6475, 'c7 43 28 1c 00 00 00'),
     ('validated_format_28', 0x1417b6733, 'c7 46 28 1c 00 00 00'),
     ('swap_chain_format_28', 0x1417bc979, 'c7 45 d8 1c 00 00 00'),
@@ -81,6 +92,7 @@ def audit(executable):
         sha256=digest, status='verified' if all(c['matches'] for c in checks) else 'mismatch',
         checks=checks, scope='Normal back-buffer RTV path and the conditional color-grading pass.',
         color_grading=dict(activation_bit=5, technique=16, shader='CW_ColorGrading.PS.cso',
+                           preset_source='GRAPHIC_OPTION_DATA_DETAIL.NTF', preset_color_columns=[7,8,9,10,11,12],
                            staging_buffer='0x142fb6610', constant_offset=448,
                            first_vector=['exposure_fixed_0', 'contrast', 'saturation', 'brightness'],
                            second_vector=['red', 'green', 'blue', 'unused'],

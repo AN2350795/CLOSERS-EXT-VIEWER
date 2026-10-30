@@ -70,8 +70,12 @@ def read_profiles(data):
             if profile:result.append(profile)
         except MissingDefinition:pass
         except ValueError as exc:unavailable.append(dict(name=name,reason=str(exc)))
-    return dict(profiles=result,world_unavailable=unavailable,note='원본 조명의 수동 근사 비교입니다. 지역 선택·회전·거리 보간·착용 조건·후처리는 자동 적용하지 않습니다.')
+    from .color_grading import read_presets
+    preset_error=None
+    try:color_presets=read_presets(data)
+    except ValueError as exc:color_presets=[];preset_error=str(exc)
+    return dict(profiles=result,world_unavailable=unavailable,color_grading_presets=color_presets,color_grading_unavailable=preset_error,note='원본 조명의 수동 근사 비교입니다. 지역 선택·회전·거리 보간·착용 조건·후처리는 자동 적용하지 않습니다.')
 
 
 def profiles(data):
-    return data.cached(('avatar-lighting-profiles',5),lambda:read_profiles(data),persistent=True)
+    return data.cached(('avatar-lighting-profiles',6),lambda:read_profiles(data),persistent=True)
