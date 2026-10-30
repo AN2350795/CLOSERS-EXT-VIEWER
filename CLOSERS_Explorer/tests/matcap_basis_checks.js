@@ -18,8 +18,8 @@ try{
     check(t&&b,'generated UV tangent basis missing');
     for(const [key,source] of [['position','vertices'],['normal','normals'],['uv','uv']])check(g.attributes[key].array.every((v,i)=>Math.abs(v-data.meshes[0][source][i])<1e-6),'basis generation changed original '+key);
     check(g.index.array.every((v,i)=>v===data.meshes[0].indices[i]),'basis generation changed original indices');
-    const expectedT=new T.Vector3(mirrored?-.8:.8,0,mirrored?.6:-.6),expectedB=new T.Vector3(0,1,0),n=new T.Vector3(.6,0,.8);
-    for(let i=0;i<3;i++){check(new T.Vector3().fromBufferAttribute(t,i).distanceTo(expectedT)<1e-6,'tangent is not orthogonal to smooth source normal');check(new T.Vector3().fromBufferAttribute(b,i).distanceTo(expectedB)<1e-6,'mirrored UV bitangent handedness changed');}
+    const expectedT=new T.Vector3(mirrored?-1:1,0,0),expectedB=new T.Vector3(mirrored?-.7:.7,mirrored?-1.4:1.4,0).normalize(),n=new T.Vector3(.6,0,.8);
+    for(let i=0;i<3;i++){check(new T.Vector3().fromBufferAttribute(t,i).distanceTo(expectedT)<1e-6,'source tangent must retain its UV derivative direction');check(new T.Vector3().fromBufferAttribute(b,i).distanceTo(expectedB)<1e-6,'source binormal must align with cross(normal,tangent)');}
     const expectedNormal=expectedT.clone().addScaledVector(expectedB,1/255).addScaledVector(n,1/255).normalize(),x=Math.min(255,Math.floor((expectedNormal.x*.5+.5)*256)),on=pixels(scene),index=(48*96+24)*4;
     check(Math.abs(on[index]-srgb(x/255))<=1,'GPU did not use generated vertex basis: '+mirrored);
     // Independently transform both basis axes across a mirrored model matrix.
@@ -28,6 +28,13 @@ try{
   for(const count of [4,5]){
     const actual=setup(fixture(count)),reference=setup(fixture());actual.model.bones.forEach(b=>b.rotation.y=.4);reference.model.root.rotation.y=.4;actual.model.root.updateMatrixWorld(true);actual.model.skeletons.forEach(s=>s.update());
     const a=pixels(actual.scene),b=pixels(reference.scene);check(a.every((v,i)=>Math.abs(v-b[i])<=2),'vertex tangent/bitangent did not follow full skinning: '+count);actual.model.dispose();reference.model.dispose();
+  }
+  {
+    // Two incident faces contribute raw T=(2,0,0) and T=(1,0,-1).
+    // Both contribute B=(0,1,0); the source does not Gram-Schmidt either axis.
+    const data=fixture(),mesh=data.meshes[0];mesh.vertices=[0,0,0,2,0,0,0,1,0,-1,0,1];mesh.indices=[0,1,2,0,2,3];mesh.uv=[0,0,1,0,0,1,-1,0];mesh.normals=Array.from({length:4},()=>[.2,.3,Math.sqrt(.87)]).flat();mesh.groups=[[0,6,0]];
+    const {model}=setup(data),g=model.meshes[0].geometry,want=[new T.Vector3(3,0,-1).normalize(),new T.Vector3(1,0,0),new T.Vector3(3,0,-1).normalize(),new T.Vector3(1,0,-1).normalize()];
+    for(let i=0;i<4;i++){check(new T.Vector3().fromBufferAttribute(g.attributes.avatarUvTangent,i).distanceTo(want[i])<1e-6,'raw face derivatives were weighted/projected before averaging');check(new T.Vector3().fromBufferAttribute(g.attributes.avatarUvBitangent,i).distanceTo(new T.Vector3(0,1,0))<1e-6,'source binormal was reconstructed instead of averaged');}model.dispose();
   }
   {
     const {model,scene}=setup(fixture()),g=model.meshes[0].geometry;
