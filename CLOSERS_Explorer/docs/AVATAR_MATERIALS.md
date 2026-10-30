@@ -4,6 +4,16 @@
 
 ## 적용 범위
 
+### XET MatCap·발광 입력의 UNORM 샘플링 수정 (2026-10-30)
+
+XET `m_MultiTexName`은 `0x141721923`에서 파싱된 +0x50 문자열이 `0x14172418c~0x1417241cd`에서 일반 텍스처 요청 `0x141706760`에 전달된다. `EmissiveTexName`의 +0x28 문자열도 `0x141724561~0x1417245ca`에서 같은 경로를 사용한다. 풀의 `CNKDXDeviceTexture` 생성자는 `0x141714560`, vtable은 `0x1425e8118`이며 RTTI의 타입 이름으로 이를 확인했다. vtable+0x38의 일반 로더 `0x141717cd0`은 `0x141718187`에서 공통 생성 함수 `0x141714ef0`을 호출한다. 이 생성 함수의 명시 Format은 지난 GLOW 조사와 같은 `R8G8B8A8_UNORM`이다. MatCap·발광 리소스의 기본 SRV(+0x108)가 각각 셰이더에 바인딩되는 경로도 대조했다. 정적 근거는 `diagnostics/xet-unorm-source-20261030.txt`에 보관한다.
+
+뷰어의 `matcap`·`auxiliary` 역할을 NoColorSpace로 변경하여 실제 PNG의 RGB 값을 UNORM으로 샘플링한다. 이전에는 sRGB 디코딩된 값을 광택·발광 식에 넣고 있었다. 기본색·BUMP와 GPU 텍스처를 공유하지 않으며, MatCap Clamp·원본 BUMP 알파 마스크·반사색/지수·발광색/강도는 그대로 유지한다. 기본색·툰·SecondMap 및 최종 출력 감마/톤매핑 설정은 이번 변경에 포함하지 않는다. 원본의 전체 후처리와 출력 도메인이 미확정이므로 입력 샘플링 수정과 최종 인게임 외형 일치를 구분한다.
+
+실제 업로드한 중간 RGB PNG로 `base + MatCap(byte/255)*BUMP.a + emissive(byte/255)*color*strength`를 검사했다. 수정 전 실패·수정 후 통과를 확인했고 중간 렌더 타깃을 거친 합성과 발광만 보기에서도 추가 변환이 없는지 대조했다. 일반/4/5 가중치, 마스크 보류·복구·확인 모드, 반사·OFF 복원 검사도 유지한다. 실제 오로라 픽시즈 A/B·성야의 버니의 광택/반사/툰과 트리니티 휠 발광·번짐을 검사했다. 실제 입력 역할을 분리한 캡처는 `diagnostics/xet-unorm-20261030/`에 보관한다.
+
+다음은 기본색·툰의 개별 바인딩과 최종 출력 감마/후처리를 함께 추적하는 것이다. 입력을 바꾸면서 최종 감마를 추정해 맞추는 방식은 피한다. 원본 접선·얼굴 기준 축, 조명 자동 선택·거리·회전, EXT B 계수, 동일 조건의 인게임 화면 비교는 남아 있다.
+
 ### GLOW 입력의 불필요한 sRGB 변환 수정 (2026-10-30)
 
 원본 공통 보조 텍스처 로더 `0x1417156a0`은 type 3에서 `_GLOW`를 선택하고 `0x141714ef0`의 공통 생성 경로를 사용한다. 이 경로의 Texture2D descriptor Format과 이미지 로드 정보 Format에는 모두 `0x1c`가 명시된다. [DXGI_FORMAT 정의](https://learn.microsoft.com/en-us/windows/win32/api/dxgiformat/ne-dxgiformat-dxgi_format)에 따르면 이는 `R8G8B8A8_UNORM`(28)이며 sRGB 형식(29)과 다르다. `0x14171539d~0x14171545c`의 호출 인자·구조 배치는 [D3DX11_IMAGE_LOAD_INFO](https://learn.microsoft.com/en-us/windows/win32/direct3d11/d3dx11-image-load-info) 및 메모리 SRV 생성 호출에 해당하는 것으로 해석했다. 보호된 간접 호출의 함수명 자체는 미해결이므로 함수명 확인과 구조 배치의 근거를 구분한다. 정적 근거는 `diagnostics/glow-unorm-source-20261030.txt`에 보관한다.

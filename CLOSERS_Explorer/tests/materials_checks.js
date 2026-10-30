@@ -224,6 +224,14 @@ try{
   check(document.getElementById('avatar-matcap-mask-status').textContent.includes('발광만 보기·번짐 일시 제외'),'mask diagnostic did not explain temporary rendering mode');maskToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapMaskOnly.value===0),'mask inspection OFF left stale override');
   check(modelViewer.state.textures.size===4,'MatCap/normal texture roles not isolated from base/emission');
   const capMap=modelViewer.state.textures.get('matcap:71');check(capMap!==modelViewer.state.textures.get('base:71')&&capMap.wrapS===T.ClampToEdgeWrapping&&capMap.wrapT===T.ClampToEdgeWrapping,'MatCap clamp/cache invalid');
+  {
+    const data=fixture(0);data.meshes[0].materials[0].matcap_preview={kind:'matcap',status:'approximate',texture:'CAP.PNG'};const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);const m=model.materials[0],bump=new T.DataTexture(new Uint8Array([128,128,255,128]),1,1);bump.needsUpdate=true;
+    setMatcapPreviewMap(m,capMap);setMatcapNormalMap(m,bump);setMatcapPreview(m,true);setMaterialPreviewMap(m,modelViewer.state.textures.get('auxiliary:71'));const actual=pixels(scene),index=(48*96+24)*4;
+    for(let c=0;c<3;c++){const tex=[16,32,64][c]/255,expected=[.2,.1,.05][c]+tex*128/255+tex*[1,.5,.25][c]*.9;check(Math.abs(actual[index+c]-Math.round(255*linearToSrgb(expected)))<=1,'uploaded XET MatCap/emissive PNG must use UNORM samples: '+c);}
+    const fx=createEmissionRenderer(renderer);fx.render(scene,camera,model,{bloom:true,strength:0});const composite=new Uint8Array(actual.length);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,composite);check(composite.every((v,i)=>Math.abs(v-actual[i])<=1),'XET UNORM composite applied another color transform');
+    fx.render(scene,camera,model,{solo:true,bloom:false});const solo=new Uint8Array(actual.length);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,solo);for(let c=0;c<3;c++)check(Math.abs(solo[index+c]-Math.round(255*linearToSrgb([16,32,64][c]/255*[1,.5,.25][c]*.9)))<=1,'uploaded XET emission-only sampling mismatch');fx.dispose();
+    check(capMap.colorSpace===T.NoColorSpace&&modelViewer.state.textures.get('auxiliary:71').colorSpace===T.NoColorSpace&&modelViewer.state.textures.get('base:71').colorSpace===T.SRGBColorSpace,'XET color role/cache isolation');model.dispose();bump.dispose();
+  }
   capToggle.click();check(modelViewer.state.model.materials.every(m=>m.userData.matcapPreview.uniforms.avatarMatcapEnabled.value===1),'MatCap toggle did not enable loaded maps');
   const normalToggle=document.getElementById('avatar-matcap-normal'),normalMap=modelViewer.state.textures.get('matcap-normal:71');
   check(normalMap!==capMap&&normalMap!==modelViewer.state.textures.get('base:71')&&normalMap.colorSpace===T.NoColorSpace&&normalMap.wrapS===T.RepeatWrapping,'normal texture role changed data color/wrapping');

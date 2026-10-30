@@ -109,8 +109,8 @@ async function texture(id,materials,role='base'){
     const map=await textureCache.acquire(key,pixels,async()=>{
       const map=await textureLoader.loadAsync('/api/composition-image/'+id+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);
       if(viewerDisposed){map.dispose();throw Error('뷰어가 종료되었습니다.');}
-      // CW's companion loader creates BUMP/GLOW/EXT as R8G8B8A8_UNORM.
-      map.colorSpace=['matcap-normal','ext','glow'].includes(role)?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
+      // Verified companion and XET MatCap/emission paths use UNORM resources.
+      map.colorSpace=['matcap-normal','ext','glow','matcap','auxiliary'].includes(role)?THREE.NoColorSpace:THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=['matcap','toon'].includes(role)?THREE.ClampToEdgeWrapping:THREE.RepeatWrapping;
       const started=performance.now();try{renderer.initTexture(map);}catch(e){map.dispose();throw e;}timings.uploadMs+=performance.now()-started;
       return map;
     });

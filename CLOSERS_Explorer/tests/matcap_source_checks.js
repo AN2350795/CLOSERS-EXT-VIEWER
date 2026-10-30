@@ -11,13 +11,13 @@ try{
     const url=URL.createObjectURL(new Blob([Uint8Array.from(atob(file.body),c=>c.charCodeAt(0))],{type:'image/png'}));
     try{const map=await loader.loadAsync(url);map.flipY=false;map.colorSpace=T.SRGBColorSpace;maps.set(Number(id),map);}finally{URL.revokeObjectURL(url);}
   }
-  const model=buildModel(matcapFixture.data),scene=new T.Scene();scene.add(model.root);
+  const model=buildModel(matcapFixture.data),scene=new T.Scene(),owned=[];scene.add(model.root);
   for(const material of model.materials){
     const input=material.userData.input;
     if(input.image?.selected){material.map=maps.get(input.image.selected);material.map.wrapS=material.map.wrapT=T.RepeatWrapping;material.color.set(0xffffff);material.needsUpdate=true;}
     if(material.userData.matcapPreview){
-      const map=maps.get(input.matcap_preview.image.selected);check(map,'original MatCap map resolved');map.wrapS=map.wrapT=T.ClampToEdgeWrapping;setMatcapPreviewMap(material,map);
-      if(input.matcap_preview.normal_image?.selected){const bump=maps.get(input.matcap_preview.normal_image.selected);check(bump,'original normal map resolved');bump.colorSpace=T.NoColorSpace;bump.wrapS=bump.wrapT=T.RepeatWrapping;setMatcapNormalMap(material,bump);}
+      const source=maps.get(input.matcap_preview.image.selected);check(source,'original MatCap map resolved');const map=source.clone();owned.push(map);map.colorSpace=T.NoColorSpace;map.wrapS=map.wrapT=T.ClampToEdgeWrapping;map.needsUpdate=true;setMatcapPreviewMap(material,map);
+      if(input.matcap_preview.normal_image?.selected){const source=maps.get(input.matcap_preview.normal_image.selected);check(source,'original normal map resolved');const bump=source.clone();owned.push(bump);bump.colorSpace=T.NoColorSpace;bump.wrapS=bump.wrapT=T.RepeatWrapping;bump.needsUpdate=true;setMatcapNormalMap(material,bump);}
     }
     if(matcapFixture.toonProfiles?.length&&material.userData.toonPreview){const map=maps.get(input.toon_preview.image.selected);check(map,'original toon map resolved');map.wrapS=map.wrapT=T.ClampToEdgeWrapping;setAvatarToonMap(material,map);}
   }
@@ -59,5 +59,5 @@ try{
     model.materials.forEach(m=>setMatcapPreview(m,false));check(capture(label+'-restored').every((v,i)=>v===off[i]),'OFF does not restore real costume');
   }
   check(!shaderError,'real MatCap shader compilation failed');
-  model.dispose();maps.forEach(m=>m.dispose());renderer.dispose();document.body.dataset.checks='passed';
+  model.dispose();owned.forEach(m=>m.dispose());maps.forEach(m=>m.dispose());renderer.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}
