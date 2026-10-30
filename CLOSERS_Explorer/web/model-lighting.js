@@ -104,7 +104,7 @@ export function installAvatarLighting(material){
   Object.assign(uniforms,{avatarRimEnabled:{value:0},avatarRimDirection:{value:new THREE.Vector3(0,0,-1)},avatarRimWidth:{value:0},avatarRimPower:{value:0}});
   Object.assign(uniforms,{avatarFaceEnabled:{value:0},avatarFaceSide:{value:new THREE.Vector3(1,0,0)},avatarFaceForward:{value:new THREE.Vector3(0,0,1)},avatarFaceDirection:{value:new THREE.Vector3(0,0,1)},avatarFaceColor:{value:new THREE.Color(1,1,1)},avatarFaceIntensity:{value:1},avatarFacePower:{value:1}});
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|avatar-source-normal-v9';
+  material.customProgramCacheKey=()=>key+'|avatar-source-normal-face-lod-v10';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarLightingNormal;\nvarying float avatarToonCoordinate;\nuniform vec3 avatarToonDirection;\n'+shader.vertexShader
@@ -171,8 +171,9 @@ if (avatarFaceEnabled > 0.5) {
   faceAngle *= sqrt(max(0.0,1.0-faceAbs));
   if (faceFront < 0.0) faceAngle = 3.141593-faceAngle;
   float faceThreshold = faceAngle * 0.318310 - 0.01;
-  float faceLeft = texture2D(map,vec2(1.0-vMapUv.x,vMapUv.y)).a;
-  float faceRight = texture2D(map,vMapUv).a;
+  // The source samples both mirrored and regular SDF alpha at mip 0.
+  float faceLeft = textureLod(map,vec2(1.0-vMapUv.x,vMapUv.y),0.0).a;
+  float faceRight = textureLod(map,vMapUv,0.0).a;
   float faceDistance = mix(faceLeft,faceRight,smoothstep(-0.1,0.1,faceSide));
   float faceLit = smoothstep(0.0,0.02,faceDistance-faceThreshold);
   vec3 faceShadow = vec3(1.0,0.878,0.784);
