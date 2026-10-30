@@ -60,6 +60,13 @@ try{
   let uniforms=()=>modelViewer.state.model.materials[0].userData.avatarLighting;
   check(!legacy.checked&&uniforms().avatarLightEnabled.value===0&&uniforms().avatarToonEnabled.value===1,'toon and old comparison were double applied');
   const texture=modelViewer.state.textures.get('toon:71');check(texture!==modelViewer.state.textures.get('base:71')&&texture.wrapS===T.ClampToEdgeWrapping&&texture.wrapT===T.ClampToEdgeWrapping,'toon role uses mutable base map or wrong wrapping');
+  {
+    const data=fixture();data.meshes[0].materials[0].material_preview={kind:'emissive',status:'approximate',color:[1,.5,.25,1],strength:.2};const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);const m=model.materials[0],index=(48*96+24)*4,off=capture(scene);
+    setAvatarToonMap(m,texture);setAvatarToon(m,true,profile);setMaterialPreviewMap(m,map);const actual=capture(scene);
+    for(let c=0;c<3;c++){const tex=[128,64,32][c]/255,expected=[.2,.1,.05][c]*tex*profile.color[c]*profile.intensity+tex*[1,.5,.25][c]*.2;check(Math.abs(actual[index+c]-srgb(expected))<=1,'loaded toon PNG must use UNORM lookup values without sRGB decode: '+c);}
+    const fx=createEmissionRenderer(renderer);fx.render(scene,camera,model,{bloom:true,strength:0});const composite=new Uint8Array(actual.length);gl.readPixels(0,0,96,96,gl.RGBA,gl.UNSIGNED_BYTE,composite);check(composite.every((v,i)=>Math.abs(v-actual[i])<=1),'toon composite applied an extra color transform');fx.dispose();
+    setAvatarToon(m,false,null);setMaterialPreviewMap(m,null);check(capture(scene).every((v,i)=>v===off[i]),'loaded toon OFF did not restore base');check(texture.colorSpace===T.NoColorSpace&&modelViewer.state.textures.get('base:71').colorSpace===T.SRGBColorSpace,'toon/base color roles not isolated');model.dispose();
+  }
   $('avatar-toon-power').value='1.25';$('avatar-toon-power').dispatchEvent(new Event('input'));await modelViewer.loadModel([1]);check(toggle.checked&&uniforms().avatarToonEnabled.value===1&&uniforms().avatarToonPower.value===1.25,'toon preference lost on model reload');
   legacy.click();check(!toggle.checked&&uniforms().avatarToonEnabled.value===0&&uniforms().avatarLightEnabled.value===1,'old comparison did not disable toon');check(JSON.parse(localStorage.getItem('closers-avatar-lighting-v2')).legacyExplicit===true,'explicit legacy preference not recorded');
   select.value='';select.dispatchEvent(new Event('change'));check(!legacy.checked&&uniforms().avatarLightEnabled.value===0,'clearing light did not disable legacy');select.value='source';select.dispatchEvent(new Event('change'));check(!legacy.checked&&uniforms().avatarLightEnabled.value===0,'reselecting light reenabled legacy');toggle.click();

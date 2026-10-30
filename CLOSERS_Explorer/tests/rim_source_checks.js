@@ -14,7 +14,7 @@ try{
   for(const test of extFixture.scenes){
     const model=buildModel(test.data),scene=new T.Scene(),owned=[];scene.add(model.root);
     for(const m of model.materials){const input=m.userData.input;
-      for(const [role,info] of [['base',input.image],['toon',input.toon_preview?.image]]){if(!info)continue;const map=maps.get(info.selected).clone();owned.push(map);map.flipY=false;map.colorSpace=T.SRGBColorSpace;map.wrapS=map.wrapT=role==='toon'?T.ClampToEdgeWrapping:T.RepeatWrapping;map.needsUpdate=true;if(role==='base'){m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}else setAvatarToonMap(m,map);}
+      for(const [role,info] of [['base',input.image],['toon',input.toon_preview?.image]]){if(!info)continue;const map=maps.get(info.selected).clone();owned.push(map);map.flipY=false;map.colorSpace=role==='toon'?T.NoColorSpace:T.SRGBColorSpace;map.wrapS=map.wrapT=role==='toon'?T.ClampToEdgeWrapping:T.RepeatWrapping;map.needsUpdate=true;if(role==='base'){m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}else setAvatarToonMap(m,map);}
     }
     const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);const center=box.getCenter(new T.Vector3()),distance=box.getSize(new T.Vector3()).length()*1.45,camera=new T.PerspectiveCamera(40,1,.1,100000),gl=renderer.getContext();
     const pixels=()=>{const p=new Uint8Array(512*512*4);gl.readPixels(0,0,512,512,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;},capture=label=>{renderer.render(scene,camera);window.testCaptures.push({name:'rim-'+test.character+'-'+label,body:renderer.domElement.toDataURL('image/png')});return pixels();};

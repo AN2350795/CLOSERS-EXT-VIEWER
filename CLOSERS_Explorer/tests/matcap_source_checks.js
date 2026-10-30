@@ -19,7 +19,7 @@ try{
       const source=maps.get(input.matcap_preview.image.selected);check(source,'original MatCap map resolved');const map=source.clone();owned.push(map);map.colorSpace=T.NoColorSpace;map.wrapS=map.wrapT=T.ClampToEdgeWrapping;map.needsUpdate=true;setMatcapPreviewMap(material,map);
       if(input.matcap_preview.normal_image?.selected){const source=maps.get(input.matcap_preview.normal_image.selected);check(source,'original normal map resolved');const bump=source.clone();owned.push(bump);bump.colorSpace=T.NoColorSpace;bump.wrapS=bump.wrapT=T.RepeatWrapping;bump.needsUpdate=true;setMatcapNormalMap(material,bump);}
     }
-    if(matcapFixture.toonProfiles?.length&&material.userData.toonPreview){const map=maps.get(input.toon_preview.image.selected);check(map,'original toon map resolved');map.wrapS=map.wrapT=T.ClampToEdgeWrapping;setAvatarToonMap(material,map);}
+    if(matcapFixture.toonProfiles?.length&&material.userData.toonPreview){const source=maps.get(input.toon_preview.image.selected);check(source,'original toon map resolved');const map=source.clone();owned.push(map);map.colorSpace=T.NoColorSpace;map.wrapS=map.wrapT=T.ClampToEdgeWrapping;map.needsUpdate=true;setAvatarToonMap(material,map);}
   }
   const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);
   const center=box.getCenter(new T.Vector3()),distance=box.getSize(new T.Vector3()).length()*1.45;
