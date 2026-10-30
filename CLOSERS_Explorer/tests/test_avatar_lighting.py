@@ -48,6 +48,7 @@ class AvatarLightingTests(unittest.TestCase):
                 self.assertEqual(error.exception.code,403)
                 with urlopen(Request(base+'/api/model-lighting',headers={'X-Explorer-Token':token})) as response:self.assertEqual(json.load(response)['profiles'],[])
                 with urlopen(base+'/model-lighting.js') as response:self.assertIn(b'installAvatarLighting',response.read())
+                with urlopen(base+'/model-color-grading.js') as response:self.assertIn(b'colorGradingFragment',response.read())
             finally:server.shutdown();server.server_close();thread.join()
 
     def fixture(self):

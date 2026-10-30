@@ -2,7 +2,7 @@ import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
 import {setMatcapPreview,setMatcapPreviewMap,setMatcapNormalMap,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from '/model-materials.js';
 import {setAvatarToon,setAvatarToonMap} from '/model-lighting.js';
-import {applyAvatarColorSpace} from '/model-emission.js';
+import {applyAvatarColorSpace,createEmissionRenderer} from '/model-emission.js';
 const check=(value,message)=>{if(!value)throw Error(message);};
 try{
   const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true});renderer.setSize(512,512);renderer.setClearColor(0x202630);renderer.outputColorSpace=T.SRGBColorSpace;
@@ -25,7 +25,8 @@ try{
   const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);
   const center=box.getCenter(new T.Vector3()),distance=box.getSize(new T.Vector3()).length()*1.45;
   const camera=new T.PerspectiveCamera(40,1,.1,100000),gl=renderer.getContext();
-  const capture=(label)=>{renderer.render(scene,camera);window.testCaptures.push({name:'matcap-'+matcapFixture.label+'-'+label,body:renderer.domElement.toDataURL('image/png')});const result=new Uint8Array(512*512*4);gl.readPixels(0,0,512,512,gl.RGBA,gl.UNSIGNED_BYTE,result);return result;};
+  const gradeFx=matcapFixture.colorDomain?createEmissionRenderer(renderer):null;
+  const capture=(label,options=null)=>{if(options)gradeFx.render(scene,camera,model,options);else renderer.render(scene,camera);window.testCaptures.push({name:'matcap-'+matcapFixture.label+'-'+label,body:renderer.domElement.toDataURL('image/png')});const result=new Uint8Array(512*512*4);gl.readPixels(0,0,512,512,gl.RGBA,gl.UNSIGNED_BYTE,result);return result;};
   for(const [label,yaw] of [['front',0],['side',.7],['back',Math.PI]]){
     camera.position.copy(center).add(new T.Vector3(Math.sin(yaw)*distance,distance*.12,Math.cos(yaw)*distance));camera.lookAt(center);camera.updateMatrixWorld(true);
     model.materials.forEach(m=>setMatcapPreview(m,false));const off=capture(label+'-off');
@@ -59,11 +60,13 @@ try{
     if(matcapFixture.colorDomain){
       const roles=new Map();let id=0;for(const m of model.materials){if(m.map)roles.set('base:'+id++,m.map);const p=m.userData.matcapPreview,u=m.userData.avatarLighting;if(p?.uniforms.avatarMatcapMap.value)roles.set('matcap:'+id++,p.uniforms.avatarMatcapMap.value);if(p?.uniforms.avatarMatcapNormalMap.value)roles.set('matcap-normal:'+id++,p.uniforms.avatarMatcapNormalMap.value);if(u?.avatarToonMap.value)roles.set('toon:'+id++,u.avatarToonMap.value);}
       model.materials.forEach(m=>{setMatcapPreview(m,true);setAvatarToon(m,true,matcapFixture.toonProfiles[0]);});applyAvatarColorSpace(renderer,roles,false);const viewer=capture(label+'-domain-viewer');applyAvatarColorSpace(renderer,roles,true);const raw=capture(label+'-domain-raw');let changed=0;
+      const graded=capture(label+'-grade-on',{bloom:false,colorGrading:{enabled:true,rgb:[.9,1,1.1],bcs:[0,.05,1.3]}});let gradeChanged=0;
+      for(let i=0;i<raw.length;i+=4){check(Math.abs(graded[i+3]-raw[i+3])<=1,'real costume grading changed alpha');const costume=[32,38,48].some((v,c)=>Math.abs(viewer[i+c]-v)>1);if(costume&&[0,1,2].some(c=>Math.abs(graded[i+c]-raw[i+c])>2))gradeChanged++;}check(gradeChanged>100,'grading changed only background, not real costume');check(capture(label+'-grade-off',{bloom:false}).every((v,i)=>v===raw[i]),'grading OFF failed real costume restoration');
       for(let i=0;i<raw.length;i++){if(i%4===3)check(raw[i]===viewer[i],'source domain changed alpha');else{const p=i-i%4,visible=[32,38,48].some((v,c)=>Math.abs(viewer[p+c]-v)>1);if(visible&&raw[i]!==viewer[i])changed++;}}check(changed>100,'source domain did not change real costume pixels');applyAvatarColorSpace(renderer,roles,false);check(capture(label+'-domain-restored').every((v,i)=>v===viewer[i]),'source domain OFF failed real costume restoration');model.materials.forEach(m=>setAvatarToon(m,false,null));
     }
     model.materials.forEach(m=>setMatcapPreview(m,true,0));check(capture(label+'-zero').every((v,i)=>v===off[i]),'zero strength does not restore real costume');
     model.materials.forEach(m=>setMatcapPreview(m,false));check(capture(label+'-restored').every((v,i)=>v===off[i]),'OFF does not restore real costume');
   }
   check(!shaderError,'real MatCap shader compilation failed');
-  model.dispose();owned.forEach(m=>m.dispose());maps.forEach(m=>m.dispose());renderer.dispose();document.body.dataset.checks='passed';
+  gradeFx?.dispose();model.dispose();owned.forEach(m=>m.dispose());maps.forEach(m=>m.dispose());renderer.dispose();document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

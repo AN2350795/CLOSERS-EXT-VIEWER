@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import {colorGradingFragment,normalizeColorGrading} from './model-color-grading.js';
 
 // Keep input sampling and output transfer paired for the explicit raw-UNORM
 // comparison. Reused GPU-cache entries must follow the active frame's domain.
@@ -25,21 +26,28 @@ void main(){vec3 color=texture2D(image,vUv).rgb*.227027;
 color+=(texture2D(image,vUv+direction*1.384615).rgb+texture2D(image,vUv-direction*1.384615).rgb)*.316216;
 color+=(texture2D(image,vUv+direction*3.230769).rgb+texture2D(image,vUv-direction*3.230769).rgb)*.070270;
 gl_FragColor=vec4(color,1.0);}`});
-  const composite=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms:{baseImage:{value:null},glowImage:{value:null},strength:{value:0},exposure:{value:1}},vertexShader,fragmentShader:`varying vec2 vUv;uniform sampler2D baseImage;uniform sampler2D glowImage;uniform float strength;uniform float exposure;
+  const composite=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms:{baseImage:{value:null},glowImage:{value:null},strength:{value:0},exposure:{value:1},avatarGradeEnabled:{value:false},avatarGradeRgb:{value:new THREE.Vector3(1,1,1)},avatarGradeBcs:{value:new THREE.Vector3(0,0,1)}},vertexShader,fragmentShader:`varying vec2 vUv;uniform sampler2D baseImage;uniform sampler2D glowImage;uniform float strength;uniform float exposure;
+${colorGradingFragment}
 void main(){vec4 original=texture2D(baseImage,vUv);gl_FragColor=vec4((original.rgb+texture2D(glowImage,vUv).rgb*strength)*exposure,original.a);
+gl_FragColor=avatarGrade(gl_FragColor);
 #include <tonemapping_fragment>
 #include <colorspace_fragment>
 }`});
   quad.material.dispose();quad.material=blur;
-  function render(world,view,model,{bloom=true,solo=false,strength=.8,exposure=1}={}){
+  function render(world,view,model,{bloom=true,solo=false,strength=.8,exposure=1,colorGrading=null}={}){
     const materials=model?.materials||[],ready=materials.some(m=>m.userData.materialPreview?.uniforms.avatarEmissiveMap.value);
     const active=materials.some(m=>m.userData.materialPreview?.uniforms.avatarMaterialEnabled.value>0);
-    if(!model||(!solo&&(!ready||!bloom||!active))){renderer.render(world,view);return;}
+    const grade=normalizeColorGrading(colorGrading),grading=!!model&&!solo&&grade.enabled;
+    if(!model||(!grading&&!solo&&(!ready||!bloom||!active))){renderer.render(world,view);return;}
     renderer.getDrawingBufferSize(size);if(size.x<1||size.y<1)return;if(base.width!==size.x||base.height!==size.y){base.setSize(size.x,size.y);mask.setSize(size.x,size.y);horizontal.setSize(Math.max(1,Math.ceil(size.x/2)),Math.max(1,Math.ceil(size.y/2)));vertical.setSize(horizontal.width,horizontal.height);}
     const output=renderer.getRenderTarget(),background=world.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
     try{
       renderer.autoClear=true;
+      composite.uniforms.avatarGradeEnabled.value=grading;composite.uniforms.avatarGradeRgb.value.fromArray(grade.rgb);composite.uniforms.avatarGradeBcs.value.fromArray(grade.bcs);
       if(!solo){renderer.setRenderTarget(base);renderer.render(world,view);}
+      if(!solo&&(!ready||!bloom||!active)){
+        quad.material=composite;composite.uniforms.baseImage.value=base.texture;composite.uniforms.glowImage.value=base.texture;composite.uniforms.strength.value=0;composite.uniforms.exposure.value=1;renderer.setRenderTarget(output);renderer.render(scene,camera);return;
+      }
       for(const child of world.children)if(child!==model.root&&child.visible){hidden.push(child);child.visible=false;}
       world.background=null;renderer.setClearColor(0x000000,1);
       for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=1;

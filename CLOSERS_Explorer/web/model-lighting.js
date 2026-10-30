@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import {normalizeColorGrading} from './model-color-grading.js';
 import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
@@ -288,6 +289,17 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   settings.sourceColor=false;try{settings.sourceColor=JSON.parse(localStorage.getItem(storageKey)||'{}')?.sourceColor===true;}catch{}
   const colorField=element('fieldset');colorField.innerHTML='<legend>색상 계산 비교</legend><label><input id="avatar-source-color" type="checkbox"> 원본 형식의 색상 계산 비교 (후처리 미포함)</label><p id="avatar-source-color-status" role="status"></p><p>화면 전체의 입력·출력 색상 계산을 함께 전환합니다. 기본색과 조명·광택의 합성 결과가 달라질 수 있습니다. 실제 게임의 후처리·장면 상태는 포함하지 않습니다. 끄면 기존 뷰어 화면으로 돌아갑니다.</p>';
   dialog.querySelector('fieldset').before(colorField);const sourceColorToggle=$('avatar-source-color');sourceColorToggle.checked=settings.sourceColor;
+  settings.colorGrading=normalizeColorGrading(null);try{settings.colorGrading=normalizeColorGrading(JSON.parse(localStorage.getItem(storageKey)||'{}')?.colorGrading);}catch{}
+  const gradeDetails=element('details');gradeDetails.innerHTML='<summary>색상 보정 비교</summary><label><input id="avatar-grade-enabled" type="checkbox"> 색상 보정 켜기</label><p>원본 형식의 색상 계산을 켠 뒤 비교합니다. 아래 중립값에서 시작하며 게임의 프리셋·장면 설정을 자동으로 가져오지는 않습니다. 발광만 보기와 광택 범위 확인 중에는 보정을 잠시 보류합니다.</p><div id="avatar-grade-values"></div><button id="avatar-grade-reset" type="button" class="secondary">색상 보정 중립값</button><p id="avatar-grade-status" role="status"></p>';colorField.append(gradeDetails);
+  const gradeToggle=$('avatar-grade-enabled');gradeToggle.checked=settings.colorGrading.enabled;
+  const gradeInputs=[];
+  for(const [key,index,label,min,max] of [['rgb',0,'빨강 배율',0,2],['rgb',1,'초록 배율',0,2],['rgb',2,'파랑 배율',0,2],['bcs',0,'밝기',-1,1],['bcs',1,'대비',-1,2],['bcs',2,'채도',0,2]]){
+    const row=element('label',label),input=element('input');input.type='number';input.id=`avatar-grade-${key}-${index}`;input.min=min;input.max=max;input.step=.05;input.value=settings.colorGrading[key][index];row.append(input);$('avatar-grade-values').append(row);gradeInputs.push(input);
+    input.onchange=()=>{const value=input.valueAsNumber;if(Number.isFinite(value))settings.colorGrading[key][index]=Math.max(min,Math.min(max,value));input.value=settings.colorGrading[key][index];save();apply();};
+  }
+  gradeToggle.onchange=()=>{settings.colorGrading.enabled=gradeToggle.checked;save();apply();};
+  $('avatar-matcap-mask-only').addEventListener('change',()=>apply());
+  $('avatar-grade-reset').onclick=()=>{const enabled=settings.colorGrading.enabled;settings.colorGrading=normalizeColorGrading({enabled});for(const input of gradeInputs){const [,key,index]=input.id.match(/avatar-grade-(rgb|bcs)-(\d)/);input.value=settings.colorGrading[key][Number(index)];}save();apply();};
   $('avatar-lighting-title').textContent='아바타 조명 · 재질';
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');settings.toon=saved?.toon===true;settings.faceSdf=saved?.faceSdf===true;settings.glow=saved?.glow===true;settings.toonPower=Number.isFinite(saved?.toonPower)?Math.max(0,Math.min(2,saved.toonPower)):1;if(settings.toon){settings.enabled=false;$('avatar-lighting-enabled').checked=false;}}catch{}
   const toonField=element('fieldset');toonField.innerHTML='<legend>원본 툰 음영 (근사)</legend><label><input id="avatar-toon-enabled" type="checkbox"> 원본 툰 음영 켜기</label><div id="avatar-toon-profile"></div><label>음영 밝기<input id="avatar-toon-power" type="range" min="0" max="2" step="0.05"><output id="avatar-toon-power-value"></output></label><p class="muted">모델과 아이템 타입에 연결된 툰 텍스처를 사용합니다. 의상 조명을 선택하세요. 얼굴 전용 음영·착용 조건·게임 후처리는 포함하지 않습니다. 끄면 기존 재질로 돌아갑니다.</p><p id="avatar-toon-status" role="status"></p><details><summary>툰 연결 · 적용 상태</summary><div id="avatar-toon-items"></div></details>';
@@ -321,8 +333,11 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function apply(){
     matcap.setLightProfile(selected());
+    const gradeAvailable=!!state.model&&settings.sourceColor,gradePaused=matcap.isMaskInspection()||settings.solo;
+    gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
+    $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 게임 프리셋·다른 후처리 미포함';
     sourceColorToggle.disabled=!state.model;
-    $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?'원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · 게임 후처리 미포함':'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
+    $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?`원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · ${settings.colorGrading.enabled&&!gradePaused?'색상 보정 비교 · 다른 후처리 미포함':'게임 후처리 미포함'}`:'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
     const secondMaterials=(state.model?.materials||[]).filter(m=>m.userData.secondPreview),secondReady=secondMaterials.filter(m=>m.userData.avatarLighting.avatarSecondMap.value);
     secondToggle.disabled=!secondMaterials.length;secondU.disabled=secondV.disabled=!settings.second||!secondReady.length;
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
@@ -404,5 +419,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   $('avatar-lighting-influence').oninput=()=>{settings.influence=Number($('avatar-lighting-influence').value);save();apply();};
-  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model})};
+  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null})};
 }
