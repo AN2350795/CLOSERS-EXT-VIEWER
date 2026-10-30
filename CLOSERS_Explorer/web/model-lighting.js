@@ -104,12 +104,16 @@ export function installAvatarLighting(material){
   Object.assign(uniforms,{avatarRimEnabled:{value:0},avatarRimDirection:{value:new THREE.Vector3(0,0,-1)},avatarRimWidth:{value:0},avatarRimPower:{value:0}});
   Object.assign(uniforms,{avatarFaceEnabled:{value:0},avatarFaceSide:{value:new THREE.Vector3(1,0,0)},avatarFaceForward:{value:new THREE.Vector3(0,0,1)},avatarFaceDirection:{value:new THREE.Vector3(0,0,1)},avatarFaceColor:{value:new THREE.Color(1,1,1)},avatarFaceIntensity:{value:1},avatarFacePower:{value:1}});
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|avatar-gloss-mask-v8';
+  material.customProgramCacheKey=()=>key+'|avatar-source-normal-v9';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying vec3 avatarLightingNormal;\nvarying float avatarToonCoordinate;\nuniform vec3 avatarToonDirection;\n'+shader.vertexShader
       .replace('#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )','#if 1')
-      .replace('#include <defaultnormal_vertex>','#include <defaultnormal_vertex>\navatarLightingNormal = inverseTransformDirection(transformedNormal, viewMatrix);\navatarToonCoordinate = dot(avatarLightingNormal, normalize(avatarToonDirection));');
+      .replace('#include <defaultnormal_vertex>',`#include <defaultnormal_vertex>
+avatarLightingNormal = (modelMatrix * vec4(objectNormal,0.0)).xyz;
+if (dot(avatarLightingNormal,avatarLightingNormal) > 1e-10) avatarLightingNormal = normalize(avatarLightingNormal);
+else avatarLightingNormal = vec3(0.0);
+avatarToonCoordinate = dot(avatarLightingNormal, normalize(avatarToonDirection));`);
     shader.fragmentShader='varying vec3 avatarLightingNormal;\nuniform float avatarLightEnabled;\nuniform vec3 avatarLightDirection;\nuniform vec3 avatarLightColor;\nuniform float avatarLightStrength;\nuniform float avatarLightInfluence;\nuniform float avatarEmissionPass;\n'+shader.fragmentShader
       .replace('#include <color_fragment>',`#include <color_fragment>
 if (avatarLightEnabled > 0.5) {

@@ -46,13 +46,17 @@ export function installMatcapPreview(material){
   Object.assign(uniforms,{avatarSpecularUsePosition:{value:0},avatarSpecularLightPosition:{value:[0,0,0]}});
   material.userData.matcapPreview.lightReady=true;
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey();
-  material.customProgramCacheKey=()=>key+'|closers-matcap-regional-light-v6';
+  material.customProgramCacheKey=()=>key+'|closers-matcap-source-normal-v7';
   material.onBeforeCompile=shader=>{
     previous.call(material,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='attribute vec3 avatarUvTangent;\nattribute vec3 avatarUvBitangent;\nvarying vec3 avatarMatcapTangent;\nvarying vec3 avatarMatcapBitangent;\nvarying vec3 avatarMatcapNormal;\nvarying vec2 avatarMatcapUv;\nvarying vec3 avatarMatcapPosition;\n'+shader.vertexShader
       .replace('#if defined ( USE_ENVMAP ) || defined ( USE_SKINNING )','#if 1')
       .replace('#include <defaultnormal_vertex>',`#include <defaultnormal_vertex>
-avatarMatcapNormal = transformedNormal;
+// CW_DEFAULT.VS normalizes the direct world/skinned normal per vertex.
+// View rotation preserves that basis; normalMatrix would invert object scale.
+avatarMatcapNormal = (modelViewMatrix * vec4(objectNormal,0.0)).xyz;
+if (dot(avatarMatcapNormal,avatarMatcapNormal) > 1e-10) avatarMatcapNormal = normalize(avatarMatcapNormal);
+else avatarMatcapNormal = vec3(0.0);
 vec3 capTangent = avatarUvTangent, capBitangent = avatarUvBitangent;
 #ifdef USE_SKINNING
   capTangent = (skinMatrix * vec4(capTangent,0.0)).xyz;
