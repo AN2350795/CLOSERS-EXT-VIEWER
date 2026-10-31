@@ -281,6 +281,21 @@ export function interpolateAvatarLight(profile,mix=0){
   return {...profile,intensity:weight===1?profile.near_intensity:profile.intensity*(1-weight)+profile.near_intensity*weight};
 }
 
+// Viewer calibration only; the game's distance-to-weight mapping is unresolved.
+export function cameraLightMix(distance,near,far){
+  if(![distance,near,far].every(v=>Number.isFinite(v)&&v>=0)||far<=near)return null;
+  return Math.max(0,Math.min(1,(far-distance)/(far-near)));
+}
+export function normalizeCameraMix(value){
+  const result={enabled:value?.enabled===true,calibrations:{}};
+  for(const [character,points] of Object.entries(value?.calibrations||{}).slice(0,32)){
+    if(!/^[A-Z]{2,20}$/.test(character))continue;
+    const valid=v=>Number.isFinite(v)&&v>=0;
+    result.calibrations[character]={near:valid(points?.near)?points.near:null,far:valid(points?.far)?points.far:null};
+  }
+  return result;
+}
+
 // CW.EXE 0x140a80818 and 0x140a9eed8 copy RGB, far/near
 // intensities and the extra scalar, leaving direction and other light fields.
 export function composeAvatarLight(base,skin,policy='maximum'){
@@ -351,6 +366,44 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   nearInput.setAttribute('aria-label','원거리와 근거리 원본 조명 강도의 수동 혼합 비율');nearInput.setAttribute('aria-describedby','avatar-lighting-near-status');
   nearStatus.id='avatar-lighting-near-status';nearStatus.setAttribute('role','status');nearLabel.append(nearInput);
   $('avatar-toon-power').closest('label').after(nearLabel);nearLabel.after(nearStatus);
+  settings.cameraMix=normalizeCameraMix(null);settings.cameraMixVersion=1;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.cameraMixVersion===1)settings.cameraMix=normalizeCameraMix(saved.cameraMix);}catch{}
+  const distanceField=element('details');distanceField.innerHTML='<summary>카메라 거리 연동 · 뷰어 기준 지정</summary><label><input id="avatar-camera-mix-enabled" type="checkbox"> 지정한 거리로 조명 강도 자동 혼합</label><label>근거리 기준<input id="avatar-camera-mix-near" type="number" min="0" step="any"></label><button id="avatar-camera-mix-mark-near" type="button" class="secondary">현재 거리를 근거리로 등록</button><label>원거리 기준<input id="avatar-camera-mix-far" type="number" min="0" step="any"></label><button id="avatar-camera-mix-mark-far" type="button" class="secondary">현재 거리를 원거리로 등록</button><p id="avatar-camera-mix-status" role="status"></p><p>카메라와 아바타 원점 사이의 거리를 사용하며 기준은 캐릭터별로 저장합니다. 두 기준 사이를 선형 혼합하고 범위 밖에서는 끝값을 유지합니다. 기준이 없거나 유효하지 않으면 기존 수동 혼합값을 사용합니다. 게임의 거리 기준은 아직 확인되지 않았으며 이 기능은 뷰어에서 지정한 기준만 따릅니다.</p>';
+  nearStatus.after(distanceField);const cameraToggle=$('avatar-camera-mix-enabled'),nearDistance=$('avatar-camera-mix-near'),farDistance=$('avatar-camera-mix-far');cameraToggle.checked=settings.cameraMix.enabled;
+  let distanceSample={model:null,character:null,distance:null},nearRuntime=null,lastDistanceText=0;
+  const cameraWorld=new THREE.Vector3(),avatarWorld=new THREE.Vector3();
+  function distanceCharacter(){const sources=state.data?.sources||[],characters=new Set(sources.map(s=>s.model_group?.character).filter(Boolean));return state.model&&sources.length&&sources.every(s=>s.model_group?.kind==='avatar')&&characters.size===1?[...characters][0]:null;}
+  function distanceMix(){const character=distanceCharacter(),points=settings.cameraMix.calibrations[character];const weight=settings.cameraMix.enabled&&distanceSample.model===state.model&&distanceSample.character===character?cameraLightMix(distanceSample.distance,points?.near,points?.far):null;return {character,points,automatic:weight!==null,weight:weight===null?settings.nearMix:weight};}
+  function distanceControls(syncInputs=false){
+    const info=distanceMix(),current=!!info.character&&distanceSample.model===state.model&&distanceSample.character===info.character&&Number.isFinite(distanceSample.distance);
+    if(syncInputs){nearDistance.value=info.points?.near??'';farDistance.value=info.points?.far??'';}
+    nearDistance.disabled=farDistance.disabled=!info.character;$('avatar-camera-mix-mark-near').disabled=$('avatar-camera-mix-mark-far').disabled=!current;
+    const source=nearRuntime?.profile,hasNear=source&&Number.isFinite(source.near_intensity)&&source.near_intensity>=0;
+    nearInput.disabled=!settings.toon||!hasNear||!nearRuntime?.ready||info.automatic;
+    const mixed=interpolateAvatarLight(source,info.weight);
+    nearStatus.textContent=!source?'조명을 선택하면 원본 원거리·근거리 강도를 비교합니다.':!hasNear?'원본 근거리 강도가 없습니다. 원거리 강도를 유지합니다.':!state.model?'아바타를 선택하면 강도를 비교합니다.':!settings.toon?'원거리·근거리 강도 비교 꺼짐 · 원본 툰 음영을 켜세요.':`원거리 ${source.intensity} → 근거리 ${source.near_intensity} · ${info.automatic?'뷰어 거리 연동':'수동 혼합'} ${Math.round(info.weight*100)}% · 비교 강도 ${mixed.intensity.toFixed(3)}${source.intensity===source.near_intensity?' · 양쪽 강도 같음':''}${info.automatic?' · 게임 거리 기준 미검증':' · 카메라 거리 자동 연동 아님'}`;
+    $('avatar-camera-mix-status').textContent=!info.character?'같은 캐릭터의 아바타를 선택하세요.':!settings.cameraMix.enabled?'거리 연동 꺼짐 · 수동 혼합 유지':!current?'카메라 거리 확인 전 · 수동 혼합 유지':!info.points||info.points.near===null||info.points.far===null?'근거리·원거리 두 기준을 등록하세요. 수동 혼합값을 유지합니다.':!info.automatic?'원거리 기준은 근거리 기준보다 커야 합니다. 수동 혼합값을 유지합니다.':`뷰어 거리 ${distanceSample.distance.toFixed(2)} · 근거리 ${info.points.near} / 원거리 ${info.points.far} · 혼합 ${Math.round(info.weight*100)}%${!hasNear?' · 조명 근거리 값이 없어 원거리 강도 유지':!settings.toon?' · 툰 음영 꺼짐':''}`;
+    if(current&&!info.automatic)$('avatar-camera-mix-status').textContent+=` · 현재 거리 ${distanceSample.distance.toFixed(2)}`;
+    return info;
+  }
+  function setDistancePoint(key,value){const character=distanceCharacter();if(!character)return;const points=settings.cameraMix.calibrations[character]||{near:null,far:null};settings.cameraMix.calibrations[character]={...points,[key]:Number.isFinite(value)&&value>=0?value:null};save();apply();}
+  nearDistance.onchange=()=>setDistancePoint('near',nearDistance.valueAsNumber);farDistance.onchange=()=>setDistancePoint('far',farDistance.valueAsNumber);
+  for(const key of ['near','far'])$('avatar-camera-mix-mark-'+key).onclick=()=>{if(distanceSample.model===state.model&&distanceSample.character===distanceCharacter())setDistancePoint(key,distanceSample.distance);};
+  cameraToggle.onchange=()=>{settings.cameraMix.enabled=cameraToggle.checked;save();apply();};
+  function updateCamera(camera){
+    const character=distanceCharacter();let distance=null;
+    if(character&&state.model?.root?.getWorldPosition&&camera?.getWorldPosition){camera.getWorldPosition(cameraWorld);state.model.root.getWorldPosition(avatarWorld);const value=cameraWorld.distanceTo(avatarWorld);if(Number.isFinite(value))distance=value;}
+    const changedModel=distanceSample.model!==state.model||distanceSample.character!==character;
+    distanceSample={model:state.model,character,distance};const info=distanceMix();
+    if(nearRuntime?.model===state.model&&nearRuntime.weight!==info.weight){
+      nearRuntime.weight=info.weight;const profile=interpolateAvatarLight(nearRuntime.profile,info.weight);
+      for(const m of nearRuntime.toonMaterials)setAvatarToon(m,settings.toon,profile,settings.toonPower);
+      for(const m of nearRuntime.faces)setAvatarFaceSdf(m,settings.toon&&settings.faceSdf,profile,settings.toonPower);
+      for(const m of nearRuntime.glowMaterials)setAvatarGlow(m,settings.toon&&settings.glow,profile);
+    }
+    const now=performance.now();if(changedModel||dialog.open&&now-lastDistanceText>=100){distanceControls(changedModel);lastDistanceText=now;}
+    return {distance,weight:info.weight,automatic:info.automatic,character};
+  }
   settings.baseRegion='';settings.intensityPolicy='maximum';settings.regionMixVersion=1;
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.regionMixVersion===1){if(typeof saved.baseRegion==='string')settings.baseRegion=saved.baseRegion;if(saved.intensityPolicy==='replace')settings.intensityPolicy='replace';}}catch{}
   const regionField=element('div');regionField.innerHTML='<label>지역 기본 조명<select id="avatar-lighting-base-region"><option value="">합성 안 함 · 기존 비교 유지</option></select></label><label>원거리 강도 합성<select id="avatar-lighting-intensity-policy"><option value="maximum">지역·스킨 중 밝은 강도 유지</option><option value="replace">스킨 강도로 변경</option></select></label><p id="avatar-lighting-composition-status" role="status"></p><p>지역을 직접 지정해 원본의 두 합성 경로를 비교합니다. 근거리 강도는 스킨 값을 사용하고, 지역 광원 위치·방향·반사·테두리광은 유지합니다. 스킨 선택이 없으면 지역 조명만 적용합니다. 게임 지역·합성 경로와 카메라 거리는 자동으로 판단하지 않습니다.</p>';
@@ -427,12 +480,11 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
     $('avatar-second-status').textContent=!secondMaterials.length?'현재 모델에 연결된 하이퍼 모드 효과 텍스처가 없습니다.':!settings.second?`효과 텍스처 연결 ${secondMaterials.length}개 · 꺼짐`:!secondReady.length?'효과 텍스처 출처를 확인하세요.':`정지 색상 효과 켜짐 · 준비 ${secondReady.length} / 연결 ${secondMaterials.length}개 · UV ${settings.secondOffset.map(v=>v.toFixed(2)).join(', ')} · 수동 비교`;
     const profile=settings.enabled?selected():null;
-    const sourceProfile=effectiveProfile,toonProfile=interpolateAvatarLight(sourceProfile,settings.nearMix),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
+    const sourceProfile=effectiveProfile,mixInfo=distanceMix(),toonProfile=interpolateAvatarLight(sourceProfile,mixInfo.weight),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
     const faces=(state.model?.materials||[]).filter(m=>m.userData.faceSdfPreview),faceReady=faces.filter(m=>m.map&&m.userData.faceSdfPreview.headReady);
     const glowMaterials=(state.model?.materials||[]).filter(m=>m.userData.glowPreview),glowReady=glowMaterials.filter(m=>m.userData.avatarLighting.avatarGlowMap.value);
-    const hasNear=sourceProfile&&Number.isFinite(sourceProfile.near_intensity)&&sourceProfile.near_intensity>=0;
-    nearInput.disabled=!settings.toon||!hasNear||(!toonReady.length&&(!settings.faceSdf||!faceReady.length)&&(!settings.glow||!glowReady.length));
-    nearStatus.textContent=!sourceProfile?'조명을 선택하면 원본 원거리·근거리 강도를 비교합니다.':!hasNear?'원본 근거리 강도가 없습니다. 원거리 강도를 유지합니다.':!state.model?'아바타를 선택하면 강도를 비교합니다.':!settings.toon?'원거리·근거리 강도 비교 꺼짐 · 원본 툰 음영을 켜세요.':`원거리 ${sourceProfile.intensity} → 근거리 ${sourceProfile.near_intensity} · 수동 혼합 ${Math.round(settings.nearMix*100)}% · 비교 강도 ${toonProfile.intensity.toFixed(3)}${sourceProfile.intensity===sourceProfile.near_intensity?' · 양쪽 강도 같음':''} · 카메라 거리 자동 연동 아님`;
+    nearRuntime={model:state.model,profile:sourceProfile,weight:mixInfo.weight,toonMaterials,faces,glowMaterials,ready:!!(toonReady.length||settings.faceSdf&&faceReady.length||settings.glow&&glowReady.length)};
+    distanceControls(true);
     $('avatar-toon-enabled').disabled=!toonMaterials.length&&!faces.length&&!glowMaterials.length;faceToggle.disabled=!settings.toon||!faces.length;glowToggle.disabled=!settings.toon||!glowMaterials.length;$('avatar-toon-power').disabled=!settings.toon||(!toonReady.length&&(!settings.faceSdf||!faceReady.length));
     for(const m of state.model?.materials||[])setAvatarToon(m,settings.toon,toonProfile,settings.toonPower);
     for(const m of faces)setAvatarFaceSdf(m,settings.toon&&settings.faceSdf,toonProfile,settings.toonPower);
@@ -511,5 +563,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   $('avatar-lighting-influence').oninput=()=>{settings.influence=Number($('avatar-lighting-influence').value);save();apply();};
-  return {refresh,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null})};
+  return {refresh,updateCamera,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null})};
 }

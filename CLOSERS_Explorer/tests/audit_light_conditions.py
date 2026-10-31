@@ -24,6 +24,11 @@ EVIDENCE = (
     ('character_rgb_max_far_direct_near_extra',0x140a80818,'8b 48 04 89 8f 48 02 00 00 8b 48 08 89 8f 4c 02 00 00 8b 48 0c 89 8f 50 02 00 00 f3 0f 10 40 20 0f 2f 87 58 02 00 00 76 08 f3 0f 11 87 58 02 00 00 8b 40 24 89 87 5c 02 00 00 8b 43 28 89 87 60 02 00 00'),
     ('second_character_path_same_merge',0x140a6cda4,'8b 48 04 89 8e 48 02 00 00 8b 48 08 89 8e 4c 02 00 00 8b 48 0c 89 8e 50 02 00 00 f3 0f 10 40 20 0f 2f 86 58 02 00 00 76 08 f3 0f 11 86 58 02 00 00 8b 40 24 89 86 5c 02 00 00 8b 43 28 89 86 60 02 00 00'),
     ('scene_path_direct_rgb_far_near_extra',0x140a9eed8,'8b 48 04 89 8f 60 07 00 00 8b 48 08 89 8f 64 07 00 00 8b 48 0c 89 8f 68 07 00 00 8b 48 20 89 8f 70 07 00 00 8b 48 24 89 8f 74 07 00 00 8b 40 28 89 87 78 07 00 00'),
+    ('near_far_inputs',0x1415fb2fb,'f3 0f 10 72 20 0f 29 7c 24 20 f3 0f 10 7a 24'),
+    ('near_flag_and_equal_gate',0x1415fb30d,'e8 fe 34 f7 ff 80 b8 bc 00 00 00 01 75 3a 0f 2e fe 7a 02 74 33'),
+    ('near_supplied_weight_lerp',0x1415fb322,'f3 0f 10 83 44 01 00 00 f3 0f 10 0d 8a ef d9 00 f3 0f 5c c8 f3 0f 59 c7 f3 0f 59 ce f3 0f 58 c8 0f 28 c1'),
+    ('near_gate_far_fallback',0x1415fb355,'0f 28 7c 24 20 0f 28 c6 0f 28 74 24 30 48 83 c4 40 5b c3'),
+    ('near_result_upload',0x1415fea90,'e8 5b c8 ff ff f3 0f 11 05 83 c1 99 01'),
 )
 
 
@@ -47,7 +52,8 @@ def audit(executable):
                 table='NEW_CONVERT_TEMPLET.NTF',column=12,enum='SCT_LIGHT',enum_value=5,
                 selection=dict(type=5,value='template group',lookup='0x140ac1cf0',missing=0,light_lookup='0x14029e960'),
                 composition=dict(character_far='max(existing,skin)',scene_far='skin',near='skin',rgb='skin',alpha='unchanged'),
-                game_executed=False,unresolved=['live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
+                near_interpolation=dict(function='0x1415fb2f0',weight='externally supplied state+0x144',formula='far*(1-weight)+near*weight',gate='flag+0xbc == 1; unequal far/near',fallback='far',distance_mapping='unresolved'),
+                game_executed=False,unresolved=['camera distance to weight mapping','live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
 
 
 if __name__=='__main__':
