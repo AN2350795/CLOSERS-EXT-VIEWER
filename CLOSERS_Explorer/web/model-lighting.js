@@ -95,6 +95,7 @@ export function installAvatarLighting(material){
   if(material.userData.input?.glow_preview?.status==='approximate')material.userData.glowPreview={enabled:false,profile:null};
   if(material.userData.input?.ext_preview?.status==='approximate')material.userData.extPreview={enabled:false,profile:null};
   Object.assign(uniforms,{avatarExtEnabled:{value:0},avatarExtMap:{value:null},avatarExtDirection:{value:new THREE.Vector3(0,0,-1)},avatarExtColor:{value:new THREE.Color()},avatarExtIntensity:{value:0},avatarExtPower:{value:1}});
+  Object.assign(uniforms,{avatarExtSurfaceEnabled:{value:0},avatarExtSurfaceFactor:{value:0}});
   Object.assign(uniforms,{avatarGlowEnabled:{value:0},avatarGlowMap:{value:null},avatarGlowIntensity:{value:1}});
   if(material.userData.input?.second_preview?.status==='approximate')material.userData.secondPreview={enabled:false,offset:[0,0]};
   Object.assign(uniforms,{avatarSecondEnabled:{value:0},avatarSecondMap:{value:null},avatarSecondOffset:{value:new THREE.Vector2()}});
@@ -132,7 +133,7 @@ if (avatarEmissionPass > 0.5) {
     shader.fragmentShader='uniform float avatarFaceEnabled;\nuniform vec3 avatarFaceSide;\nuniform vec3 avatarFaceForward;\nuniform vec3 avatarFaceDirection;\nuniform vec3 avatarFaceColor;\nuniform float avatarFaceIntensity;\nuniform float avatarFacePower;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarGlowEnabled;\nuniform sampler2D avatarGlowMap;\nuniform float avatarGlowIntensity;\nvarying vec2 avatarGlowUv;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarSecondEnabled;\nuniform sampler2D avatarSecondMap;\nuniform vec2 avatarSecondOffset;\n'+shader.fragmentShader;
-    shader.fragmentShader='uniform float avatarExtEnabled;\nuniform sampler2D avatarExtMap;\nuniform vec3 avatarExtDirection;\nuniform vec3 avatarExtColor;\nuniform float avatarExtIntensity;\nuniform float avatarExtPower;\n'+shader.fragmentShader;
+    shader.fragmentShader='uniform float avatarExtEnabled;\nuniform sampler2D avatarExtMap;\nuniform vec3 avatarExtDirection;\nuniform vec3 avatarExtColor;\nuniform float avatarExtIntensity;\nuniform float avatarExtPower;\nuniform float avatarExtSurfaceEnabled;\nuniform float avatarExtSurfaceFactor;\n'+shader.fragmentShader;
     shader.fragmentShader='uniform float avatarRimEnabled;\nuniform vec3 avatarRimDirection;\nuniform float avatarRimWidth;\nuniform float avatarRimPower;\n'+shader.fragmentShader;
     shader.vertexShader='varying vec2 avatarGlowUv;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\navatarGlowUv = uv;');
     const marker=material.userData.materialPreview?'/* avatar_surface_end */':'#include <opaque_fragment>';
@@ -159,6 +160,10 @@ if (avatarToonEnabled > 0.5) {
     float exponent = red*avatarExtPower;
     float highlight = exponent > 0.0 ? pow(angle,exponent) : 1.0;
     outgoingLight += toon*surface*avatarExtColor*(red*avatarExtIntensity*max(-nl,0.0)*highlight);
+  }
+  if (avatarExtSurfaceEnabled > 0.5 && avatarEmissionPass < 0.5) {
+    // PS t2.B * cb5[18].x adds the surface outside the toon/light factors.
+    outgoingLight += surface*texture2D(avatarExtMap,avatarGlowUv).b*avatarExtSurfaceFactor;
   }
 }
 #ifdef USE_MAP
@@ -246,7 +251,15 @@ export function setAvatarExt(material,enabled,profile){
 
 export function setAvatarExtMap(material,map){
   const p=material.userData.extPreview,u=material.userData.avatarLighting;if(!p||!u)return;
-  u.avatarExtMap.value=map;setAvatarExt(material,p.enabled,p.profile);
+  u.avatarExtMap.value=map;setAvatarExt(material,p.enabled,p.profile);setAvatarExtSurface(material,p.surfaceEnabled,p.surfaceFactor);
+}
+
+export function validExtSurfaceFactor(value){return Number.isFinite(value)&&value>=0&&value<=4;}
+export function setAvatarExtSurface(material,enabled,factor){
+  const p=material.userData.extPreview,u=material.userData.avatarLighting;if(!p||!u)return;
+  p.surfaceEnabled=enabled===true;p.surfaceFactor=validExtSurfaceFactor(factor)?factor:null;
+  u.avatarExtSurfaceEnabled.value=p.surfaceEnabled&&p.surfaceFactor!==null&&material.userData.toonPreview&&!material.userData.faceSdfPreview&&u.avatarExtMap.value?1:0;
+  u.avatarExtSurfaceFactor.value=p.surfaceFactor??0;
 }
 
 export function setAvatarRim(material,enabled,profile){
@@ -443,6 +456,12 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   try{settings.ext=JSON.parse(localStorage.getItem(storageKey)||'{}')?.ext===true;}catch{}
   const extLabel=element('label'),extToggle=element('input');extToggle.id='avatar-ext-enabled';extToggle.type='checkbox';extToggle.checked=settings.ext;extLabel.append(extToggle,document.createTextNode(' 원본 EXT 전역 반사 포함 (근사)'));glowStatus.after(extLabel);
   const extStatus=element('p');extStatus.id='avatar-ext-status';extStatus.setAttribute('role','status');extLabel.after(extStatus);
+  settings.extSurface=false;settings.extSurfaceFactor=null;settings.extSurfaceVersion=1;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.extSurfaceVersion===1){settings.extSurface=saved.extSurface===true;settings.extSurfaceFactor=validExtSurfaceFactor(saved.extSurfaceFactor)?saved.extSurfaceFactor:null;}}catch{}
+  const extSurfaceField=element('details');extSurfaceField.innerHTML='<summary>EXT B 표면 가산 · 수동 비교</summary><label><input id="avatar-ext-surface-enabled" type="checkbox"> 입력한 계수로 B 채널 표면 가산 비교</label><label>비교 계수 (0~4)<input id="avatar-ext-surface-factor" type="number" min="0" max="4" step="0.05"></label><p id="avatar-ext-surface-status" role="status"></p><p>계수를 직접 입력해야 적용됩니다. B 채널은 표면색을 더하며 푸른색 효과가 아닙니다. 게임의 계수는 공용 렌더 상태이므로 코스튬·지역에서 자동으로 정하지 않습니다. 원본 EXT·툰이 있는 표면만 비교하며 얼굴 SDF·발광·번짐은 제외합니다. 입력 범위는 뷰어 비교용입니다.</p>';
+  extStatus.after(extSurfaceField);const extSurfaceToggle=$('avatar-ext-surface-enabled'),extSurfaceInput=$('avatar-ext-surface-factor');extSurfaceToggle.checked=settings.extSurface;extSurfaceInput.value=settings.extSurfaceFactor??'';
+  extSurfaceToggle.onchange=()=>{settings.extSurface=extSurfaceToggle.checked;save();apply();};
+  extSurfaceInput.onchange=()=>{settings.extSurfaceFactor=validExtSurfaceFactor(extSurfaceInput.valueAsNumber)?extSurfaceInput.valueAsNumber:null;extSurfaceInput.value=settings.extSurfaceFactor??'';save();apply();};
   try{settings.rim=JSON.parse(localStorage.getItem(storageKey)||'{}')?.rim===true;}catch{}
   const rimLabel=element('label'),rimToggle=element('input');rimToggle.id='avatar-rim-enabled';rimToggle.type='checkbox';rimToggle.checked=settings.rim;rimLabel.append(rimToggle,document.createTextNode(' 원본 테두리광 포함 (근사)'));extStatus.after(rimLabel);
   const rimStatus=element('p');rimStatus.id='avatar-rim-status';rimStatus.setAttribute('role','status');rimLabel.after(rimStatus);
@@ -517,6 +536,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     const extMaterials=(state.model?.materials||[]).filter(m=>m.userData.extPreview&&m.userData.toonPreview),extReady=extMaterials.filter(m=>m.userData.avatarLighting.avatarExtMap.value&&m.userData.avatarLighting.avatarToonMap.value);
     extToggle.disabled=!settings.toon||!extMaterials.length;
     for(const m of state.model?.materials||[])setAvatarExt(m,settings.toon&&settings.ext,toonProfile);
+    const extSurfaceMaterials=extMaterials.filter(m=>!m.userData.faceSdfPreview),extSurfaceReady=extSurfaceMaterials.filter(m=>m.userData.avatarLighting.avatarExtMap.value&&m.userData.avatarLighting.avatarToonMap.value);
+    for(const m of state.model?.materials||[])setAvatarExtSurface(m,settings.toon&&settings.extSurface&&!!toonProfile,settings.extSurfaceFactor);
+    extSurfaceToggle.disabled=!extSurfaceMaterials.length;
+    $('avatar-ext-surface-status').textContent=!state.model?'아바타를 선택하면 B 채널 표면 가산을 비교합니다.':!extSurfaceMaterials.length?'B 채널 비교에 사용할 EXT·툰 연결이 없습니다.':!settings.extSurface?'B 채널 표면 가산 꺼짐':settings.extSurfaceFactor===null?'비교 계수를 직접 입력하세요.':!settings.toon||!toonProfile?'툰 음영을 켜고 조명을 선택하세요.':`B 채널 수동 비교 · 계수 ${settings.extSurfaceFactor} · 준비 ${extSurfaceReady.length} / ${extSurfaceMaterials.length}개 · 게임 렌더 상태 미연결`;
     extStatus.textContent=!extMaterials.length?'연결된 EXT 전역 반사 맵이 없습니다.':!settings.toon||!settings.ext?`EXT 전역 반사 ${extMaterials.length}개 · 꺼짐`:!toonProfile?.global_specular?'EXT 반사 수치가 있는 지역 조명을 선택하세요.':`EXT 전역 반사 켜짐 · 준비 ${extReady.length} / 연결 ${extMaterials.length}개 · 지역 수동 비교 · 번짐/발광만 보기에서 제외`;
     const rimMaterials=(state.model?.materials||[]).filter(m=>m.userData.rimPreview),rim=toonProfile?.global_rim;
     rimToggle.disabled=!settings.toon||!rimMaterials.length;
@@ -527,7 +550,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     $('avatar-toon-status').textContent=!state.model?'아바타를 선택하면 원본 툰 연결을 확인합니다.':!toonMaterials.length&&!faces.length&&!glowMaterials.length?'현재 모델에 적용 가능한 툰·얼굴 SDF·보조광 연결이 없습니다.':!settings.toon?`툰 연결 ${toonMaterials.length}개 · 얼굴 SDF ${faces.length}개 · 보조광 ${glowMaterials.length}개 · 꺼짐${toonProfile?' · 선택한 조명을 적용하려면 원본 툰 음영을 켜세요.':''}`:!toonProfile?'툰 음영에 사용할 의상 조명을 선택하세요.':`툰 음영 켜짐 · 적용 ${toonReady.length}개 / 연결 ${toonMaterials.length}개${toonReady.length<toonMaterials.length?' · 툰 텍스처 확인 필요':''}${settings.faceSdf?' · 얼굴 SDF '+faceReady.length+' / '+faces.length+'개':''}${settings.faceSdf&&faceReady.length<faces.length?' · 얼굴 텍스처·머리 뼈 확인 필요':''}`;
     const toonList=$('avatar-toon-items');toonList.replaceChildren();const seenToon=new Set();
     for(const m of state.model?.materials||[]){const p=m.userData.input.second_preview;if(!p)continue;const key=JSON.stringify(p);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','SecondMap · '+p.source+' · '+(p.status==='approximate'?p.texture+' · 원본 UV 속도 '+p.speed.join(', ')+' (애니메이션 미적용)':p.reason)));}
-    for(const m of extMaterials){const p=m.userData.input.ext_preview,key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','EXT 전역 반사 · '+p.source_texture+' → '+p.texture+' · R 채널 반사 지원 · B 채널 표면 가산 미지원 · 아바타 활성 조건·계수 미확정'));}
+    for(const m of extMaterials){const p=m.userData.input.ext_preview,key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','EXT 전역 반사 · '+p.source_texture+' → '+p.texture+' · R 채널 반사 지원 · B 채널 표면 가산은 계수 직접 입력 비교 · 게임 렌더 상태 미연결'));}
     for(const m of state.model?.materials||[]){const p=m.userData.input.toon_preview;if(!p)continue;const key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);const source=state.data?.sources?.find(s=>s.entry_id===m.userData.avatarSourceId);toonList.append(element('p',(source?.display_name||source?.name||m.userData.avatarMeshName||'아바타')+' · '+p.source_name+' → '+p.name+' · '+(p.status!=='approximate'?p.reason:m.userData.avatarLighting.avatarToonMap.value?p.texture:'텍스처 확인 필요: '+p.texture)));}
     for(const m of state.model?.materials||[]){const p=m.userData.input.face_sdf_preview;if(!p)continue;const key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','얼굴 SDF · '+p.texture+' · '+(p.status!=='approximate'?p.reason:m.userData.faceSdfPreview?.headReady?p.head_bone+' · 머리 회전 연동':'머리 뼈 확인 필요')));}
     for(const m of glowMaterials){const p=m.userData.input.glow_preview,key=JSON.stringify([m.userData.avatarSourceId,p]);if(seenToon.has(key))continue;seenToon.add(key);toonList.append(element('p','표면 보조광 · '+p.source_texture+' → '+p.texture));}
