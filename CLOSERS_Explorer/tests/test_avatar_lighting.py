@@ -57,6 +57,7 @@ class AvatarLightingTests(unittest.TestCase):
                     self.assertEqual(scene.call_args.args,([1],None,None,None,None,{},[12]))
                 with urlopen(base+'/model-lighting.js') as response:self.assertIn(b'installAvatarLighting',response.read())
                 with urlopen(base+'/model-color-grading.js') as response:self.assertIn(b'colorGradingFragment',response.read())
+                with urlopen(base+'/model-sharpen.js') as response:self.assertIn(b'sharpenFragment',response.read())
             finally:server.shutdown();server.server_close();thread.join()
 
     def fixture(self):

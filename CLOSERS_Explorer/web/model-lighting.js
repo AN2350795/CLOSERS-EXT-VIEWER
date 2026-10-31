@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {normalizeColorGrading} from './model-color-grading.js';
+import {normalizeSharpen} from './model-sharpen.js';
 import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
@@ -363,6 +364,15 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const presetRow=element('div');presetRow.innerHTML='<label>원본 색상 프리셋<select id="avatar-grade-preset"><option value="">프리셋 목록을 불러오세요</option></select></label><button id="avatar-grade-preset-apply" type="button" class="secondary">선택 프리셋 수치 적용</button><button id="avatar-grade-manual-restore" type="button" class="secondary">직접 입력값 복원</button><p id="avatar-grade-preset-status" role="status">창을 열면 원본 프리셋을 불러옵니다. 색상 보정 수치만 적용하며 조명·빛 번짐·선명도는 바꾸지 않습니다.</p>';
   $('avatar-grade-values').before(presetRow);
   const presetSelect=$('avatar-grade-preset');presetSelect.onchange=()=>apply();
+  settings.sharpen=normalizeSharpen(null);settings.sharpenVersion=1;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.sharpenVersion===1)settings.sharpen=normalizeSharpen(saved.sharpen);}catch{}
+  const sharpDetails=element('details');sharpDetails.innerHTML='<summary>원본 선명도 비교 · 알파 유지</summary><label><input id="avatar-sharpen-enabled" type="checkbox"> 선명도 비교 켜기</label><label>주변 샘플 거리 (픽셀, 0~5)<input id="avatar-sharpen-radius" type="number" min="0" max="5" step="0.05"></label><button id="avatar-sharpen-preset" type="button" class="secondary">선택 프리셋의 선명도 수치만 가져오기</button><button id="avatar-sharpen-reset" type="button" class="secondary">거리 0으로 초기화</button><p id="avatar-sharpen-status" role="status"></p><p>합성 화면의 주변 8개 샘플을 이용하고 색상 보정 전에 적용합니다. 원본 수치는 샘플 거리이며 밝기 배율이 아닙니다. 프리셋 수치를 가져와도 효과를 자동으로 켜지 않습니다. 투명 배경의 알파는 유지하며 발광만 보기·광택 범위 확인 중에는 보류합니다. 게임의 실시간 선택 상태는 자동으로 가져오지 않습니다.</p>';
+  gradeDetails.after(sharpDetails);const sharpToggle=$('avatar-sharpen-enabled'),sharpRadius=$('avatar-sharpen-radius'),sharpPreset=$('avatar-sharpen-preset');sharpToggle.checked=settings.sharpen.enabled;sharpRadius.value=settings.sharpen.radius;
+  const sourceSharpen=()=>{const p=gradePresets.find(p=>p.key===presetSelect.value),value=p?.other_postprocess?.sharpen;return value?.status==='source-verified'&&Number.isFinite(value.value)&&value.value>=0&&value.value<=5?value.value:null;};
+  sharpToggle.onchange=()=>{settings.sharpen.enabled=sharpToggle.checked;save();apply();};
+  sharpRadius.onchange=()=>{const value=sharpRadius.valueAsNumber;if(Number.isFinite(value)&&value>=0&&value<=5)settings.sharpen.radius=value;sharpRadius.value=settings.sharpen.radius;save();apply();};
+  sharpPreset.onclick=()=>{const value=sourceSharpen();if(value===null)return;settings.sharpen.radius=value;sharpRadius.value=value;save();apply();};
+  $('avatar-sharpen-reset').onclick=()=>{settings.sharpen.radius=0;sharpRadius.value=0;save();apply();};
   const presetDetails=element('details');presetDetails.append(element('summary','선택 프리셋의 원본 구성 · 적용 범위'));const presetComposition=element('p'),presetSource=element('p');presetComposition.id='avatar-grade-preset-composition';presetSource.id='avatar-grade-preset-source';presetDetails.append(presetComposition,presetSource);presetRow.append(presetDetails);
   function describeGradePreset(){
     const preset=gradePresets.find(p=>p.key===presetSelect.value);
@@ -524,6 +534,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
     presetSelect.disabled=!gradeAvailable||!gradePresets.length;$('avatar-grade-preset-apply').disabled=!gradeAvailable||!gradePresets.some(p=>p.key===presetSelect.value);$('avatar-grade-manual-restore').disabled=!gradeAvailable||!settings.colorGradingManual;
     describeGradePreset();
+    sharpToggle.disabled=!gradeAvailable;sharpRadius.disabled=!gradeAvailable;sharpPreset.disabled=!gradeAvailable||sourceSharpen()===null;$('avatar-sharpen-reset').disabled=!gradeAvailable;
+    $('avatar-sharpen-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.sharpen.enabled?'선명도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 선명도 잠시 보류':settings.sharpen.radius===0?'샘플 거리 0 · 선명도 효과 없음':`선명도 비교 중 · 주변 샘플 거리 ${settings.sharpen.radius}픽셀 · 알파 유지 · 게임 실시간 상태 미연결`;
     $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 게임 프리셋·다른 후처리 미포함';
     sourceColorToggle.disabled=!state.model;
     $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?`원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · ${settings.colorGrading.enabled&&!gradePaused?'색상 보정 비교 · 다른 후처리 미포함':'게임 후처리 미포함'}`:'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
@@ -620,5 +632,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   $('avatar-lighting-influence').oninput=()=>{settings.influence=Number($('avatar-lighting-influence').value);save();apply();};
-  return {refresh,updateCamera,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null})};
+  return {refresh,updateCamera,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null,sharpen:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.sharpen:null})};
 }
