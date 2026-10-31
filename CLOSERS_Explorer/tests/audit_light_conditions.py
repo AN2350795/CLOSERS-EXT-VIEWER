@@ -21,6 +21,9 @@ EVIDENCE = (
     ('light_table_map_swap',0x140eca726,'49 8d 90 a8 00 00 00 4d 8d 88 08 03 00 00 4c 3b ca 74 20'),
     ('missing_skin_does_not_override',0x140a9eed3,'48 85 c0 74 36'),
     ('runtime_keeps_greater_intensity',0x140a80833,'f3 0f 10 40 20 0f 2f 87 58 02 00 00 76 08 f3 0f 11 87 58 02 00 00'),
+    ('character_rgb_max_far_direct_near_extra',0x140a80818,'8b 48 04 89 8f 48 02 00 00 8b 48 08 89 8f 4c 02 00 00 8b 48 0c 89 8f 50 02 00 00 f3 0f 10 40 20 0f 2f 87 58 02 00 00 76 08 f3 0f 11 87 58 02 00 00 8b 40 24 89 87 5c 02 00 00 8b 43 28 89 87 60 02 00 00'),
+    ('second_character_path_same_merge',0x140a6cda4,'8b 48 04 89 8e 48 02 00 00 8b 48 08 89 8e 4c 02 00 00 8b 48 0c 89 8e 50 02 00 00 f3 0f 10 40 20 0f 2f 86 58 02 00 00 76 08 f3 0f 11 86 58 02 00 00 8b 40 24 89 86 5c 02 00 00 8b 43 28 89 86 60 02 00 00'),
+    ('scene_path_direct_rgb_far_near_extra',0x140a9eed8,'8b 48 04 89 8f 60 07 00 00 8b 48 08 89 8f 64 07 00 00 8b 48 0c 89 8f 68 07 00 00 8b 48 20 89 8f 70 07 00 00 8b 48 24 89 8f 74 07 00 00 8b 40 28 89 87 78 07 00 00'),
 )
 
 
@@ -43,6 +46,7 @@ def audit(executable):
     return dict(sha256=digest,status='verified' if all(c['matches'] for c in checks) else 'mismatch',checks=checks,
                 table='NEW_CONVERT_TEMPLET.NTF',column=12,enum='SCT_LIGHT',enum_value=5,
                 selection=dict(type=5,value='template group',lookup='0x140ac1cf0',missing=0,light_lookup='0x14029e960'),
+                composition=dict(character_far='max(existing,skin)',scene_far='skin',near='skin',rgb='skin',alpha='unchanged'),
                 game_executed=False,unresolved=['live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
 
 

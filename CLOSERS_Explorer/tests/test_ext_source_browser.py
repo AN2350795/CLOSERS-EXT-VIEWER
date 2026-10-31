@@ -30,7 +30,9 @@ class ExtSourceBrowserTests(test_picker_browser.PickerBrowserTests):
                         if info['selected'] in images:continue
                         path,metadata=composition.prepare(info['selected']);images[info['selected']]=dict(metadata,body=base64.b64encode(path.read_bytes()).decode())
             scenes.append(dict(character=character,data=data))
-        profiles=[p for p in read_profiles(LoadingData(c))['profiles'] if p.get('global_specular')]
+        all_profiles=read_profiles(LoadingData(c))['profiles']
+        profiles=[p for p in all_profiles if p.get('global_specular')]
         self.assertEqual(len(profiles),2)
-        self.script_prefix='const extFixture='+json.dumps(dict(scenes=scenes,images=images,profiles=profiles),ensure_ascii=True)+';\n'
+        skin_profiles=[p for p in all_profiles if p.get('group_id') in (211,1411)] if getattr(self,'include_skin_profiles',False) else []
+        self.script_prefix='const extFixture='+json.dumps(dict(scenes=scenes,images=images,profiles=profiles,skinProfiles=skin_profiles),ensure_ascii=True)+';\n'
         super().test_picker()

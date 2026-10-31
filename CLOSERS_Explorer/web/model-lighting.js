@@ -281,6 +281,23 @@ export function interpolateAvatarLight(profile,mix=0){
   return {...profile,intensity:weight===1?profile.near_intensity:profile.intensity*(1-weight)+profile.near_intensity*weight};
 }
 
+// CW.EXE 0x140a80818 and 0x140a9eed8 copy RGB, far/near
+// intensities and the extra scalar, leaving direction and other light fields.
+export function composeAvatarLight(base,skin,policy='maximum'){
+  if(!base)return skin;
+  const vector=(v,n)=>Array.isArray(v)&&v.length===n&&v.every(Number.isFinite),strength=v=>Number.isFinite(v)&&v>=0;
+  if(!base.key?.startsWith('world:')||!vector(base.color,4)||!vector(base.direction,3)||!vector(base.position,3)||base.direction.every(v=>v===0)||!strength(base.intensity))return null;
+  if(!skin||skin.key===base.key)return base;
+  const binding=skin.selection_binding;
+  if(!['maximum','replace'].includes(policy)||binding?.status!=='source-verified'||binding.type!==5||binding.value!==skin.group_id||binding.light_data_id!==skin.light_id||!vector(skin.color,4)||!strength(skin.intensity)||!strength(skin.near_intensity))return null;
+  return {...base,key:`composed:${base.key}:${skin.key}:${policy}`,label:base.label+' + '+skin.label,
+    color:[...skin.color.slice(0,3),base.color[3]],intensity:policy==='maximum'?Math.max(base.intensity,skin.intensity):skin.intensity,
+    near_intensity:skin.near_intensity,extra_value:skin.extra_value,characters:skin.characters,
+    sources:[...new Set([...(base.sources||[]),...(skin.sources||[])])],
+    composition:{base:base.key,skin:skin.key,policy,base_intensity:base.intensity,skin_intensity:skin.intensity,
+      basis:policy==='maximum'?'CW.EXE:0x140a80818':'CW.EXE:0x140a9eed8'}};
+}
+
 export function setupAvatarLighting({state,api,element,getEmissionEnabled,setConditionItems}){
   const $=id=>document.getElementById(id),storageKey='closers-avatar-lighting-v2';
   let settings={enabled:false,selected:'',excluded:[],bloom:true,bloomStrength:.8,influence:.5,solo:false,soloExposure:4,toon:false,toonPower:1,faceSdf:false,glow:false,ext:false,rim:false};
@@ -334,6 +351,11 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   nearInput.setAttribute('aria-label','원거리와 근거리 원본 조명 강도의 수동 혼합 비율');nearInput.setAttribute('aria-describedby','avatar-lighting-near-status');
   nearStatus.id='avatar-lighting-near-status';nearStatus.setAttribute('role','status');nearLabel.append(nearInput);
   $('avatar-toon-power').closest('label').after(nearLabel);nearLabel.after(nearStatus);
+  settings.baseRegion='';settings.intensityPolicy='maximum';settings.regionMixVersion=1;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.regionMixVersion===1){if(typeof saved.baseRegion==='string')settings.baseRegion=saved.baseRegion;if(saved.intensityPolicy==='replace')settings.intensityPolicy='replace';}}catch{}
+  const regionField=element('div');regionField.innerHTML='<label>지역 기본 조명<select id="avatar-lighting-base-region"><option value="">합성 안 함 · 기존 비교 유지</option></select></label><label>원거리 강도 합성<select id="avatar-lighting-intensity-policy"><option value="maximum">지역·스킨 중 밝은 강도 유지</option><option value="replace">스킨 강도로 변경</option></select></label><p id="avatar-lighting-composition-status" role="status"></p><p>지역을 직접 지정해 원본의 두 합성 경로를 비교합니다. 근거리 강도는 스킨 값을 사용하고, 지역 광원 위치·방향·반사·테두리광은 유지합니다. 스킨 선택이 없으면 지역 조명만 적용합니다. 게임 지역·합성 경로와 카메라 거리는 자동으로 판단하지 않습니다.</p>';
+  nearLabel.before(regionField);const baseRegionSelect=$('avatar-lighting-base-region'),policySelect=$('avatar-lighting-intensity-policy');policySelect.value=settings.intensityPolicy;
+  baseRegionSelect.onchange=()=>{settings.baseRegion=baseRegionSelect.value;save();apply();};policySelect.onchange=()=>{settings.intensityPolicy=policySelect.value;save();apply();};
   settings.second=false;settings.secondVersion=2;settings.secondOffset=[0,0];
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');settings.second=saved?.secondVersion===2&&saved?.second===true;if(Array.isArray(saved?.secondOffset)&&saved.secondOffset.length===2&&saved.secondOffset.every(Number.isFinite))settings.secondOffset=saved.secondOffset.map(v=>Math.max(-1,Math.min(1,v)));}catch{}
   const secondField=element('fieldset');secondField.innerHTML='<legend>하이퍼 모드 색상 효과 · 정지 합성 실험</legend><label><input id="avatar-second-enabled" type="checkbox"> 효과 텍스처 정지 합성 켜기</label><label>UV 가로 이동<input id="avatar-second-u" type="range" min="-1" max="1" step="0.05"></label><label>UV 세로 이동<input id="avatar-second-v" type="range" min="-1" max="1" step="0.05"></label><p id="avatar-second-status" role="status"></p><p>원본 하이퍼 모드 효과 텍스처를 더하므로 표면이 파랗게 보일 수 있습니다. 일반 조명·코스튬 유광을 확인할 때는 꺼두세요. 자동 발동·UV 애니메이션·인게임 외형은 재현하지 않습니다.</p>';
@@ -367,6 +389,14 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     const matches=profiles.filter(p=>p.group_id===report.target_group&&p.key!=='set:'+p.group_id&&(!p.characters?.length||(state.data.sources||[]).every(s=>!s.model_group?.character||p.characters.includes(s.model_group.character))));
     return matches.length===1?matches[0]:null;
   }
+  function renderSelection(){
+    const skin=selected();if(!settings.baseRegion)return {profile:skin,status:'off'};
+    if(!state.model)return {profile:null,status:'no-model'};
+    const base=profiles.find(p=>p.key===settings.baseRegion&&p.key.startsWith('world:'));
+    if(!base)return {profile:null,status:'missing-base'};
+    const profile=composeAvatarLight(base,skin,settings.intensityPolicy);
+    return {profile,status:!profile?'unsupported':!skin||skin.key===base.key?'base-only':'combined'};
+  }
   $('avatar-lighting-condition-select').onclick=()=>{const p=conditionProfile();if(!p)return;settings.selected=p.key;$('avatar-lighting-profile').value=p.key;save();apply();};
   function apply(){
     const report=state.data?.lighting_conditions,candidate=conditionProfile(),conditionList=$('avatar-lighting-conditions');conditionList.replaceChildren();
@@ -382,7 +412,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const item of report?.additional_items||[]){const label=element('label'),input=element('input');input.type='checkbox';input.dataset.itemId=item.item_id;input.checked=(report.selected_items||[]).includes(item.item_id);input.disabled=!setConditionItems||!!state.busy||conditionBusy;label.append(input,document.createTextNode(`${item.label} · ${item.part_label} · #${item.item_id}`));additionalList.append(label);input.onchange=async()=>{if(conditionBusy)return;const ids=new Set(report.selected_items||[]);if(input.checked)ids.add(item.item_id);else ids.delete(item.item_id);conditionBusy=true;apply();try{await setConditionItems([...ids]);$('avatar-lighting-condition-item-status').textContent='추가 장비의 착용 조건을 반영했습니다.';}catch(e){$('avatar-lighting-condition-item-status').textContent='추가 장비 적용 실패: '+e.message;}finally{conditionBusy=false;refresh();}};}
     if(!report?.additional_items?.length)additionalList.append(element('p','현재 조건에 연결된 추가 장비가 없습니다.'));
     $('avatar-lighting-condition-status').textContent=!state.model?'아바타를 선택하면 조명 착용 조건을 확인합니다.':candidate?`${candidate.label} · 선택 장비 개수 충족 · 버튼으로 조명 선택`:report?.status==='ambiguous'?'여러 조명의 개수 조건을 충족합니다. 사용할 조명을 직접 선택하세요.':report?.reason||((report?.candidates||[]).length?'조명 착용 조건 확인 중 · 필요 개수와 아이템 출처를 확인하세요.':'현재 선택 장비에 연결된 조명 착용 조건이 없습니다. 조명을 직접 선택할 수 있습니다.');
-    matcap.setLightProfile(selected());
+    const rendering=renderSelection(),effectiveProfile=rendering.profile;
+    baseRegionSelect.disabled=!!pending;baseRegionSelect.value=settings.baseRegion;policySelect.disabled=!settings.baseRegion||!!pending;
+    $('avatar-lighting-composition-status').textContent=rendering.status==='off'?'지역 합성 꺼짐 · 기존 조명 비교 유지':rendering.status==='no-model'?'아바타를 선택하면 지역 합성을 비교합니다.':rendering.status==='missing-base'?'지역 합성 보류 · 지역 기본 조명 출처를 확인하세요.':rendering.status==='unsupported'?'지역 합성 보류 · 원본 스킨 선택 경로에 연결된 조명과 지역 수치를 확인하세요.':rendering.status==='base-only'?`지역 기본 조명 수치 · ${effectiveProfile.label} · 스킨 조명 덮어쓰기 없음`:`지역 + 스킨 합성 수치 · 원거리 ${effectiveProfile.intensity} / 근거리 ${effectiveProfile.near_intensity} · ${settings.intensityPolicy==='maximum'?'밝은 원거리 강도 유지':'스킨 원거리 강도 사용'} · 거리 혼합 전 적용`;
+    matcap.setLightProfile(effectiveProfile);
     const gradeAvailable=!!state.model&&settings.sourceColor,gradePaused=matcap.isMaskInspection()||settings.solo;
     gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
     presetSelect.disabled=!gradeAvailable||!gradePresets.length;$('avatar-grade-preset-apply').disabled=!gradeAvailable||!gradePresets.some(p=>p.key===presetSelect.value);$('avatar-grade-manual-restore').disabled=!gradeAvailable||!settings.colorGradingManual;
@@ -394,7 +427,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
     $('avatar-second-status').textContent=!secondMaterials.length?'현재 모델에 연결된 하이퍼 모드 효과 텍스처가 없습니다.':!settings.second?`효과 텍스처 연결 ${secondMaterials.length}개 · 꺼짐`:!secondReady.length?'효과 텍스처 출처를 확인하세요.':`정지 색상 효과 켜짐 · 준비 ${secondReady.length} / 연결 ${secondMaterials.length}개 · UV ${settings.secondOffset.map(v=>v.toFixed(2)).join(', ')} · 수동 비교`;
     const profile=settings.enabled?selected():null;
-    const sourceProfile=selected(),toonProfile=interpolateAvatarLight(sourceProfile,settings.nearMix),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
+    const sourceProfile=effectiveProfile,toonProfile=interpolateAvatarLight(sourceProfile,settings.nearMix),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
     const faces=(state.model?.materials||[]).filter(m=>m.userData.faceSdfPreview),faceReady=faces.filter(m=>m.map&&m.userData.faceSdfPreview.headReady);
     const glowMaterials=(state.model?.materials||[]).filter(m=>m.userData.glowPreview),glowReady=glowMaterials.filter(m=>m.userData.avatarLighting.avatarGlowMap.value);
     const hasNear=sourceProfile&&Number.isFinite(sourceProfile.near_intensity)&&sourceProfile.near_intensity>=0;
@@ -425,7 +458,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const m of state.model?.materials||[])setAvatarLight(m,profile,settings.influence);
     for(const group of groups){for(const m of group.materials)setMaterialPreview(m,getEmissionEnabled()&&!excluded.has(group.key));if(group.status)group.status.textContent=!getEmissionEnabled()?'전체 발광 꺼짐':excluded.has(group.key)?'이 발광 꺼짐':!group.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)?'발광 텍스처 확인 필요':!group.visible?'현재 숨겨진 메시의 발광':'발광 켜짐 · 발광만 보기에서 확인';}
     if(state.model){const visible=groups.filter(g=>g.visible&&getEmissionEnabled()&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)).length;$('avatar-lighting-summary').textContent=`발광 연결 ${groups.length}개 · 현재 표시 ${visible}개${getEmissionEnabled()?'':' · 전체 발광 꺼짐'}${settings.solo?' · 발광만 보기':''}`;}
-    const profileInfo=settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
+    const profileInfo=settings.baseRegion?effectiveProfile:settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
     if(profiles.length)$('avatar-lighting-status').textContent=settings.enabled?(profile?(state.model?'원본 조명 수치를 비교 중입니다.':'선택한 조명 유지 · 아바타를 선택하면 비교합니다.'):'현재 캐릭터에 적용할 조명을 선택하세요.'):'조명 수치 비교 꺼짐';
   }
   function refresh(){
@@ -453,6 +486,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     $('avatar-lighting-status').textContent='원본 조명 목록을 불러오고 있습니다…';$('avatar-lighting-profile').disabled=true;
     pending=Promise.resolve().then(async()=>{try{
       const result=await api('/api/model-lighting');profiles=result.profiles||[];const select=$('avatar-lighting-profile');select.replaceChildren();const none=element('option','조명 선택');none.value='';select.append(none);for(const p of profiles){const option=element('option',p.label);option.value=p.key;select.append(option);}select.value=settings.selected;
+      baseRegionSelect.replaceChildren();const noRegion=element('option','합성 안 함 · 기존 비교 유지');noRegion.value='';baseRegionSelect.append(noRegion);for(const p of profiles.filter(p=>p.key.startsWith('world:'))){const option=element('option',p.label);option.value=p.key;baseRegionSelect.append(option);}if(settings.baseRegion&&![...baseRegionSelect.options].some(o=>o.value===settings.baseRegion)){const missing=element('option','선택한 지역을 찾을 수 없음 · 합성 보류');missing.value=settings.baseRegion;baseRegionSelect.append(missing);}
       skinSelect.replaceChildren();for(const [value,label] of [['unknown','미지정 · 착용 조건으로 추정'],['none','선택 없음 (0) · 스킨 조명 적용 안 함'],...profiles.filter(p=>p.selection_binding?.status==='source-verified'&&p.selection_binding.type===5).map(p=>[p.key,p.label])]){const option=element('option',label);option.value=value;skinSelect.append(option);}
       gradePresets=(Array.isArray(result.color_grading_presets)?result.color_grading_presets:[]).filter(p=>p.scope==='color-grading-only'&&typeof p.key==='string'&&typeof p.label==='string'&&[p.rgb,p.bcs].every(v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite)));
       presetSelect.replaceChildren();const choose=element('option','원본 프리셋 선택');choose.value='';presetSelect.append(choose);for(const p of gradePresets){const option=element('option',p.label);option.value=p.key;presetSelect.append(option);}
@@ -472,7 +506,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   sourceColorToggle.onchange=()=>{settings.sourceColor=sourceColorToggle.checked;save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
-  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||settings.autoProfile||matcap.requiresLightProfile())void load();
+  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||settings.autoProfile||settings.baseRegion||matcap.requiresLightProfile())void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
