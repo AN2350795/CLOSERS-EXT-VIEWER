@@ -63,7 +63,11 @@ class ExtBindingTests(unittest.TestCase):
         if not path.exists():self.skipTest('Local game executable unavailable')
         report=audit(path)
         self.assertEqual(report['status'],'verified',str(report['checks']))
-        self.assertEqual(len(report['checks']),9);self.assertFalse(report['game_executed'])
+        self.assertEqual(len(report['checks']),20);self.assertFalse(report['game_executed'])
+        self.assertEqual(report['avatar_path']['factor_scope'],'shared-render-state')
+        self.assertTrue(report['avatar_path']['default_gate'])
+        self.assertEqual(report['avatar_path']['initial_factor'],0)
+        self.assertEqual(report['avatar_path']['live_factor'],'unresolved')
 
     def test_original_regions_do_not_supply_avatar_coefficients(self):
         workspace=Path(__file__).resolve().parents[2]/'results'
