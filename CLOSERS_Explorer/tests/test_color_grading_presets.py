@@ -23,7 +23,30 @@ def preset(key=5, values=(1, 1, 1.1, 0, .05, 1.3)):
     return (5, key, 'NAME', '', '', *map(bits, [1, 1, *values, 0, 0]), 'ICON.PNG')
 
 
+def sharp_range():
+    return (4,0,'','','',*map(bits,[0,0,5,-.01,.01,0,0,0,0,0]),'')
+
+
 class ColorGradingPresetTests(unittest.TestCase):
+    def test_other_postprocess_metadata_does_not_change_applied_scope(self):
+        row=list(preset());row[5]=bits(0);row[6]=bits(.5);row[13]=bits(1.5)
+        p=self.read(channel_rows()+[sharp_range(),row])[0]
+        self.assertEqual(p['selection_scope'],'graphics-option');self.assertEqual(p['source_category'],5)
+        self.assertEqual(p['scope'],'color-grading-only');other=p['other_postprocess']
+        self.assertEqual(other['scope'],'not-applied')
+        self.assertFalse(other['bloom']['enabled']);self.assertFalse(other['depth_of_field']['enabled'])
+        self.assertTrue(other['sharpen']['enabled']);self.assertEqual(other['sharpen']['value'],1.5)
+        self.assertEqual(other['sharpen']['source_column'],13)
+
+    def test_bad_other_effects_are_isolated_from_color_values(self):
+        for column in (5,6,13):
+            row=list(preset());row[column]=bits(float('nan'))
+            p=self.read(channel_rows()+[sharp_range(),row])[0]
+            self.assertEqual(p['rgb'][:2],[1,1]);self.assertTrue(p['source_enabled'])
+            self.assertEqual(p['other_postprocess'][{5:'bloom',6:'depth_of_field',13:'sharpen'}[column]]['status'],'unavailable')
+        row=list(preset());row[13]=bits(6)
+        self.assertEqual(self.read(channel_rows()+[sharp_range(),row])[0]['other_postprocess']['sharpen']['status'],'unavailable')
+        self.assertEqual(self.read(channel_rows()+[row])[0]['other_postprocess']['sharpen']['status'],'unavailable')
     def read(self, rows):
         return read_presets(Data({SOURCE: table(TYPES, rows)}))
 
@@ -88,6 +111,9 @@ class ColorGradingPresetTests(unittest.TestCase):
             self.skipTest('Local game catalog unavailable')
         profiles = read_presets(LoadingData(Catalog(workspace)))
         self.assertEqual(len(profiles), 7)
+        self.assertEqual([v['other_postprocess']['bloom']['enabled'] for v in profiles],[True,True,True,False,True,True,True])
+        self.assertEqual([v['other_postprocess']['depth_of_field']['enabled'] for v in profiles],[True,True,True,False,True,False,True])
+        self.assertEqual([v['other_postprocess']['sharpen']['enabled'] for v in profiles],[True,False,False,True,False,True,False])
         p = next(p for p in profiles if p['key'] == '5')
         self.assertTrue(p['source_enabled'])
         self.assertAlmostEqual(p['rgb'][2], 1.1, places=6)

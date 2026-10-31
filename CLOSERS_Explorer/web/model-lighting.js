@@ -363,6 +363,14 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const presetRow=element('div');presetRow.innerHTML='<label>원본 색상 프리셋<select id="avatar-grade-preset"><option value="">프리셋 목록을 불러오세요</option></select></label><button id="avatar-grade-preset-apply" type="button" class="secondary">선택 프리셋 수치 적용</button><button id="avatar-grade-manual-restore" type="button" class="secondary">직접 입력값 복원</button><p id="avatar-grade-preset-status" role="status">창을 열면 원본 프리셋을 불러옵니다. 색상 보정 수치만 적용하며 조명·빛 번짐·선명도는 바꾸지 않습니다.</p>';
   $('avatar-grade-values').before(presetRow);
   const presetSelect=$('avatar-grade-preset');presetSelect.onchange=()=>apply();
+  const presetDetails=element('details');presetDetails.append(element('summary','선택 프리셋의 원본 구성 · 적용 범위'));const presetComposition=element('p'),presetSource=element('p');presetComposition.id='avatar-grade-preset-composition';presetSource.id='avatar-grade-preset-source';presetDetails.append(presetComposition,presetSource);presetRow.append(presetDetails);
+  function describeGradePreset(){
+    const preset=gradePresets.find(p=>p.key===presetSelect.value);
+    if(!preset){presetComposition.textContent='프리셋을 선택하면 원본의 색상 보정과 다른 후처리 구성을 확인합니다.';presetSource.textContent='';return;}
+    const effect=(key,label)=>{const value=preset.other_postprocess?.[key];return value?.status==='source-verified'&&typeof value.enabled==='boolean'&&Number.isFinite(value.value)?`${label} ${value.enabled?'켜짐':'꺼짐'}${key==='sharpen'?' · 수치 '+value.value:''}`:`${label} 원본 수치 확인 불가`;};
+    presetComposition.textContent=`원본 구성: 색상 보정 ${preset.source_enabled?'켜짐':'꺼짐'} / ${effect('bloom','빛 번짐')} / ${effect('depth_of_field','심도 효과')} / ${effect('sharpen','선명도')}. 적용 버튼은 RGB·밝기·대비·채도만 복사합니다. 다른 후처리와 뷰어의 켜짐 선택은 유지합니다.`;
+    presetSource.textContent=`${preset.selection_scope==='graphics-option'?'그래픽 옵션 프리셋 · 지역 자동 선택 아님':'프리셋 선택 경로 확인 불가'}${typeof preset.source==='string'?' · '+preset.source:''}${Number.isInteger(preset.source_row)?' · 행 '+preset.source_row:''}`;
+  }
   const gradeInputs=[];
   for(const [key,index,label,min,max] of [['rgb',0,'빨강 배율',0,2],['rgb',1,'초록 배율',0,2],['rgb',2,'파랑 배율',0,2],['bcs',0,'밝기',-1,1],['bcs',1,'대비',-1,2],['bcs',2,'채도',0,2]]){
     const row=element('label',label),input=element('input');input.type='number';input.id=`avatar-grade-${key}-${index}`;input.min=min;input.max=max;input.step=.05;input.value=settings.colorGrading[key][index];row.append(input);$('avatar-grade-values').append(row);gradeInputs.push(input);
@@ -515,6 +523,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     const gradeAvailable=!!state.model&&settings.sourceColor,gradePaused=matcap.isMaskInspection()||settings.solo;
     gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
     presetSelect.disabled=!gradeAvailable||!gradePresets.length;$('avatar-grade-preset-apply').disabled=!gradeAvailable||!gradePresets.some(p=>p.key===presetSelect.value);$('avatar-grade-manual-restore').disabled=!gradeAvailable||!settings.colorGradingManual;
+    describeGradePreset();
     $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 게임 프리셋·다른 후처리 미포함';
     sourceColorToggle.disabled=!state.model;
     $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?`원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · ${settings.colorGrading.enabled&&!gradePaused?'색상 보정 비교 · 다른 후처리 미포함':'게임 후처리 미포함'}`:'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';

@@ -46,6 +46,23 @@ def read_presets(data):
     if limits != expected:
         raise ValueError('지원하지 않는 원본 색상 보정 채널 범위입니다.')
     strings = data.strings()
+    sharp_ranges=[row for row in rows if row[0]==4]
+    def other_effects(row):
+        result={}
+        for key,column in (('bloom',5),('depth_of_field',6)):
+            try:
+                value=number(row[column])
+                # The source compares against exactly 1, not nonzero.
+                result[key]=dict(status='source-verified',value=value,enabled=value==1,source_column=column)
+            except ValueError as exc:result[key]=dict(status='unavailable',reason=str(exc),source_column=column)
+        try:
+            value=number(row[13])
+            if len(sharp_ranges)!=1:raise ValueError('선명도 범위 정의가 누락되거나 중복됩니다.')
+            low,high=number(sharp_ranges[0][6]),number(sharp_ranges[0][7])
+            if low>high or not low<=value<=high:raise ValueError('선명도 프리셋 수치·범위를 확인할 수 없습니다.')
+            result['sharpen']=dict(status='source-verified',value=value,enabled=value>0,limits=[low,high],source_column=13)
+        except ValueError as exc:result['sharpen']=dict(status='unavailable',reason=str(exc),source_column=13)
+        return dict(scope='not-applied',**result)
     result, seen = [], set()
     for index, row in candidates:
         preset_id = row[1]
@@ -58,5 +75,6 @@ def read_presets(data):
         result.append(dict(key=str(preset_id), label=strings.get(row[2]) or f'원본 프리셋 {preset_id}',
                            rgb=values[:3], bcs=values[3:], source_enabled=any(v > 0 for v in values),
                            source=SOURCE, source_row=index, source_sha256=hashlib.sha256(body).hexdigest(),
-                           limits=limits, activation='manual', scope='color-grading-only'))
+                           limits=limits, activation='manual', scope='color-grading-only',
+                           selection_scope='graphics-option',source_category=5,other_postprocess=other_effects(row)))
     return result
