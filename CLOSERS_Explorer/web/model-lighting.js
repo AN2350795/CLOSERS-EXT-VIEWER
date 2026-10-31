@@ -217,7 +217,7 @@ export function setAvatarToon(material,enabled,profile,power=1){
   preview.enabled=enabled;preview.profile=profile;preview.power=Number.isFinite(power)?Math.max(0,Math.min(2,power)):1;
   u.avatarToonPower.value=preview.power;
   u.avatarToonEnabled.value=enabled&&profile&&u.avatarToonMap.value?1:0;
-  if(profile){u.avatarToonDirection.value.set(profile.direction[0],profile.direction[1],-profile.direction[2]).normalize();u.avatarToonColor.value.setRGB(...profile.color.slice(0,3));u.avatarToonIntensity.value=profile.intensity;}
+  if(profile){const direction=profile.toon_direction||profile.direction;u.avatarToonDirection.value.set(direction[0],direction[1],-direction[2]).normalize();u.avatarToonColor.value.setRGB(...profile.color.slice(0,3));u.avatarToonIntensity.value=profile.intensity;}
 }
 
 export function setAvatarToonMap(material,map){
@@ -296,6 +296,23 @@ export function normalizeCameraMix(value){
   return result;
 }
 
+export function normalizeToonRotation(value){
+  const angles=Array.isArray(value?.angles)&&value.angles.length===3&&value.angles.every(v=>Number.isFinite(v)&&Math.abs(v)<=360)?[...value.angles]:[0,0,0];
+  return {enabled:value?.enabled===true,angles};
+}
+
+// CW.EXE 0x1415feb86..0x1415feca4: degrees, quaternion Y*X*Z,
+// then normalize. Keep the general LightDir and LightPos independent.
+export function rotateAvatarToonLight(profile,rotation){
+  if(!profile||!rotation?.enabled)return profile;
+  const angles=rotation.angles,direction=profile.direction;
+  if(!Array.isArray(angles)||angles.length!==3||!angles.every(v=>Number.isFinite(v)&&Math.abs(v)<=360)||!Array.isArray(direction)||direction.length!==3||!direction.every(Number.isFinite))return profile;
+  const vector=new THREE.Vector3(...direction);if(vector.lengthSq()<1e-10||angles.every(v=>v===0))return profile;
+  const euler=new THREE.Euler(...angles.map(THREE.MathUtils.degToRad),'YXZ');
+  vector.normalize().applyEuler(euler).normalize();
+  return {...profile,toon_direction:vector.toArray()};
+}
+
 // CW.EXE 0x140a80818 and 0x140a9eed8 copy RGB, far/near
 // intensities and the extra scalar, leaving direction and other light fields.
 export function composeAvatarLight(base,skin,policy='maximum'){
@@ -370,6 +387,13 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.cameraMixVersion===1)settings.cameraMix=normalizeCameraMix(saved.cameraMix);}catch{}
   const distanceField=element('details');distanceField.innerHTML='<summary>카메라 거리 연동 · 뷰어 기준 지정</summary><label><input id="avatar-camera-mix-enabled" type="checkbox"> 지정한 거리로 조명 강도 자동 혼합</label><label>근거리 기준<input id="avatar-camera-mix-near" type="number" min="0" step="any"></label><button id="avatar-camera-mix-mark-near" type="button" class="secondary">현재 거리를 근거리로 등록</button><label>원거리 기준<input id="avatar-camera-mix-far" type="number" min="0" step="any"></label><button id="avatar-camera-mix-mark-far" type="button" class="secondary">현재 거리를 원거리로 등록</button><p id="avatar-camera-mix-status" role="status"></p><p>카메라와 아바타 원점 사이의 거리를 사용하며 기준은 캐릭터별로 저장합니다. 두 기준 사이를 선형 혼합하고 범위 밖에서는 끝값을 유지합니다. 기준이 없거나 유효하지 않으면 기존 수동 혼합값을 사용합니다. 게임의 거리 기준은 아직 확인되지 않았으며 이 기능은 뷰어에서 지정한 기준만 따릅니다.</p>';
   nearStatus.after(distanceField);const cameraToggle=$('avatar-camera-mix-enabled'),nearDistance=$('avatar-camera-mix-near'),farDistance=$('avatar-camera-mix-far');cameraToggle.checked=settings.cameraMix.enabled;
+  settings.toonRotation=normalizeToonRotation(null);settings.toonRotationVersion=1;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.toonRotationVersion===1)settings.toonRotation=normalizeToonRotation(saved.toonRotation);}catch{}
+  const rotationField=element('details');rotationField.innerHTML='<summary>툰 광원 회전 비교</summary><label><input id="avatar-toon-rotation-enabled" type="checkbox"> 입력한 각도로 툰 광원 회전</label><div id="avatar-toon-rotation-angles"></div><button id="avatar-toon-rotation-reset" type="button" class="secondary">회전 0도로 초기화</button><p id="avatar-toon-rotation-status" role="status"></p><p>툰 광원에만 적용합니다. 일반 광원·반사·테두리광·얼굴 SDF는 기존 방향을 유지합니다. 원본 형식의 도 단위 각도를 Z → X → Y 순서로 적용하며, 게임의 회전 상태는 자동으로 가져오지 않습니다.</p>';
+  distanceField.after(rotationField);const rotationToggle=$('avatar-toon-rotation-enabled');rotationToggle.checked=settings.toonRotation.enabled;
+  const rotationInputs=['X','Y','Z'].map((axis,index)=>{const label=element('label',axis+' 회전 (도)'),input=element('input');input.id='avatar-toon-rotation-'+axis.toLowerCase();input.type='number';input.min=-360;input.max=360;input.step=1;input.value=settings.toonRotation.angles[index];label.append(input);$('avatar-toon-rotation-angles').append(label);input.onchange=()=>{const value=input.valueAsNumber;if(Number.isFinite(value)&&Math.abs(value)<=360)settings.toonRotation.angles[index]=value;input.value=settings.toonRotation.angles[index];save();apply();};return input;});
+  rotationToggle.onchange=()=>{settings.toonRotation.enabled=rotationToggle.checked;save();apply();};
+  $('avatar-toon-rotation-reset').onclick=()=>{settings.toonRotation.angles=[0,0,0];rotationInputs.forEach(input=>input.value=0);save();apply();};
   let distanceSample={model:null,character:null,distance:null},nearRuntime=null,lastDistanceText=0;
   const cameraWorld=new THREE.Vector3(),avatarWorld=new THREE.Vector3();
   function distanceCharacter(){const sources=state.data?.sources||[],characters=new Set(sources.map(s=>s.model_group?.character).filter(Boolean));return state.model&&sources.length&&sources.every(s=>s.model_group?.kind==='avatar')&&characters.size===1?[...characters][0]:null;}
@@ -480,7 +504,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
     $('avatar-second-status').textContent=!secondMaterials.length?'현재 모델에 연결된 하이퍼 모드 효과 텍스처가 없습니다.':!settings.second?`효과 텍스처 연결 ${secondMaterials.length}개 · 꺼짐`:!secondReady.length?'효과 텍스처 출처를 확인하세요.':`정지 색상 효과 켜짐 · 준비 ${secondReady.length} / 연결 ${secondMaterials.length}개 · UV ${settings.secondOffset.map(v=>v.toFixed(2)).join(', ')} · 수동 비교`;
     const profile=settings.enabled?selected():null;
-    const sourceProfile=effectiveProfile,mixInfo=distanceMix(),toonProfile=interpolateAvatarLight(sourceProfile,mixInfo.weight),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
+    const sourceProfile=rotateAvatarToonLight(effectiveProfile,settings.toonRotation),mixInfo=distanceMix(),toonProfile=interpolateAvatarLight(sourceProfile,mixInfo.weight),toonMaterials=(state.model?.materials||[]).filter(m=>m.userData.toonPreview),toonReady=toonMaterials.filter(m=>m.userData.avatarLighting.avatarToonMap.value);
+    $('avatar-toon-rotation-status').textContent=!state.model?'아바타를 선택하면 툰 광원 회전을 비교합니다.':!effectiveProfile?'회전할 조명을 선택하세요.':!settings.toonRotation.enabled?'툰 광원 회전 꺼짐 · 기존 방향 유지':`툰 광원 회전 ${settings.toonRotation.angles.join(' / ')}도 · ${settings.toon?'툰 음영에 적용':'툰 음영 꺼짐'} · 게임 회전 상태 미연결`;
     const faces=(state.model?.materials||[]).filter(m=>m.userData.faceSdfPreview),faceReady=faces.filter(m=>m.map&&m.userData.faceSdfPreview.headReady);
     const glowMaterials=(state.model?.materials||[]).filter(m=>m.userData.glowPreview),glowReady=glowMaterials.filter(m=>m.userData.avatarLighting.avatarGlowMap.value);
     nearRuntime={model:state.model,profile:sourceProfile,weight:mixInfo.weight,toonMaterials,faces,glowMaterials,ready:!!(toonReady.length||settings.faceSdf&&faceReady.length||settings.glow&&glowReady.length)};

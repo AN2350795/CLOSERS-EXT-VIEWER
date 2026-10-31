@@ -29,6 +29,15 @@ EVIDENCE = (
     ('near_supplied_weight_lerp',0x1415fb322,'f3 0f 10 83 44 01 00 00 f3 0f 10 0d 8a ef d9 00 f3 0f 5c c8 f3 0f 59 c7 f3 0f 59 ce f3 0f 58 c8 0f 28 c1'),
     ('near_gate_far_fallback',0x1415fb355,'0f 28 7c 24 20 0f 28 c6 0f 28 74 24 30 48 83 c4 40 5b c3'),
     ('near_result_upload',0x1415fea90,'e8 5b c8 ff ff f3 0f 11 05 83 c1 99 01'),
+    ('toon_rotation_degree_constant',0x142423774,'35 fa 8e 3c'),
+    ('toon_rotation_input_pack',0x1415feb74,'f3 0f 10 4b 0c f3 0f 10 73 04 0f 14 f1 f3 0f 10 4b 08 f3 0f 10 5b 64 41 0f 14 c8 0f 14 f1 0f 28 d6 0f 59 d6 0f 28 c2 0f c6 c2 99 f3 0f 58 d0 0f c6 c0 55 f3 0f 58 d0 0f 28 c7 0f c6 d2 00 0f 51 ca 0f c2 15 03 ac d9 00 04 0f 5e f1 0f c2 c1 04 f3 0f 10 0d a8 4b e2 00 0f 54 f0 f3 0f 59 d9 f3 0f 10 43 60 0f 54 f2 0f 55 15 ee ab d9 00 f3 0f 59 c1 0f 28 e0 0f 56 f2 f3 0f 10 53 68 f3 0f 59 d1 0f 14 e2 0f 28 d3 41 0f 14 d0 0f 14 e2 0f 29 64 24 20 e8 c4 42 f6 ff'),
+    ('toon_rotation_vector',0x1415fec0c,'0f 28 ce 0f c6 ce 55 0f 28 c6 0f 59 48 10 0f c6 c6 00 0f c6 f6 aa 0f 59 00 0f 59 70 20'),
+    ('toon_direction_upload',0x1415fec7d,'0f 11 74 24 20 f3 0f 10 44 24 20 f3 0f 10 4c 24 24 f3 0f 11 05 ea bf 99 01 f3 0f 10 44 24 28 f3 0f 11 0d e0 bf 99 01 f3 0f 11 05 dc bf 99 01'),
+    ('toon_rotation_half_angles',0x141562ef0,'0f 28 02 48 8b d9 4c 8d 45 a7 48 8d 55 97 48 8d 4d b7 0f 59 05 17 68 e3 00 0f 29 45 a7 e8 3e f4 ff ff'),
+    ('toon_rotation_half_constant',0x142399720,'00 00 00 3f 00 00 00 3f 00 00 00 3f 00 00 00 3f'),
+    ('toon_quaternion_signs',0x1425b3c10,'00 00 80 3f 00 00 80 bf 00 00 80 bf 00 00 80 3f'),
+    ('toon_quaternion_shuffle',0x1425b3c20,'1b 1a 19 18 1b 1a 19 18 0b 0a 09 08 1b 1a 19 18 17 16 15 14 07 06 05 04 17 16 15 14 17 16 15 14 03 02 01 00 13 12 11 10 13 12 11 10 13 12 11 10'),
+    ('toon_quaternion_assembly',0x14156306d,'0f 28 2d 2c c6 f6 00 0f 28 5d b7 0f 28 45 d7 48 8b c3 0f 59 1d 8a 0b 05 01 0f 59 45 c7 0f 59 45 07 0f 59 5d a7 0f 59 5d e7 0f 58 d8'),
 )
 
 
@@ -53,7 +62,8 @@ def audit(executable):
                 selection=dict(type=5,value='template group',lookup='0x140ac1cf0',missing=0,light_lookup='0x14029e960'),
                 composition=dict(character_far='max(existing,skin)',scene_far='skin',near='skin',rgb='skin',alpha='unchanged'),
                 near_interpolation=dict(function='0x1415fb2f0',weight='externally supplied state+0x144',formula='far*(1-weight)+near*weight',gate='flag+0xbc == 1; unequal far/near',fallback='far',distance_mapping='unresolved'),
-                game_executed=False,unresolved=['camera distance to weight mapping','live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
+                toon_rotation=dict(inputs=['light+0x60','light+0x64','light+0x68'],unit='degrees',quaternion='Y*X*Z',vector_order='Z then X then Y',output='DLightDir at CBPerLight+0xa0',general_direction='unchanged',runtime_values='not imported'),
+                game_executed=False,unresolved=['live toon rotation values','camera distance to weight mapping','live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
 
 
 if __name__=='__main__':
