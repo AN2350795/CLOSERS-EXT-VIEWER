@@ -60,6 +60,14 @@ EVIDENCE = (
      'f3 0f 10 41 10 f3 0f 11 05 eb 1c 94 01 f3 0f 10 49 14 f3 0f 11 0d e2 1c 94 01 '
      'f3 0f 10 41 0c f3 0f 11 05 d9 1c 94 01 f3 0f 10 09 f3 0f 11 0d d1 1c 94 01 '
      'f3 0f 10 41 04 f3 0f 11 05 c8 1c 94 01 f3 0f 10 49 08 f3 0f 11 0d bf 1c 94 01'),
+    ('option_preset_id',0x1406cb949,'4c 8d 87 cc 00 00 00 48 8d 15 d1 45 d8 01 48 8d 4d f0 e8 70 e4 14 01'),
+    ('preset_bloom_write',0x140092875,'0f 2e c6 7a 04 75 02 b3 01 88 9f a9 00 00 00'),
+    ('preset_dof_write',0x1400928b2,'0f 2e ee 7a 04 75 02 b3 01 0f 57 f6 45 33 ff 49 8b c4 88 9f aa 00 00 00'),
+    ('preset_flag_comparison_one',0x14239a2bc,'00 00 80 3f'),
+    ('preset_sharpen_value',0x140092a78,'f3 0f 10 40 7c f3 0f 11 44 24 40'),
+    ('preset_sharpen_enable',0x140092b8d,'f3 0f 10 44 24 40 0f 2f c6 0f 28 b4 24 f0 00 00 00 76 04 41 0f b6 fc 48 8b 4d 90 40 88 bb c4 00 00 00'),
+    ('world_screen_list',0x141678c86,'48 8d 15 ab 98 f5 00 48 8b cf e8 6b f1 19 00'),
+    ('world_screen_texture',0x141673c03,'4c 8b c1 48 8d 15 23 59 ec 00 45 33 c9 48 8b cf 0f 29 74 24 30 e8 83 52 1a 00'),
 )
 
 
@@ -97,6 +105,9 @@ def audit(executable):
                            first_vector=['exposure_fixed_0', 'contrast', 'saturation', 'brightness'],
                            second_vector=['red', 'green', 'blue', 'unused'],
                            empty_data_defaults=[[0, 0, 1, 0], [1, 1, 1, 0]]),
+        preset_scope=dict(selection='graphics-option',category=5,color_columns=list(range(7,13)),
+                          other_columns=dict(bloom=5,depth_of_field=6,sharpen=13),other_effects_applied=False,
+                          world_screen_effect='texture/blend/color inputs; not a verified color-preset selector'),
         unresolved=['Runtime scene activation, preset overrides and effective color-grading values',
                     'Remaining postprocess shader mapping and final presentation path',
                     'In-game image parity'],
