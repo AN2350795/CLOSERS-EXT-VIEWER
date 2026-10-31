@@ -50,6 +50,7 @@ def read_profiles(data):
         if light_id not in definitions:continue
         result.append(dict(definitions[light_id],key=key,label=strings.get(name) or f'의상 조명 {group}',name_key=name,
                            description=strings.get(description,''),group_id=group,light_id=light_id,
+                           selection_binding=dict(status='source-verified',type=5,value=group,light_data_id=light_id),
                            characters=re.findall(r'GUST_USER_([A-Z]+)',characters),status='approximate',activation='manual',
                            sources=['LIGHT_CONVERT_TEMPLET.NTF','LIGHT_CONVERT_DATA.NTF']))
     for group,count,bindings in sets:
@@ -78,4 +79,4 @@ def read_profiles(data):
 
 
 def profiles(data):
-    return data.cached(('avatar-lighting-profiles',6),lambda:read_profiles(data),persistent=True)
+    return data.cached(('avatar-lighting-profiles',7),lambda:read_profiles(data),persistent=True)

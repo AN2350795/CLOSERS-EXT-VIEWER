@@ -14,6 +14,13 @@ EVIDENCE = (
     ('copy_preserves_offset_6c',0x140ea2c5f,'0f b7 47 6c 66 89 46 6c'),
     ('record_offset_6c_registers_type_5',0x140ec77e6,'45 0f b7 46 3c ba 05 00 00 00 49 8b cf e8 58 f8 ff ff'),
     ('light_template_dispatches_type_5',0x140ec8321,'44 0f b7 43 20 ba 05 00 00 00 49 8b ce e8 ed 16 ff ff'),
+    ('runtime_reads_selected_type_5',0x140a9eeb9,'45 33 c0 41 8d 50 05 49 8b cc e8 28 2e 02 00 0f b7 d0 48 8b cb e8 8d fa 7f ff'),
+    ('selected_values_map',0x140ac1d47,'4c 8b 41 10 49 8b 88 a0 01 00 00 48 8b 41 08'),
+    ('selected_value_or_zero',0x140ac1d9f,'49 3b 80 a0 01 00 00 0f 84 72 ff ff ff 0f b7 40 1c 48 83 c4 18 c3'),
+    ('selected_template_to_byte_light_id',0x14029e970,'e8 3b d1 bf 00 48 8b c8 0f b7 d3 e8 b0 0e c0 00 48 85 c0 74 5c 48 8b 4f 28 0f b6 50 29'),
+    ('light_table_map_swap',0x140eca726,'49 8d 90 a8 00 00 00 4d 8d 88 08 03 00 00 4c 3b ca 74 20'),
+    ('missing_skin_does_not_override',0x140a9eed3,'48 85 c0 74 36'),
+    ('runtime_keeps_greater_intensity',0x140a80833,'f3 0f 10 40 20 0f 2f 87 58 02 00 00 76 08 f3 0f 11 87 58 02 00 00'),
 )
 
 
@@ -35,7 +42,8 @@ def audit(executable):
         checks.append(dict(name=name,address=hex(va),matches=body[offset:offset+len(expected)]==expected))
     return dict(sha256=digest,status='verified' if all(c['matches'] for c in checks) else 'mismatch',checks=checks,
                 table='NEW_CONVERT_TEMPLET.NTF',column=12,enum='SCT_LIGHT',enum_value=5,
-                game_executed=False,unresolved=['runtime selected skin','runtime priority','content activation','in-game appearance'])
+                selection=dict(type=5,value='template group',lookup='0x140ac1cf0',missing=0,light_lookup='0x14029e960'),
+                game_executed=False,unresolved=['live selected values are not imported','equipment/ownership selection writes','runtime world merge modes','content activation','in-game appearance'])
 
 
 if __name__=='__main__':

@@ -69,10 +69,12 @@ class AvatarLightingTests(unittest.TestCase):
         self.assertAlmostEqual(p['intensity'],1.025);self.assertEqual(p['near_intensity'],1.5)
         self.assertEqual(p['characters'],['ROGUE']);self.assertEqual(p['activation'],'manual');self.assertEqual(p['status'],'approximate')
         self.assertEqual(p['sources'],['LIGHT_CONVERT_TEMPLET.NTF','LIGHT_CONVERT_DATA.NTF'])
+        self.assertEqual(p['selection_binding'],dict(status='source-verified',type=5,value=1411,light_data_id=1))
 
     def test_legacy_set_presets_keep_required_count(self):
         data=self.fixture();data['SET_ITEM_UNIT_LIGHT_DATA.NTF']=table((5,8,8,9,9),[(2,'1,1,1,1','1,2,3',bits(1),bits(1))]);data['SET_ITEM_EFFECT_TEMPLET.NTF']=table((5,5,8),[(202,10,'GUST_INVALID, 2')])
         p=read_profiles(Data(data))['profiles'][1];self.assertEqual(p['required_count'],10);self.assertEqual(p['direction'],[1,2,3]);self.assertEqual(p['key'],'set:202')
+        self.assertNotIn('selection_binding',p)
 
     def test_missing_tables_and_invalid_data_do_not_guess_lighting(self):
         self.assertEqual(read_profiles(Data({}))['profiles'],[])

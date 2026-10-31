@@ -319,9 +319,13 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const conditionBox=element('div');conditionBox.innerHTML='<p id="avatar-lighting-condition-status" role="status"></p><button id="avatar-lighting-condition-select" type="button" class="secondary">착용 조건에 맞는 조명 선택</button><details><summary>조명 착용 조건 확인</summary><div id="avatar-lighting-conditions"></div><fieldset><legend>추가 장비 착용 지정</legend><p>아래 장비는 조명 조건 계산에만 포함하며 외형·전용 효과는 표시하지 않습니다. 실제 착용할 장비를 직접 선택하세요.</p><div id="avatar-lighting-condition-items"></div><p id="avatar-lighting-condition-item-status" role="status"></p></fieldset><p>현재 선택한 장비 번호로 개수를 확인합니다. 게임의 보유 아이템·선택한 스킨·효과 우선순위·콘텐츠 활성 상태는 포함하지 않습니다. 조건 충족 후보가 하나일 때 조명을 선택할 수 있으며, 효과 켜짐 설정은 유지합니다.</p></details>';
   $('avatar-toon-profile').after(conditionBox);
   settings.autoProfile=false;try{settings.autoProfile=JSON.parse(localStorage.getItem(storageKey)||'{}')?.autoProfile===true;}catch{}
-  const autoLabel=element('label'),autoToggle=element('input');autoToggle.id='avatar-lighting-auto';autoToggle.type='checkbox';autoToggle.checked=settings.autoProfile;autoLabel.append(autoToggle,document.createTextNode(' 착용 조건으로 조명 자동 선택 · 뷰어'));
+  const autoLabel=element('label'),autoToggle=element('input');autoToggle.id='avatar-lighting-auto';autoToggle.type='checkbox';autoToggle.checked=settings.autoProfile;autoLabel.append(autoToggle,document.createTextNode(' 선택 상태·착용 조건으로 조명 선택 · 뷰어'));
   const autoStatus=element('p');autoStatus.id='avatar-lighting-auto-status';autoStatus.setAttribute('role','status');conditionBox.prepend(autoLabel,autoStatus);
   autoToggle.onchange=()=>{settings.autoProfile=autoToggle.checked;save();apply();if(settings.autoProfile&&!profiles.length)void load();};
+  settings.skinSelection='unknown';try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.skinSelectionVersion===1&&typeof saved.skinSelection==='string')settings.skinSelection=saved.skinSelection;}catch{}settings.skinSelectionVersion=1;
+  const skinField=element('div');skinField.innerHTML='<label>스킨 조명 선택 상태 · 뷰어 지정<select id="avatar-skin-light-selection"><option value="unknown">미지정 · 착용 조건으로 추정</option><option value="none">선택 없음 (0) · 스킨 조명 적용 안 함</option></select></label><p id="avatar-skin-light-status" role="status"></p><p>게임에서 선택값을 자동으로 읽지 않습니다. 선택 상태를 직접 지정하면 착용 조건 추정보다 우선합니다. 원본 게임의 선택값은 착용 개수만으로 확정할 수 없습니다.</p>';
+  autoStatus.after(skinField);const skinSelect=$('avatar-skin-light-selection');skinSelect.value=settings.skinSelection;
+  skinSelect.onchange=()=>{settings.skinSelection=skinSelect.value;save();apply();};
   $('avatar-toon-enabled').checked=settings.toon;$('avatar-toon-power').value=settings.toonPower;$('avatar-toon-power-value').value=settings.toonPower.toFixed(2);
   settings.nearMix=0;
   try{const value=JSON.parse(localStorage.getItem(storageKey)||'{}')?.nearMix;if(Number.isFinite(value))settings.nearMix=Math.max(0,Math.min(1,value));}catch{}
@@ -348,7 +352,15 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const master=$('material-preview').closest('label');master.lastChild.textContent=' 발광 켜기';$('avatar-emission-master').append(master,$('material-preview-note'));$('material-preview-note').textContent='발광만 보기에서 실제 발광 부위를 확인하고, 빛 번짐을 따로 비교할 수 있습니다.';
   $('avatar-emission-bloom').checked=settings.bloom;$('avatar-emission-strength').value=settings.bloomStrength;$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);$('avatar-lighting-influence').value=settings.influence;
   function save(){settings.excluded=[...excluded];try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}}
-  function selected(){if(settings.autoProfile)return conditionProfile();const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
+  function compatible(p){const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)));}
+  function selected(){
+    if(!settings.autoProfile){const p=profiles.find(p=>p.key===settings.selected);return compatible(p)?p:null;}
+    if(settings.skinSelection==='unknown')return conditionProfile();
+    if(!state.model||settings.skinSelection==='none')return null;
+    const sources=state.data?.sources||[];if(!sources.length||sources.some(s=>s.model_group?.kind!=='avatar')||new Set(sources.map(s=>s.model_group?.character).filter(Boolean)).size!==1)return null;
+    const matches=profiles.filter(p=>p.key===settings.skinSelection&&p.selection_binding?.status==='source-verified'&&p.selection_binding.type===5&&p.selection_binding.value===p.group_id&&p.selection_binding.light_data_id===p.light_id&&compatible(p));
+    return matches.length===1?matches[0]:null;
+  }
   function conditionProfile(){
     const report=state.data?.lighting_conditions;
     if(!state.model||report?.status!=='ready'||report.scope!=='preview-items-only'||report.candidates?.some(c=>c.status==='unverified'))return null;
@@ -359,8 +371,11 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   function apply(){
     const report=state.data?.lighting_conditions,candidate=conditionProfile(),conditionList=$('avatar-lighting-conditions');conditionList.replaceChildren();
     $('avatar-lighting-condition-select').disabled=settings.autoProfile||!candidate;
-    const profileSelect=$('avatar-lighting-profile');profileSelect.disabled=settings.autoProfile||!!pending;profileSelect.value=settings.autoProfile?(candidate?.key||''):settings.selected;
+    const activeProfile=selected(),profileSelect=$('avatar-lighting-profile');profileSelect.disabled=settings.autoProfile||!!pending;profileSelect.value=settings.autoProfile?(activeProfile?.key||''):settings.selected;
+    skinSelect.disabled=!settings.autoProfile||!!pending;skinSelect.value=settings.skinSelection;
+    $('avatar-skin-light-status').textContent=!settings.autoProfile?'수동 비교 중 · 지정한 스킨 선택 상태는 보존합니다.':settings.skinSelection==='unknown'?'게임 선택값 미지정 · 착용 조건 추정 사용':settings.skinSelection==='none'?'선택 없음 (0) · 착용 조건 추정을 적용하지 않습니다.':activeProfile?`지정한 스킨 선택 우선 · ${activeProfile.label}`:'지정한 스킨 선택 보류 · 현재 캐릭터와 원본 조명 연결을 확인하세요. 다른 조명으로 대체하지 않습니다.';
     autoStatus.textContent=!settings.autoProfile?'수동 조명 선택 · 자동 선택을 끄면 마지막 수동 선택으로 돌아갑니다.':candidate?`착용 조건 자동 선택 · ${candidate.label} · 효과 켜짐 설정 유지 · 게임 스킨 선택·우선순위 미포함`:`자동 선택 보류 · ${!state.model?'아바타를 선택하세요.':pending?'조명 목록 확인 중':report?.status==='ambiguous'?'후보가 여러 개여서 우선순위를 확정할 수 없습니다.':report?.status==='ready'?'해당 캐릭터의 조명 정의를 하나로 확인할 수 없습니다.':report?.reason||'착용 조건을 충족하는 조명이 없습니다.'} · 마지막 수동 선택은 보존합니다.`;
+    if(settings.autoProfile&&settings.skinSelection!=='unknown')autoStatus.textContent=settings.skinSelection==='none'?'원본 선택 상태 지정 · 스킨 조명 적용 안 함 · 효과 켜짐 설정 유지':activeProfile?`원본 선택 상태 지정 · ${activeProfile.label} · 착용 개수 추정보다 우선 · 효과 켜짐 설정 유지`:'원본 선택 상태 지정 · 적용 보류 · 마지막 수동 선택 보존';
     const statuses={ready:'선택 장비 개수 충족',incomplete:'필요 개수 미달',unverified:'추가 확인 필요'};
     for(const row of report?.candidates||[]){const names=profiles.filter(p=>p.group_id===row.target_group).map(p=>p.label);conditionList.append(element('p',`${names.join(' / ')||'조명 '+row.target_group} · ${row.matched_count} / ${row.required_count}개 · ${statuses[row.status]||row.status} · 조건 #${row.condition_id}${row.eye_count?' · 눈동자 1개 포함':''}${row.eye_alias_ambiguous?' · 눈동자 아이템 별칭의 세트 소속이 달라 확인 보류':''}`));}
     const additionalList=$('avatar-lighting-condition-items');additionalList.replaceChildren();
@@ -438,6 +453,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     $('avatar-lighting-status').textContent='원본 조명 목록을 불러오고 있습니다…';$('avatar-lighting-profile').disabled=true;
     pending=Promise.resolve().then(async()=>{try{
       const result=await api('/api/model-lighting');profiles=result.profiles||[];const select=$('avatar-lighting-profile');select.replaceChildren();const none=element('option','조명 선택');none.value='';select.append(none);for(const p of profiles){const option=element('option',p.label);option.value=p.key;select.append(option);}select.value=settings.selected;
+      skinSelect.replaceChildren();for(const [value,label] of [['unknown','미지정 · 착용 조건으로 추정'],['none','선택 없음 (0) · 스킨 조명 적용 안 함'],...profiles.filter(p=>p.selection_binding?.status==='source-verified'&&p.selection_binding.type===5).map(p=>[p.key,p.label])]){const option=element('option',label);option.value=value;skinSelect.append(option);}
       gradePresets=(Array.isArray(result.color_grading_presets)?result.color_grading_presets:[]).filter(p=>p.scope==='color-grading-only'&&typeof p.key==='string'&&typeof p.label==='string'&&[p.rgb,p.bcs].every(v=>Array.isArray(v)&&v.length===3&&v.every(Number.isFinite)));
       presetSelect.replaceChildren();const choose=element('option','원본 프리셋 선택');choose.value='';presetSelect.append(choose);for(const p of gradePresets){const option=element('option',p.label);option.value=p.key;presetSelect.append(option);}
       $('avatar-grade-preset-status').textContent=result.color_grading_unavailable?'프리셋을 사용할 수 없습니다: '+result.color_grading_unavailable:gradePresets.length?`원본 프리셋 ${gradePresets.length}개 · 선택 후 수치 적용 · 다른 그래픽 효과는 포함하지 않습니다.`:'원본 색상 프리셋이 없습니다. 직접 입력 비교는 계속 사용할 수 있습니다.';
