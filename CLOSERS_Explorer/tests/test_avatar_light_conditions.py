@@ -107,3 +107,13 @@ class AvatarLightConditionsTests(unittest.TestCase):
         candidates=[r for r in report['candidates'] if r['target_group']==211]
         self.assertTrue(candidates)
         self.assertEqual({r['matched_count'] for r in candidates},{8})
+        extras={r['item_id']:r for r in report['additional_items']}
+        self.assertEqual(set(extras),{1499000164,1799000161})
+        self.assertEqual(extras[1499000164]['part'],'ACC_BODY_WING')
+        self.assertEqual(extras[1799000161]['part'],'ACC_RING_RIGHT')
+        for selected,count,status in [([1499000164],9,'incomplete'),([1499000164,1799000161],10,'ready'),([],8,'incomplete')]:
+            changed=models.scene(ids,items=keys,condition_items=selected)
+            self.assertEqual(changed['lighting_conditions']['status'],status)
+            self.assertEqual({r['matched_count'] for r in changed['lighting_conditions']['candidates'] if r['target_group']==211},{count})
+            self.assertEqual(scene['meshes'],changed['meshes'])
+        with self.assertRaises(ValueError):models.scene(ids,items=keys,condition_items=[1317000161])  # ordinary hair is not additional gear

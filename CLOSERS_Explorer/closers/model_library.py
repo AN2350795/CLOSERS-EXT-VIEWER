@@ -166,7 +166,7 @@ class Models:
                 items[component_id]=key
         return entry_ids,items
 
-    def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None,items=None):
+    def scene(self,entry_ids,skeleton_id=None,eye_key=None,eye_face=None,eye_texture=None,items=None,condition_items=None):
         if not 1<=len(entry_ids)<=16 or len(set(entry_ids))!=len(entry_ids):
             raise ValueError('X 모델은 서로 다른 항목 1~16개를 선택해 주세요.')
         with self.operation():
@@ -386,9 +386,9 @@ class Models:
                 if source.get('item_set'):
                     source['model_group'].update(set_name=source['item_set'],set_key=source['model_group']['character']+'|'+source['item_set'])
             from .avatar_light_conditions import diagnose
-            scene['lighting_conditions'] = diagnose(self.eyes.data, sources)
+            scene['lighting_conditions'] = diagnose(self.eyes.data, sources,dict(eye,face_id=eye_face) if eye else None,condition_items,self.catalog)
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
-                         eye_avatar=dict(key=eye['key'],label=eye['label'],character=eye['character'],face_id=eye_face,texture_id=eye_texture,geometry=eye['geometry']) if eye else None,
+                         eye_avatar=dict(key=eye['key'],label=eye['label'],character=eye['character'],face_id=eye_face,texture_id=eye_texture,geometry=eye['geometry'],basic=eye['basic'],item_id=eye.get('item_id'),item_ids=eye.get('item_ids',[])) if eye else None,
                          equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))
             return scene
 

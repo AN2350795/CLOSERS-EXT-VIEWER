@@ -55,15 +55,19 @@ def read_rules(data):
     return rules
 
 
-def evaluate(rules, sources):
+def evaluate(rules, sources, eye=None, additional=()):
     """Count items once, even when one appearance contains several meshes."""
     characters = {s.get('model_group', {}).get('character') for s in sources}
     characters.discard(''); characters.discard(None)
     if len(characters) != 1 or any(s.get('model_group', {}).get('kind') != 'avatar' for s in sources):
         return dict(status='unavailable', candidates=[], reason='같은 캐릭터의 아바타를 선택하세요.')
     character = next(iter(characters))
+    if eye and eye.get('character')!=character:
+        return dict(status='unavailable',candidates=[],reason='눈동자와 아바타의 캐릭터가 다릅니다.')
     items = {}; slots = {}; unknown = False
-    for source in sources:
+    for source in [*sources,*additional]:
+        if eye and not eye.get('basic') and source.get('entry_id')==eye.get('face_id') and 'entry_id' in source:
+            continue  # The resolved eye below owns this face/geometry selection.
         item = source.get('item_id')
         if not item or not source.get('appearance_key'):
             # The ordinary face is not an equipped costume item.
@@ -77,31 +81,63 @@ def evaluate(rules, sources):
             unknown = True
         else:
             slots.setdefault(part, set()).add(item)
+    eye_ids=set(eye.get('item_ids') or [eye.get('item_id')])-{None} if eye and not eye.get('basic') else set()
+    eye_conflict=False
+    if eye_ids:
+        eye_part='ACC_RING_RIGHT' if eye.get('geometry') else 'EYES'
+        eye_conflict=bool(slots.get(eye_part,set())-eye_ids)
+        if eye_conflict:unknown=True
     conflict = any(len(ids) > 1 for ids in slots.values()) or ('ONE_PIECE' in slots and any(p in slots for p in ('UPBODY', 'LOWBODY')))
     candidates = []
     for rule in rules:
         if character not in rule['characters']:
             continue
         matched = sorted(set(items).intersection(rule['item_ids']))
-        if not matched:
+        eye_matches=eye_ids.intersection(rule['item_ids'])
+        ambiguous_eye=bool(eye_matches and eye_matches!=eye_ids)
+        eye_count=int(bool(eye_matches) and not ambiguous_eye and not eye_matches.intersection(matched))
+        if not matched and not eye_matches:
             continue
-        ready = len(matched) >= rule['required_count'] and not (unknown or conflict or rule['extra_condition'])
+        count=len(matched)+eye_count
+        ready = count >= rule['required_count'] and not (unknown or conflict or rule['extra_condition'] or ambiguous_eye)
         candidates.append(dict(condition_id=rule['condition_id'], target_group=rule['target_group'],
-                               required_count=rule['required_count'], matched_count=len(matched), item_ids=matched,
-                               status='ready' if ready else 'unverified' if unknown or conflict or rule['extra_condition'] else 'incomplete',
+                               required_count=rule['required_count'], matched_count=count, item_ids=matched,
+                               eye_count=eye_count,eye_alias_ambiguous=ambiguous_eye,
+                               status='ready' if ready else 'unverified' if unknown or conflict or rule['extra_condition'] or ambiguous_eye else 'incomplete',
                                row_index=rule['row_index'], content_version=rule['content_version'], sources=SOURCES))
     targets = {r['target_group'] for r in candidates if r['status'] == 'ready'}
     return dict(status='ambiguous' if len(targets) > 1 else 'ready' if targets else 'unverified' if unknown or conflict or any(r['status']=='unverified' for r in candidates) else 'incomplete',
                 candidates=candidates, target_group=next(iter(targets)) if len(targets) == 1 else None,
-                reason='동일 부위의 중복 착용을 해소하세요.' if conflict else '아이템을 지정하지 않은 모델이 있어 조건 확인을 보류합니다.' if unknown else '',
+                reason='선택한 눈동자 장비와 추가 장비의 착용 부위가 겹칩니다.' if eye_conflict else '동일 부위의 중복 착용을 해소하세요.' if conflict else '아이템을 지정하지 않은 모델이 있어 조건 확인을 보류합니다.' if unknown else '',
                 scope='preview-items-only', limitations=['selected_skin_not_bound', 'runtime_priority_not_bound', 'content_version_not_evaluated'])
 
 
-def diagnose(data, sources):
+def diagnose(data, sources, eye=None, selected_items=None, catalog=None):
+    if selected_items is None:selected_items=[]
+    if not isinstance(selected_items,list) or len(selected_items)>16 or any(type(i) is not int or i<=0 for i in selected_items) or len(set(selected_items))!=len(selected_items):
+        raise ValueError('추가 장비 선택 정보가 잘못되었습니다.')
     if not sources or any(s.get('model_group', {}).get('kind') != 'avatar' for s in sources):
-        return evaluate([], sources)
+        if selected_items:raise ValueError('추가 장비는 같은 캐릭터의 아바타와 함께 선택하세요.')
+        return evaluate([], sources,eye)
     try:
         rules = data.cached(('avatar-light-conditions', 1), lambda: read_rules(data), persistent=True)
-        return evaluate(rules, sources)
+        initial=evaluate(rules,sources,eye)
+        if not initial['candidates'] and not selected_items:
+            initial.update(selected_items=[],additional_items=[])
+            return initial
+        available=[]
+        if catalog and rules:
+            from .avatar_condition_items import options
+            available=options(data,catalog,rules)
     except ValueError as exc:
+        if selected_items:raise ValueError('추가 장비의 원본 정의를 확인할 수 없습니다: '+str(exc)) from exc
         return dict(status='unavailable', candidates=[], reason=str(exc))
+    characters={s.get('model_group',{}).get('character') for s in sources}-{None,''}
+    available=[v for v in available if len(characters)==1 and v['character'] in characters]
+    by_id={v['item_id']:v for v in available}
+    if any(i not in by_id for i in selected_items):raise ValueError('현재 캐릭터의 추가 장비 정의와 선택 정보가 다릅니다.')
+    additional=[dict(item_id=i,appearance_key='condition:'+str(i),item_part=by_id[i]['part']) for i in selected_items]
+    report=evaluate(rules,sources,eye,additional)
+    relevant={i for r in rules if any(c['condition_id']==r['condition_id'] for c in report['candidates']) for i in r['item_ids']}
+    report.update(selected_items=selected_items,additional_items=[v for v in available if v['item_id'] in relevant or v['item_id'] in selected_items])
+    return report

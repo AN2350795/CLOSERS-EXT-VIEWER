@@ -48,6 +48,13 @@ class AvatarLightingTests(unittest.TestCase):
                 self.assertEqual(error.exception.code,403)
                 with urlopen(Request(base+'/api/model-lighting',headers={'X-Explorer-Token':token})) as response:
                     report=json.load(response);self.assertEqual(report['profiles'],[]);self.assertEqual(report['color_grading_presets'],[])
+                with self.assertRaises(HTTPError) as error:urlopen(base+'/api/model-lighting-conditions?entries=1')
+                self.assertEqual(error.exception.code,403)
+                from unittest.mock import patch
+                with patch('closers.model_library.Models.scene',return_value={'lighting_conditions':{'selected_items':[12],'status':'incomplete'}}) as scene:
+                    with urlopen(Request(base+'/api/model-lighting-conditions?entries=1&condition_items=%5B12%5D',headers={'X-Explorer-Token':token})) as response:
+                        self.assertEqual(json.load(response),{'selected_items':[12],'status':'incomplete'})
+                    self.assertEqual(scene.call_args.args,([1],None,None,None,None,{},[12]))
                 with urlopen(base+'/model-lighting.js') as response:self.assertIn(b'installAvatarLighting',response.read())
                 with urlopen(base+'/model-color-grading.js') as response:self.assertIn(b'colorGradingFragment',response.read())
             finally:server.shutdown();server.server_close();thread.join()

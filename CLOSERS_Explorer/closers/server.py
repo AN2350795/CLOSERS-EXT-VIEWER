@@ -346,13 +346,13 @@ def create_server(catalog, port=0):
                     self.respond(models.effect_resource(int(query['entry'])))
                 elif url.path == '/api/model-spine-atlas':
                     self.respond(models.spine_atlas(int(query['entry'])))
-                elif url.path == '/api/model-scene':
+                elif url.path in ('/api/model-scene','/api/model-lighting-conditions'):
                     started=time.perf_counter()
                     ids = [int(v) for v in query.get('entries','').split(',') if v]
                     result=models.scene(ids,int(query['skeleton']) if query.get('skeleton') else None,
                                               query.get('eye'),int(query['eye_face']) if query.get('eye_face') else None,
-                                              int(query['eye_texture']) if query.get('eye_texture') else None,json.loads(query.get('items','{}')))
-                    self.respond(result,preparation=time.perf_counter()-started)
+                                              int(query['eye_texture']) if query.get('eye_texture') else None,json.loads(query.get('items','{}')),json.loads(query.get('condition_items','[]')))
+                    self.respond(result['lighting_conditions'] if url.path=='/api/model-lighting-conditions' else result,preparation=time.perf_counter()-started)
                 elif url.path == '/api/model-eyes':
                     self.respond(models.eyes.browse(query))
                 elif url.path == '/api/model-lighting':

@@ -4,7 +4,8 @@ try{
   localStorage.removeItem('closers-avatar-lighting-v2');
   const state={model:{materials:[],meshes:[]},data:{sources:[{model_group:{kind:'avatar',character:'REAPER'}}]}};
   const profile={key:'CVN_COSTUME_UNIQUE_NETHERWORLD:211',group_id:211,label:'황천의 사자',characters:['REAPER'],color:[.3,.3,.3,1],direction:[-30,10,-100],intensity:1.025,near_intensity:1.025};
-  const ui=setupAvatarLighting({state,api:async()=>({profiles:[profile],color_grading_presets:[]}),element:(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;},getEmissionEnabled:()=>false});
+  let failCondition=false;
+  const ui=setupAvatarLighting({state,api:async()=>({profiles:[profile],color_grading_presets:[]}),element:(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;},getEmissionEnabled:()=>false,setConditionItems:async ids=>{await new Promise(r=>setTimeout(r,10));if(failCondition)throw Error('source rejected');const old=state.data.lighting_conditions;state.data.lighting_conditions={...report(ids.length===2?'ready':'incomplete',8+ids.length),selected_items:ids,additional_items:old.additional_items};}});
   const report=(status,count=10)=>({status,scope:'preview-items-only',target_group:211,candidates:[{status:status==='ready'?'ready':'incomplete',target_group:211,condition_id:211,matched_count:count,required_count:10}]});
   state.data.lighting_conditions=report('ready');ui.refresh();
   check($('avatar-lighting-condition-select').disabled,'selection enabled before profiles loaded');
@@ -21,6 +22,15 @@ try{
   state.data.lighting_conditions=report('ambiguous');ui.refresh();check($('avatar-lighting-condition-select').disabled&&$('avatar-lighting-condition-status').textContent.includes('여러'),'ambiguous conditions chose a light');
   state.data.lighting_conditions=report('unverified');ui.refresh();check($('avatar-lighting-condition-select').disabled,'unverified conditions chose a light');
   state.data.lighting_conditions=report('ready');state.data.sources[0].model_group.character='CASTER';ui.refresh();check($('avatar-lighting-condition-select').disabled,'wrong character accepted');
-  state.data.sources[0].model_group.character='REAPER';state.model=null;ui.refresh();check($('avatar-lighting-condition-select').disabled,'cleared scene retained candidate');
+  state.data.sources[0].model_group.character='REAPER';
+  const model=state.model;state.data.lighting_conditions={...report('incomplete',8),selected_items:[],additional_items:[{item_id:12,label:'램프',part_label:'등·날개 액세서리'},{item_id:13,label:'권위',part_label:'오른손 반지'}]};ui.refresh();
+  const gear=id=>document.querySelector(`#avatar-lighting-condition-items input[data-item-id="${id}"]`),settle=async()=>{for(let i=0;i<50&&gear(12).disabled;i++)await new Promise(r=>setTimeout(r,10));};
+  gear(12).click();check(gear(12).disabled&&gear(13).disabled,'parallel gear changes not blocked');await settle();
+  check(gear(12).checked&&!gear(13).checked&&$('avatar-lighting-conditions').textContent.includes('9 / 10'),'first additional item not applied');
+  gear(13).click();await settle();check(!$('avatar-lighting-condition-select').disabled&&$('avatar-lighting-conditions').textContent.includes('10 / 10'),'full equipment not eligible');
+  check(state.model===model&&!$('avatar-toon-enabled').checked,'gear changed model or enabled effects');
+  failCondition=true;gear(12).click();await settle();check(gear(12).checked&&$('avatar-lighting-condition-item-status').textContent.includes('source rejected'),'rejected selection was not restored');
+  failCondition=false;gear(12).click();await settle();check($('avatar-lighting-condition-select').disabled&&!gear(12).checked,'gear removal did not invalidate condition');
+  state.model=null;ui.refresh();check($('avatar-lighting-condition-select').disabled,'cleared scene retained candidate');
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(Object.assign(document.createElement('pre'),{textContent:e.stack}));}

@@ -25,7 +25,7 @@ $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
 let renderer,scene,camera,boneHelper,stage,emissionRenderer;
 const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onLoadingChange:value=>{state.extrasLoading=value;updatePlaybackControls();updateSequenceControls();},onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
-const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked});
+const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked,setConditionItems:updateConditionItems});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
 function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
@@ -38,7 +38,7 @@ function status(text,notice=false){
 function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);lighting.refresh();}
 async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
 function updatePlaybackControls(){const blocked=state.busy||state.extrasLoading;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=blocked||!state.clip;$('animation-loop').disabled=blocked||!state.clip||!!state.sequence;$('viewport').setAttribute('aria-busy',String(!!blocked));}
-function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
+function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input,#avatar-lighting-condition-items input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
 async function operation(fn,replace=false){if(state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}
 function stop(){state.playing=false;extras.pauseAudio();$('play-animation').textContent='재생';$('play-animation').setAttribute('aria-pressed','false');}
 function updateMotionName(){
@@ -195,9 +195,18 @@ async function applyEye(item,face,texture,baseFace){
   const ids=remaining.map(s=>s.entry_id);
   if(item.geometry&&!remaining.some(s=>s.model_group.part==='FACE')){if(!baseFace)throw Error('함께 표시할 기본 얼굴의 출처를 선택하세요.');ids.push(baseFace);}
   ids.push(face);
-  await loadModel(ids,state.skeleton,{key:item.key,face_id:face,texture_id:texture});
+  await loadModel(ids,state.skeleton,{key:item.key,face_id:face,texture_id:texture},undefined,state.data?.lighting_conditions?.selected_items||[]);
 }
-async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntries((state.data?.sources||[]).filter(s=>ids.includes(s.entry_id)&&s.appearance_key).map(s=>[s.entry_id,s.appearance_key]))){
+async function updateConditionItems(ids){
+  if(state.busy||!state.model)throw Error('현재 작업이 끝난 뒤 장비를 선택하세요.');
+  const generation=state.generation,parameters=new URLSearchParams(location.search);parameters.set('condition_items',JSON.stringify(ids));
+  const report=await api('/api/model-lighting-conditions?'+parameters);
+  if(generation!==state.generation)throw Error('모델이 변경되었습니다. 현재 장비를 다시 확인하세요.');
+  state.data.lighting_conditions=report;
+  if(ids.length)parameters.set('condition_items',JSON.stringify(report.selected_items||[]));else parameters.delete('condition_items');
+  history.replaceState(null,'','?'+parameters);
+}
+async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntries((state.data?.sources||[]).filter(s=>ids.includes(s.entry_id)&&s.appearance_key).map(s=>[s.entry_id,s.appearance_key])),conditionItems=ids.every(id=>state.ids.includes(id))?state.data?.lighting_conditions?.selected_items||[]:[]){
   cancelSequence();stop();
   const generation=++state.generation,started=performance.now();animationVersion++;clipVersion++;
   modelController?.abort();modelController=new AbortController();
@@ -205,6 +214,7 @@ async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntrie
   const current=()=>state.generation===generation;
   if(eye&&!ids.includes(eye.face_id))eye=null;
   const parameters=new URLSearchParams({entries:ids.join(',')});if(Object.keys(items).length)parameters.set('items',JSON.stringify(items));if(skeleton)parameters.set('skeleton',skeleton);if(eye){parameters.set('eye',eye.key);parameters.set('eye_face',eye.face_id);if(eye.texture_id)parameters.set('eye_texture',eye.texture_id);}
+  if(conditionItems.length)parameters.set('condition_items',JSON.stringify(conditionItems));
   $('model-status').classList.add('is-loading');$('viewport').setAttribute('aria-busy','true');
   try{
   status(`모델 여는 중… · ${ids.length}개 파일의 데이터를 불러오고 있습니다.`);
@@ -277,4 +287,4 @@ $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()
 document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{viewerDisposed=true;state.generation++;modelController?.abort();renderer?.setAnimationLoop(null);disposeModel();extras.dispose();stage?.dispose();textureCache.clear();emissionRenderer?.dispose();renderer?.dispose();});
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.
 window.modelViewer={get view(){return {target:target.toArray(),...orbit};},state,loadModel:(...args)=>operation(()=>loadModel(...args),true),chooseClip:index=>operation(()=>chooseClip(index)),textureCache,extras,THREE};
-try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{});});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
+try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{},JSON.parse(query.get('condition_items')||'[]'));});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}
