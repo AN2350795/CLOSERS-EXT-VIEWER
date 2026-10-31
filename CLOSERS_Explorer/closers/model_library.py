@@ -385,6 +385,8 @@ class Models:
                 if source.get('item_part'):source['model_group']['part']=source['item_part']
                 if source.get('item_set'):
                     source['model_group'].update(set_name=source['item_set'],set_key=source['model_group']['character']+'|'+source['item_set'])
+            from .avatar_light_conditions import diagnose
+            scene['lighting_conditions'] = diagnose(self.eyes.data, sources)
             scene.update(sources=sources,skeleton_source=skeleton_source,animation=animation,motion=motion,
                          eye_avatar=dict(key=eye['key'],label=eye['label'],character=eye['character'],face_id=eye_face,texture_id=eye_texture,geometry=eye['geometry']) if eye else None,
                          equipment_visibility=dict(available=bool(self.catalog.game_names.frame_patterns or self.catalog.game_names.part_overrides),hidden=hidden,deferred=deferred))

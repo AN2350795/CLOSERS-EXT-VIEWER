@@ -316,6 +316,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');settings.toon=saved?.toon===true;settings.faceSdf=saved?.faceSdf===true;settings.glow=saved?.glow===true;settings.toonPower=Number.isFinite(saved?.toonPower)?Math.max(0,Math.min(2,saved.toonPower)):1;if(settings.toon){settings.enabled=false;$('avatar-lighting-enabled').checked=false;}}catch{}
   const toonField=element('fieldset');toonField.innerHTML='<legend>원본 툰 음영 (근사)</legend><label><input id="avatar-toon-enabled" type="checkbox"> 원본 툰 음영 켜기</label><div id="avatar-toon-profile"></div><label>음영 밝기<input id="avatar-toon-power" type="range" min="0" max="2" step="0.05"><output id="avatar-toon-power-value"></output></label><p class="muted">모델과 아이템 타입에 연결된 툰 텍스처를 사용합니다. 의상 조명을 선택하세요. 얼굴 전용 음영·착용 조건·게임 후처리는 포함하지 않습니다. 끄면 기존 재질로 돌아갑니다.</p><p id="avatar-toon-status" role="status"></p><details><summary>툰 연결 · 적용 상태</summary><div id="avatar-toon-items"></div></details>';
   const legacy=$('avatar-lighting-enabled').closest('details');legacy.before(toonField);legacy.querySelector('summary').textContent='기존 색상 수치 비교 (실험)';$('avatar-toon-profile').append($('avatar-lighting-profile').closest('label'));
+  const conditionBox=element('div');conditionBox.innerHTML='<p id="avatar-lighting-condition-status" role="status"></p><button id="avatar-lighting-condition-select" type="button" class="secondary">착용 조건에 맞는 조명 선택</button><details><summary>조명 착용 조건 확인</summary><div id="avatar-lighting-conditions"></div><p>현재 표시한 아이템 번호로 개수를 확인합니다. 게임의 보유 아이템·선택한 스킨·효과 우선순위·콘텐츠 활성 상태는 포함하지 않습니다. 조건 충족 후보가 하나일 때 조명을 선택할 수 있으며, 효과 켜짐 설정은 유지합니다.</p></details>';
+  $('avatar-toon-profile').after(conditionBox);
   $('avatar-toon-enabled').checked=settings.toon;$('avatar-toon-power').value=settings.toonPower;$('avatar-toon-power-value').value=settings.toonPower.toFixed(2);
   settings.nearMix=0;
   try{const value=JSON.parse(localStorage.getItem(storageKey)||'{}')?.nearMix;if(Number.isFinite(value))settings.nearMix=Math.max(0,Math.min(1,value));}catch{}
@@ -343,7 +345,19 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled}){
   $('avatar-emission-bloom').checked=settings.bloom;$('avatar-emission-strength').value=settings.bloomStrength;$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);$('avatar-lighting-influence').value=settings.influence;
   function save(){settings.excluded=[...excluded];try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}}
   function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
+  function conditionProfile(){
+    const report=state.data?.lighting_conditions;
+    if(!state.model||report?.status!=='ready'||report.scope!=='preview-items-only')return null;
+    const matches=profiles.filter(p=>p.group_id===report.target_group&&p.key!=='set:'+p.group_id&&(!p.characters?.length||(state.data.sources||[]).every(s=>!s.model_group?.character||p.characters.includes(s.model_group.character))));
+    return matches.length===1?matches[0]:null;
+  }
+  $('avatar-lighting-condition-select').onclick=()=>{const p=conditionProfile();if(!p)return;settings.selected=p.key;$('avatar-lighting-profile').value=p.key;save();apply();};
   function apply(){
+    const report=state.data?.lighting_conditions,candidate=conditionProfile(),conditionList=$('avatar-lighting-conditions');conditionList.replaceChildren();
+    $('avatar-lighting-condition-select').disabled=!candidate;
+    const statuses={ready:'표시 아이템 개수 충족',incomplete:'필요 개수 미달',unverified:'추가 확인 필요'};
+    for(const row of report?.candidates||[]){const names=profiles.filter(p=>p.group_id===row.target_group).map(p=>p.label);conditionList.append(element('p',`${names.join(' / ')||'조명 '+row.target_group} · ${row.matched_count} / ${row.required_count}개 · ${statuses[row.status]||row.status} · 조건 #${row.condition_id}`));}
+    $('avatar-lighting-condition-status').textContent=!state.model?'아바타를 선택하면 조명 착용 조건을 확인합니다.':candidate?`${candidate.label} · 표시 아이템 개수 충족 · 버튼으로 조명 선택`:report?.status==='ambiguous'?'여러 조명의 개수 조건을 충족합니다. 사용할 조명을 직접 선택하세요.':report?.reason||((report?.candidates||[]).length?'조명 착용 조건 확인 중 · 필요 개수와 아이템 출처를 확인하세요.':'현재 표시 아이템에 연결된 조명 착용 조건이 없습니다. 조명을 직접 선택할 수 있습니다.');
     matcap.setLightProfile(selected());
     const gradeAvailable=!!state.model&&settings.sourceColor,gradePaused=matcap.isMaskInspection()||settings.solo;
     gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
