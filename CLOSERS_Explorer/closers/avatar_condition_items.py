@@ -69,4 +69,4 @@ def read_options(data, catalog, rules):
 
 
 def options(data,catalog,rules):
-    return data.cached(('avatar-condition-items',1),lambda:read_options(data,catalog,rules),persistent=True)
+    return data.cached(('avatar-condition-items',2),lambda:read_options(data,catalog,rules),persistent=True)

@@ -1,7 +1,7 @@
 """Diagnose source light conditions against explicitly selected preview items.
 
 This does not infer the player's selected skin, ownership or runtime priority.
-NEW_CONVERT column 10 is MCT_LIGHT (4), not the similarly named skin ID.
+NEW_CONVERT column 12 registers SCT_LIGHT (5). MCT_LIGHT is a different enum.
 """
 import re
 
@@ -23,7 +23,7 @@ def read_rules(data):
         raise ValueError('조명 착용 조건 테이블 형식을 지원하지 않습니다.')
     rules = []
     for index, row in enumerate(ntf.rows(body)):
-        if not row[10]:
+        if not row[12]:
             continue  # A listed light is not necessarily activated by this skin.
         if not re.fullmatch(r'\s*\d+(?:\s*,\s*\d+)*\s*,?\s*', row[4]):
             raise ValueError('조명 조건의 아이템 그룹을 해석할 수 없습니다.')
@@ -32,7 +32,7 @@ def read_rules(data):
         characters = sorted(set(re.findall(r'GUST_USER_([A-Z]+)', row[2])))
         if not characters:
             raise ValueError('조명 조건의 캐릭터를 확인할 수 없습니다.')
-        rules.append(dict(condition_id=row[1], row_index=index, target_group=row[10],
+        rules.append(dict(condition_id=row[1], row_index=index, target_group=row[12],
                           required_count=row[5], groups=sorted({int(v) for v in re.findall(r'\d+', row[4])}),
                           characters=characters, extra_condition=row[3], content_version=row[0]))
     if not rules:
@@ -120,7 +120,7 @@ def diagnose(data, sources, eye=None, selected_items=None, catalog=None):
         if selected_items:raise ValueError('추가 장비는 같은 캐릭터의 아바타와 함께 선택하세요.')
         return evaluate([], sources,eye)
     try:
-        rules = data.cached(('avatar-light-conditions', 1), lambda: read_rules(data), persistent=True)
+        rules = data.cached(('avatar-light-conditions', 2), lambda: read_rules(data), persistent=True)
         initial=evaluate(rules,sources,eye)
         if not initial['candidates'] and not selected_items:
             initial.update(selected_items=[],additional_items=[])

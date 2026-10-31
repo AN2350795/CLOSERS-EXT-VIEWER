@@ -7,7 +7,7 @@ from test_game_names import table
 
 
 def row(condition=211, target=211, count=2, groups='211,', extra=''):
-    return ('CVN_TEST', condition, '"GUST_USER_REAPER",', extra, groups, count, 0, 0, 0, 0, target, 0, 0, 0, '')
+    return ('CVN_TEST', condition, '"GUST_USER_REAPER",', extra, groups, count, 0, 0, 0, 0, 0, 0, target, 0, '')
 
 
 def source(item, part, appearance=None):
@@ -30,6 +30,12 @@ class AvatarLightConditionsTests(unittest.TestCase):
         self.assertEqual(report['status'], 'ready'); self.assertEqual(report['target_group'], 211)
         self.assertEqual(len(report['candidates']), 2)  # Same target is not ambiguity.
         self.assertEqual(report['scope'], 'preview-items-only')
+
+    def test_skin_light_column_is_independent_from_motion_light_and_skill_effect(self):
+        skill=list(row(1343,0));skill[10]=1343
+        light=list(row(1351,1343,7));light[10]=0
+        rules=read_rules(Data(self.fixture([skill,light])))
+        self.assertEqual([(r['condition_id'],r['target_group'],r['required_count']) for r in rules],[(1351,1343,7)])
 
     def test_meshes_and_type_aliases_do_not_inflate_item_count(self):
         rules=read_rules(Data(self.fixture()))
@@ -75,7 +81,7 @@ class AvatarLightConditionsTests(unittest.TestCase):
         # A scene with no avatars must not try to read these invalid tables.
         self.assertEqual(diagnose(None,[dict(model_group=dict(kind='npc'))])['status'],'unavailable')
 
-    def test_local_source_netherworld_requires_ten_and_common_lights_are_unbound(self):
+    def test_local_source_netherworld_and_common_skin_light_connections(self):
         from closers.catalog import Catalog
         from closers.loading import LoadingData
         workspace=Path(__file__).resolve().parents[2]/'results'
@@ -85,7 +91,9 @@ class AvatarLightConditionsTests(unittest.TestCase):
         self.assertEqual({r['condition_id'] for r in nether},{211,212})
         self.assertEqual({r['required_count'] for r in nether},{10})
         self.assertTrue(all(len(r['item_ids'])==136 for r in nether))
-        self.assertFalse(any(r['target_group'] in (1343,1411) for r in rules))
+        self.assertEqual(len(rules),6)
+        self.assertEqual({(r['condition_id'],r['target_group'],r['required_count']) for r in rules},
+                         {(201,201,10),(203,203,10),(211,211,10),(212,211,10),(1351,1343,7),(1411,1411,7)})
         # Exercise the real scene endpoint path, including shared accessory
         # composition and server-supplied item identity, without rendering.
         from closers.model_items import AvatarItems
