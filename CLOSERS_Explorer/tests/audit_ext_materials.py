@@ -34,6 +34,7 @@ def inspect_ext(preview,images):
     report=dict(source_texture=preview['source_texture'],texture=preview['texture'],
                 image=preview['image'],rendering_enabled=False,
                 r_binding='regional-global-specular',b_binding='unresolved-runtime-factor',
+                b_verified_scope='world-object-template',b_avatar_binding='unresolved',
                 b_formula='surface * EXT.b * CBPerMaterial[18].x')
     selected=preview['image'].get('selected')
     if selected is None:
