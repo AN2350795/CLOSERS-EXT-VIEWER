@@ -68,6 +68,16 @@ EVIDENCE = (
     ('preset_sharpen_enable',0x140092b8d,'f3 0f 10 44 24 40 0f 2f c6 0f 28 b4 24 f0 00 00 00 76 04 41 0f b6 fc 48 8b 4d 90 40 88 bb c4 00 00 00'),
     ('world_screen_list',0x141678c86,'48 8d 15 ab 98 f5 00 48 8b cf e8 6b f1 19 00'),
     ('world_screen_texture',0x141673c03,'4c 8b c1 48 8d 15 23 59 ec 00 45 33 c9 48 8b cf 0f 29 74 24 30 e8 83 52 1a 00'),
+    ('sharpen_activation_and_radius',0x1406d4f39,'80 bf c4 00 00 00 01 75 38 e8 c9 98 e9 00 80 bf c4 00 00 00 01 75 09 83 88 90 02 00 00 40 eb 07 83 a0 90 02 00 00 bf 80 bf c4 00 00 00 01 75 11 e8 a2 98 e9 00 8b 8f c8 00 00 00 89 88 18 03 00 00'),
+    ('sharpen_constant_update',0x141674c62,'e8 a9 9b ef ff 8b 88 90 02 00 00 c1 e9 06 f6 c1 01 74 15 e8 96 9b ef ff f3 0f 10 80 18 03 00 00 f3 0f 11 05 66 1b 94 01'),
+    ('sharpen_technique_10',0x14157238c,'e8 5f a2 08 00 48 8b c8 ba 0a 00 00 00 e8 72 a8 08 00'),
+    ('sharpen_shader_registration',0x141606b36,'b9 04 00 00 00 4c 8d 05 f6 ed fb 00 48 8d 15 cf ed fb 00 48 8b cb'),
+    ('sharpen_shader_name',0x1425c5918,'CW_Edge.PS.cso\0'.encode('utf-16-le').hex()),
+    ('sharpen_before_later_passes',0x141576094,'40 88 6c 24 28 89 44 24 20 e8 4e c2 ff ff 48 8b f7 49 8b fd'),
+    ('postprocess_target_format28',0x1415743b1,'c7 85 90 01 00 00 1c 00 00 00'),
+    ('sharpen_target_assignment',0x141575354,'48 8d 95 60 01 00 00 48 8b c8 e8 4d 5e 09 00 90 49 89 84 24 10 03 00 00'),
+    ('sharpen_input_dimensions',0x141572528,'8b 46 30 66 0f ef c9 f3 48 0f 2a c8 8b 46 34 66 0f ef c0 f3 48 0f 2a c0 f3 0f 11 0d 58 42 a4 01 f3 0f 11 05 54 42 a4 01 f3 0f 11 35 50 42 a4 01 f3 0f 11 35 4c 42 a4 01'),
+    ('sharpen_bit6_dispatch',0x141576051,'8b 8b 90 02 00 00 49 8b fd 8b c1 c1 e8 06 a8 01 74 45'),
 )
 
 
@@ -108,6 +118,10 @@ def audit(executable):
         preset_scope=dict(selection='graphics-option',category=5,color_columns=list(range(7,13)),
                           other_columns=dict(bloom=5,depth_of_field=6,sharpen=13),other_effects_applied=False,
                           world_screen_effect='texture/blend/color inputs; not a verified color-preset selector'),
+        sharpen=dict(activation_bit=6,technique=10,shader='CW_Edge.PS.cso',coefficient='sampling radius in target pixels',
+                     runtime_offset='0x318',constant='CBPerPostProcess[30].x',target_format=28,
+                     order='Glow -> Edge -> later optional passes -> ColorGrading',
+                     source_formula='2*center - sum(eight neighbors)/8; all RGBA channels',viewer_alpha='preserved'),
         unresolved=['Runtime scene activation, preset overrides and effective color-grading values',
                     'Remaining postprocess shader mapping and final presentation path',
                     'In-game image parity'],
