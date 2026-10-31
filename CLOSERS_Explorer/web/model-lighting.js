@@ -318,6 +318,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const legacy=$('avatar-lighting-enabled').closest('details');legacy.before(toonField);legacy.querySelector('summary').textContent='기존 색상 수치 비교 (실험)';$('avatar-toon-profile').append($('avatar-lighting-profile').closest('label'));
   const conditionBox=element('div');conditionBox.innerHTML='<p id="avatar-lighting-condition-status" role="status"></p><button id="avatar-lighting-condition-select" type="button" class="secondary">착용 조건에 맞는 조명 선택</button><details><summary>조명 착용 조건 확인</summary><div id="avatar-lighting-conditions"></div><fieldset><legend>추가 장비 착용 지정</legend><p>아래 장비는 조명 조건 계산에만 포함하며 외형·전용 효과는 표시하지 않습니다. 실제 착용할 장비를 직접 선택하세요.</p><div id="avatar-lighting-condition-items"></div><p id="avatar-lighting-condition-item-status" role="status"></p></fieldset><p>현재 선택한 장비 번호로 개수를 확인합니다. 게임의 보유 아이템·선택한 스킨·효과 우선순위·콘텐츠 활성 상태는 포함하지 않습니다. 조건 충족 후보가 하나일 때 조명을 선택할 수 있으며, 효과 켜짐 설정은 유지합니다.</p></details>';
   $('avatar-toon-profile').after(conditionBox);
+  settings.autoProfile=false;try{settings.autoProfile=JSON.parse(localStorage.getItem(storageKey)||'{}')?.autoProfile===true;}catch{}
+  const autoLabel=element('label'),autoToggle=element('input');autoToggle.id='avatar-lighting-auto';autoToggle.type='checkbox';autoToggle.checked=settings.autoProfile;autoLabel.append(autoToggle,document.createTextNode(' 착용 조건으로 조명 자동 선택 · 뷰어'));
+  const autoStatus=element('p');autoStatus.id='avatar-lighting-auto-status';autoStatus.setAttribute('role','status');conditionBox.prepend(autoLabel,autoStatus);
+  autoToggle.onchange=()=>{settings.autoProfile=autoToggle.checked;save();apply();if(settings.autoProfile&&!profiles.length)void load();};
   $('avatar-toon-enabled').checked=settings.toon;$('avatar-toon-power').value=settings.toonPower;$('avatar-toon-power-value').value=settings.toonPower.toFixed(2);
   settings.nearMix=0;
   try{const value=JSON.parse(localStorage.getItem(storageKey)||'{}')?.nearMix;if(Number.isFinite(value))settings.nearMix=Math.max(0,Math.min(1,value));}catch{}
@@ -344,17 +348,19 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const master=$('material-preview').closest('label');master.lastChild.textContent=' 발광 켜기';$('avatar-emission-master').append(master,$('material-preview-note'));$('material-preview-note').textContent='발광만 보기에서 실제 발광 부위를 확인하고, 빛 번짐을 따로 비교할 수 있습니다.';
   $('avatar-emission-bloom').checked=settings.bloom;$('avatar-emission-strength').value=settings.bloomStrength;$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);$('avatar-lighting-influence').value=settings.influence;
   function save(){settings.excluded=[...excluded];try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}}
-  function selected(){const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
+  function selected(){if(settings.autoProfile)return conditionProfile();const p=profiles.find(p=>p.key===settings.selected);const characters=new Set((state.data?.sources||[]).map(s=>s.model_group?.character).filter(Boolean));return p&&(!characters.size||!p.characters?.length||[...characters].every(c=>p.characters.includes(c)))?p:null;}
   function conditionProfile(){
     const report=state.data?.lighting_conditions;
-    if(!state.model||report?.status!=='ready'||report.scope!=='preview-items-only')return null;
+    if(!state.model||report?.status!=='ready'||report.scope!=='preview-items-only'||report.candidates?.some(c=>c.status==='unverified'))return null;
     const matches=profiles.filter(p=>p.group_id===report.target_group&&p.key!=='set:'+p.group_id&&(!p.characters?.length||(state.data.sources||[]).every(s=>!s.model_group?.character||p.characters.includes(s.model_group.character))));
     return matches.length===1?matches[0]:null;
   }
   $('avatar-lighting-condition-select').onclick=()=>{const p=conditionProfile();if(!p)return;settings.selected=p.key;$('avatar-lighting-profile').value=p.key;save();apply();};
   function apply(){
     const report=state.data?.lighting_conditions,candidate=conditionProfile(),conditionList=$('avatar-lighting-conditions');conditionList.replaceChildren();
-    $('avatar-lighting-condition-select').disabled=!candidate;
+    $('avatar-lighting-condition-select').disabled=settings.autoProfile||!candidate;
+    const profileSelect=$('avatar-lighting-profile');profileSelect.disabled=settings.autoProfile||!!pending;profileSelect.value=settings.autoProfile?(candidate?.key||''):settings.selected;
+    autoStatus.textContent=!settings.autoProfile?'수동 조명 선택 · 자동 선택을 끄면 마지막 수동 선택으로 돌아갑니다.':candidate?`착용 조건 자동 선택 · ${candidate.label} · 효과 켜짐 설정 유지 · 게임 스킨 선택·우선순위 미포함`:`자동 선택 보류 · ${!state.model?'아바타를 선택하세요.':pending?'조명 목록 확인 중':report?.status==='ambiguous'?'후보가 여러 개여서 우선순위를 확정할 수 없습니다.':report?.status==='ready'?'해당 캐릭터의 조명 정의를 하나로 확인할 수 없습니다.':report?.reason||'착용 조건을 충족하는 조명이 없습니다.'} · 마지막 수동 선택은 보존합니다.`;
     const statuses={ready:'선택 장비 개수 충족',incomplete:'필요 개수 미달',unverified:'추가 확인 필요'};
     for(const row of report?.candidates||[]){const names=profiles.filter(p=>p.group_id===row.target_group).map(p=>p.label);conditionList.append(element('p',`${names.join(' / ')||'조명 '+row.target_group} · ${row.matched_count} / ${row.required_count}개 · ${statuses[row.status]||row.status} · 조건 #${row.condition_id}${row.eye_count?' · 눈동자 1개 포함':''}${row.eye_alias_ambiguous?' · 눈동자 아이템 별칭의 세트 소속이 달라 확인 보류':''}`));}
     const additionalList=$('avatar-lighting-condition-items');additionalList.replaceChildren();
@@ -404,7 +410,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     for(const m of state.model?.materials||[])setAvatarLight(m,profile,settings.influence);
     for(const group of groups){for(const m of group.materials)setMaterialPreview(m,getEmissionEnabled()&&!excluded.has(group.key));if(group.status)group.status.textContent=!getEmissionEnabled()?'전체 발광 꺼짐':excluded.has(group.key)?'이 발광 꺼짐':!group.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)?'발광 텍스처 확인 필요':!group.visible?'현재 숨겨진 메시의 발광':'발광 켜짐 · 발광만 보기에서 확인';}
     if(state.model){const visible=groups.filter(g=>g.visible&&getEmissionEnabled()&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)).length;$('avatar-lighting-summary').textContent=`발광 연결 ${groups.length}개 · 현재 표시 ${visible}개${getEmissionEnabled()?'':' · 전체 발광 꺼짐'}${settings.solo?' · 발광만 보기':''}`;}
-    const profileInfo=profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
+    const profileInfo=settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
     if(profiles.length)$('avatar-lighting-status').textContent=settings.enabled?(profile?(state.model?'원본 조명 수치를 비교 중입니다.':'선택한 조명 유지 · 아바타를 선택하면 비교합니다.'):'현재 캐릭터에 적용할 조명을 선택하세요.'):'조명 수치 비교 꺼짐';
   }
   function refresh(){
@@ -436,7 +442,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
       presetSelect.replaceChildren();const choose=element('option','원본 프리셋 선택');choose.value='';presetSelect.append(choose);for(const p of gradePresets){const option=element('option',p.label);option.value=p.key;presetSelect.append(option);}
       $('avatar-grade-preset-status').textContent=result.color_grading_unavailable?'프리셋을 사용할 수 없습니다: '+result.color_grading_unavailable:gradePresets.length?`원본 프리셋 ${gradePresets.length}개 · 선택 후 수치 적용 · 다른 그래픽 효과는 포함하지 않습니다.`:'원본 색상 프리셋이 없습니다. 직접 입력 비교는 계속 사용할 수 있습니다.';
       apply();if(!profiles.length)$('avatar-lighting-status').textContent='원본 조명 정의가 없습니다. 원본 CMF 목록과 CW.EXE 설정을 확인하세요.';
-    }catch(e){profiles=[];gradePresets=[];apply();$('avatar-lighting-status').textContent='조명 목록을 불러오지 못했습니다: '+e.message;$('avatar-grade-preset-status').textContent='프리셋 목록을 불러오지 못했습니다. 직접 입력값을 유지합니다.';}finally{$('avatar-lighting-profile').disabled=false;pending=null;}});return pending;
+    }catch(e){profiles=[];gradePresets=[];apply();$('avatar-lighting-status').textContent='조명 목록을 불러오지 못했습니다: '+e.message;$('avatar-grade-preset-status').textContent='프리셋 목록을 불러오지 못했습니다. 직접 입력값을 유지합니다.';}finally{pending=null;apply();}});return pending;
   }
   $('avatar-lighting-enabled').onchange=()=>{settings.enabled=$('avatar-lighting-enabled').checked;settings.legacyExplicit=true;if(settings.enabled){settings.toon=false;$('avatar-toon-enabled').checked=false;}save();apply();};
   $('avatar-lighting-profile').onchange=()=>{settings.selected=$('avatar-lighting-profile').value;settings.enabled=settings.enabled&&!settings.toon&&!!settings.selected;$('avatar-lighting-enabled').checked=settings.enabled;save();apply();};
@@ -450,7 +456,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   sourceColorToggle.onchange=()=>{settings.sourceColor=sourceColorToggle.checked;save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
-  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||matcap.requiresLightProfile())void load();
+  button.onclick=()=>{refresh();dialog.showModal();void load();};dialog.querySelector('button').onclick=()=>dialog.close();refresh();if(settings.enabled||settings.toon||settings.autoProfile||matcap.requiresLightProfile())void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
