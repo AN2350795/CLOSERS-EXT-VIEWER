@@ -10,6 +10,35 @@ export function dofFocal(value){
 }
 export function supportsDofModel(model){return !!model?.materials?.length&&model.materials.every(m=>m.isMeshBasicMaterial&&[THREE.NormalBlending,THREE.NoBlending].includes(m.blending)&&m.depthTest&&m.depthWrite);}
 
+// Measure drawable avatar triangles on demand, without including hidden meshes,
+// unused vertices/bones or cached bind-pose boxes. This is a geometry bound;
+// texture cutouts, camera occlusion and screen clipping are not sampled here.
+export function measureDofFocus(model,camera){
+  if(!model?.root||!camera)return null;
+  model.root.updateWorldMatrix(true,false);model.root.updateMatrixWorld(true);camera.updateWorldMatrix(true,false);
+  const bounds=new THREE.Box3(),point=new THREE.Vector3();
+  for(const mesh of model.meshes||[]){
+    let visible=true,attached=false;for(let parent=mesh;parent;parent=parent.parent){if(parent===model.root)attached=true;if(!parent.visible){visible=false;break;}}
+    if(!attached||!visible||!camera.layers.test(mesh.layers))continue;
+    const geometry=mesh.geometry,position=geometry?.getAttribute('position');if(!position)continue;
+    const index=geometry.index,count=index?.count??position.count,draw=geometry.drawRange,visited=new Set();
+    const groups=Array.isArray(mesh.material)?geometry.groups:[{start:0,count,materialIndex:0}];
+    for(const group of groups){
+      const material=Array.isArray(mesh.material)?mesh.material[group.materialIndex]:mesh.material;if(!material||!material.visible)continue;
+      const start=Math.max(0,draw.start,group.start),end=Math.min(count,draw.start+draw.count,group.start+group.count);
+      for(let offset=start;offset+2<end;offset+=3)for(let j=0;j<3;j++){
+        const vertex=index?index.getX(offset+j):offset+j;if(visited.has(vertex))continue;visited.add(vertex);
+        mesh.getVertexPosition(vertex,point).applyMatrix4(mesh.matrixWorld);
+        if(Number.isFinite(point.x)&&Number.isFinite(point.y)&&Number.isFinite(point.z))bounds.expandByPoint(point);
+      }
+    }
+  }
+  if(bounds.isEmpty())return null;
+  const center=bounds.getCenter(point),position=camera.getWorldPosition(new THREE.Vector3()),forward=camera.getWorldDirection(new THREE.Vector3()),focus=center.sub(position).dot(forward);
+  const result=normalizeDof({focus,range:Math.max(bounds.getSize(new THREE.Vector3()).length()*.25,focus*.01,.01)});
+  return dofFocal(result)?{focus:result.focus,range:result.range}:null;
+}
+
 const vertexShader='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
 const disc=[[0,0],[.527837,-.085868],[-.040088,.536087],[-.670445,-.179949],[-.419418,-.616039],[.440453,-.639399],[-.757088,.349334],[.574619,.685879]];
 

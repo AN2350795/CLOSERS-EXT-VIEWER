@@ -3,7 +3,7 @@ import {buildModel} from '/model-core.js';
 import {setMaterialPreviewMap} from '/model-materials.js';
 import {createEmissionRenderer,applyAvatarColorSpace} from '/model-emission.js';
 import {createDofDepthPass} from '/model-dof-depth.js';
-import {dofFocal,supportsDofModel} from '/model-dof.js';
+import {dofFocal,supportsDofModel,measureDofFocus} from '/model-dof.js';
 const check=(v,m)=>{if(!v)throw Error(m);},same=(a,b,t=0)=>a.every((v,i)=>Math.abs(v-b[i])<=t),side=384;
 const renderer=new T.WebGLRenderer({alpha:true,antialias:true,premultipliedAlpha:false,preserveDrawingBuffer:true});renderer.setSize(side,side);renderer.setClearColor(0,0);
 const fx=createEmissionRenderer(renderer),depth=createDofDepthPass(renderer),maps=new Map(),loader=new T.TextureLoader(),gl=renderer.getContext(),errors=[];renderer.debug.onShaderError=()=>errors.push('shader');window.testCaptures=[];
@@ -26,7 +26,8 @@ try{
   grid=new T.GridHelper(extent*2,20,0x606060,0x303030);grid.position.set(center.x,box.min.y,center.z);scene.add(grid);
   for(const [view,scale,azimuth] of [['front',1.45,0],['close-side',.95,.6]]){
    const camera=new T.PerspectiveCamera(40,1,.1,100000),distance=extent*scale;camera.position.copy(center).add(new T.Vector3(Math.sin(azimuth)*distance,distance*.12,Math.cos(azimuth)*distance));camera.lookAt(center);camera.updateMatrixWorld(true);
-   const focus=center.clone().sub(camera.position).dot(camera.getWorldDirection(new T.Vector3())),sharp={enabled:true,focus,range:extent*2,strength:1},blur={enabled:true,focus:focus*.5,range:extent*.05,strength:1};
+   const measured=measureDofFocus(model,camera);check(measured?.focus>0&&measured?.range>0,'real visible costume focus unavailable');
+   const focus=measured.focus,sharp={enabled:true,focus,range:extent*2,strength:1},blur={enabled:true,focus:focus*.5,range:extent*.05,strength:1};
    for(const mode of ['off','viewer','source']){
     const options={bloom:mode!=='off',bloomMode:mode==='source'?'source':'viewer',strength:.8},prefix='dof-'+fixture.label+'-'+view+'-'+mode;
     const render=dof=>{fx.render(scene,camera,model,{...options,dof});return read();};
