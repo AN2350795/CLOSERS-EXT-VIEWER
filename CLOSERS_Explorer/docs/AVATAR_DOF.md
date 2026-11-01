@@ -86,6 +86,16 @@ GPU 검사는 독립 CPU bilinear/clamp 및 매 단계 UNORM8 계산과 강도 0
 
 ## 재검증과 결과
 
+### 실제 의상·MSAA 경계 확인
+
+로컬 게임 카탈로그에서 `ROGUE`의 트리니티 날개(`449991012`)와 `RARE_7_A` 의상 6부위(머리·상의·하의·손·발·무기)를 불러와 검사했다. 실제 기본·발광 텍스처, 투명 배경, 격자 바닥, MSAA를 사용한다. 정면·근접 측면과 번짐 꺼짐·기본 번짐·5단계 번짐의 **12개 조합**에서 넓은 초점보다 초점 밖 설정의 변화가 크고, DOF를 끄면 원래 픽셀이 정확히 복원되는지 확인한다. 모델 밖의 격자·배경·번짐과 화면 알파는 채널 오차 1까지 유지한다. 직접 MSAA 출력과 중간 타깃을 거친 출력 사이의 반올림 차이를 허용한 값이다.
+
+검사 중 번짐 없이 심도만 켰을 때 일부 발광 외곽선이 밝아지는 문제를 확인했다. 기존 경로는 half-float에 기록한 높은 발광값을 MSAA로 합친 뒤 UNORM8로 잘랐고, 일반 화면은 각 MSAA 샘플에서 먼저 자른 뒤 합쳤다. 이제 번짐을 실제로 사용하지 않는 DOF 경로는 깊이 버퍼를 갖춘 별도 UNORM8 MSAA 기본 타깃을 지연 생성해 일반 화면의 처리 순서를 유지한다. 기존 번짐 경로는 유지하고 크기 변경·해제도 처리한다.
+
+`dof_msaa_checks.js`는 카탈로그 없이 높은 RGB, 비스듬한 삼각형, 알파 구멍, 두 화면 크기로 이 문제를 검사한다. 원본 이미지와 캡처를 시각적으로도 확인했다. 초점 밖 표면의 세부가 흐려지고 바깥 격자는 유지되며 별도 파란 진단 색상은 추가하지 않는다. 확인한 두 모델 구성에 대한 뷰어 검증이며, 모든 의상이나 실제 게임 프레임과의 일치를 뜻하지 않는다.
+
+실제 의상 캡처는 `CLOSERS_TEST_CAPTURES`를 지정하면 저장한다. 로컬 카탈로그가 없으면 실제 데이터 검사는 건너뛰며 합성 MSAA 검사는 독립적으로 실행한다.
+
 ```powershell
 cd CLOSERS_Explorer
 python tests/audit_dof.py --workspace ../results --exe 'C:/Program Files (x86)/NaddicGames/Closers/CW.EXE' --output ../diagnostics/dof-source-20261101.json
@@ -93,6 +103,8 @@ python -m unittest discover -s tests -p test_dof_reference.py -v
 python -m unittest discover -s tests -p test_dof_source.py -v
 python -m unittest discover -s tests -p test_dof_depth_browser.py -v
 python -m unittest discover -s tests -p test_dof_browser.py -v
+python -m unittest discover -s tests -p test_dof_msaa_browser.py -v
+python -m unittest discover -s tests -p test_dof_source_browser.py -v
 ```
 
 DOF 근거 **29곳**과 기존 출력 경로 근거 42곳, 셰이더 5개 지문을 확인한다. 설치 원본을 다시 디스어셈블하여 조사한 명령 목록과도 대조했다. 감사 도구는 게임·Lua·원본 셰이더를 실행하거나 원본을 변경하지 않는다. GPU 검사는 뷰어에서 재구성한 셰이더만 실행한다.
@@ -113,6 +125,6 @@ DOF 근거 **29곳**과 기존 출력 경로 근거 42곳, 셰이더 5개 지문
 
 ## 다음 작업
 
-수동 심도 비교와 GPU 대조를 완료했다. 다음은 실제 아바타의 여러 의상·카메라 거리에서 품질과 경계 처리·기존 번짐 병용을 확인하는 것이다.
+수동 심도 비교와 GPU 대조, 실제 날개·의상 6부위의 두 시점·번짐 병용 검증을 완료했다. 다음은 다른 의상과 반투명 재질로 확인 범위를 넓히고 수동 초점 버튼의 가시 모델 경계 기준을 확인하는 것이다.
 
 실제 장면의 활성/덮어쓰기·모든 MRT2 기여·재질별 깊이/블렌딩과 인게임 프레임 대조는 남아 있다. 번짐의 특수 효과와 게임 상태 연결도 별도 과제다.
