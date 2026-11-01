@@ -145,9 +145,9 @@ def audit(workspace, executable, *, width=1920, height=1080):
     body = data.body(SOURCE)
     if ntf.header(body)[0] != TYPES:
         raise ValueError('Unrecognized graphic option schema.')
-    parameters = [dict(row=i, key=row[1], columns=[5, 6], values=[struct.unpack('<f', struct.pack('<I', v))[0] for v in row[5:7]])
+    parameters = [dict(row=i, row_id=row[1], runtime_key_token=row[4], runtime_key_numeric='not resolved', columns=[5, 6], values=[struct.unpack('<f', struct.pack('<I', v))[0] for v in row[5:7]])
                   for i, row in enumerate(ntf.rows(body)) if row[0] == 1]
-    if len({p['key'] for p in parameters}) != len(parameters) or not all(math.isfinite(v) for p in parameters for v in p['values']):
+    if len({p['runtime_key_token'] for p in parameters}) != len(parameters) or not all(math.isfinite(v) for p in parameters for v in p['values']):
         raise ValueError('Duplicate or non-finite original BloomParam data.')
     return dict(
         cpu=cpu, shaders=shaders,

@@ -14,7 +14,7 @@ class DofSourceTests(unittest.TestCase):
         if not (workspace / 'catalog.sqlite3').exists() or not executable.exists():
             self.skipTest('Local game source unavailable')
         report = audit_dof.audit(workspace, executable)
-        self.assertEqual(len(report['cpu']['checks']), 20)
+        self.assertEqual(len(report['cpu']['checks']), 29)
         self.assertTrue(all(v['matches'] for v in report['cpu']['checks']))
         self.assertEqual({s['name'] for s in report['shaders']}, set(audit_dof.SHADERS))
         self.assertEqual(report['activation']['bit'], 2)
@@ -22,11 +22,15 @@ class DofSourceTests(unittest.TestCase):
         self.assertIn('not hardware z-buffer', report['inputs']['depth'])
         self.assertEqual(report['shader']['sample_count'], 8)
         self.assertEqual(report['shader']['normal_alpha'], 1)
-        self.assertEqual(report['source']['rows'][0]['key'], 0)
+        self.assertEqual(report['source']['rows'][0]['row_id'], 0)
+        self.assertEqual(report['source']['rows'][0]['runtime_key_token'], 'WI_INVALID')
+        self.assertEqual(report['source']['rows'][0]['runtime_vector'], [0, 0, 6000, .5, .5, 1, 0, 0])
+        self.assertEqual(report['source']['rows'][0]['post_xyz'], [.5, 1, 0])
+        self.assertIn('rewritten', report['constants']['sample_size'])
         self.assertEqual(len(report['presets']), 7)
         self.assertEqual([p['key'] for p in report['presets'] if not p['dof']['enabled']], ['4', '6'])
         self.assertFalse(report['activation']['runtime_state_read'])
-        self.assertIn('not established', report['source']['row_to_runtime_vector'])
+        self.assertIn('not row_id', report['source']['row_to_runtime_vector'])
         for flag in ('game_executed', 'rendering_enabled', 'viewer_defaults_changed'):
             self.assertFalse(report[flag])
 

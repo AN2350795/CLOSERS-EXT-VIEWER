@@ -43,6 +43,15 @@ EVIDENCE = (
     ('dof_depth_global_constants', 0x141674be2, 'f30f1000f30f1105c25c9201f30f104804f30f110db95c9201f30f104008f30f1105b05c9201f30f10480cf30f110da75c9201'),
     ('dof_post_constants', 0x141674c15, 'f30f104010f30f11059e1b9401f30f104810f30f590d497ed300f30f110d8d1b9401f30f104018f30f1105841b9401'),
     ('blur_dof_depth_source_first_pass', 0x14157086c, '83be78020000037538488b86a00200004885c0742c85db75284c8ba8b0010000e85fbd0800488b48284885c97413448d4b044d8bc5488d15c8460401e8b3ab0800'),
+    ('dof_category2_branch', 0x1406de2a2, '83f8020f858f030000'),
+    ('dof_vector_numeric_start', 0x1406de34c, '4533ed4d8d665c488b4320498d3c04'),
+    ('dof_vector_eight_floats', 0x1406de466, '4885c974048b0789014883c10448894d9849ffc54983c4044983fd080f8ccbfeffff'),
+    ('dof_vector_key_from_context', 0x1406de488, '418bd74869d2b0000000480353204883c2584c8d4590488d4d18e84935ffff'),
+    ('dof_table_enum_key', 0x1406dd4c6, 'e845ed15014c8bc6488d150344ce01488bc8e843041601898598020000'),
+    ('dof_key_column4_read', 0x1406dd482, 'e809e14901448b4e104c8d85f0020000488d542428488bc8e841f74901'),
+    ('dof_numeric_columns5to14', 0x1406dd49f, '41bd05000000'),
+    ('dof_vector_publish', 0x1406de6f2, 'e81901e900488d98d0020000488d442450483bd874274c8b43084d8bc84d8b00488d9598000000488bcbe81fa6ffff488d542450488bcbe882adffff'),
+    ('dof_final_render_size', 0x141571e08, '418b4630660fefc9f3480f2ac8418b4634660fefc0f3480f2ac0f30f110d7649a401f30f11057249a401f30f11356e49a401f30f11356a49a401'),
 )
 
 
@@ -60,8 +69,11 @@ def audit(workspace, executable):
         values = [struct.unpack('<f', struct.pack('<I', bits))[0] for bits in row[5:15]]
         if not all(math.isfinite(v) for v in values):
             raise ValueError('Non-finite original DOF table values.')
-        rows.append(dict(row=i, key=row[1], numeric_columns=list(range(5, 15)), values=values))
-    if not rows or len({r['key'] for r in rows}) != len(rows):
+        rows.append(dict(row=i, row_id=row[1], runtime_key_token=row[4], runtime_key_numeric='not resolved',
+                         numeric_columns=list(range(5, 15)), values=values,
+                         vector_columns=list(range(5, 13)), runtime_vector=values[:8],
+                         depth_constants=values[:4], post_xyz=[values[4], 2*values[4], values[6]]))
+    if not rows or len({r['runtime_key_token'] for r in rows}) != len(rows):
         raise ValueError('Missing or duplicate original DOF parameter rows.')
     return dict(cpu=cpu, shaders=shaders,
                 activation=dict(bit=2, runtime_flag_offset='0x182', exact_enabled_value=1, technique=15,
@@ -74,9 +86,9 @@ def audit(workspace, executable):
                                post_w='debug branch; populated upload does not assign it in investigated block',
                                missing='both vectors zeroed; not an invented neutral preset',
                                lookup='current key then key 0 fallback',
-                               sample_size='CBPerPostProcess[25].xy; effective final value needs further tracing'),
+                               sample_size='CBPerPostProcess[25].xy rewritten to current DOF input target width/height immediately before final draw'),
                 source=dict(file=SOURCE, sha256=hashlib.sha256(body).hexdigest(), category=2, rows=rows,
-                            row_to_runtime_vector='full construction not established by this audit'),
+                            row_to_runtime_vector='numeric columns 5..12 copied in order; map key comes from column 4 enum conversion, not row_id'),
                 presets=[dict(key=p['key'], dof=p['other_postprocess']['depth_of_field']) for p in read_presets(data)],
                 shader=dict(sample_count=8, depth_encoding='signed near/far focus-relative value mapped by 0.5*x+0.5',
                             normal_alpha=1, debug='near green / far blue tint; diagnostic only'),
@@ -84,9 +96,9 @@ def audit(workspace, executable):
                               depth=[depth_encoding(z, [0, 1000, 6000, .5]) for z in (0, 1000, 3500, 6000)],
                               offsets=sampling_offsets(.75, [1920, 1080], [.5, 1, 1, 0])),
                 unresolved=['Live focus/activation and per-character override selection',
-                            'Full table-to-vector construction and effective final render-size constant',
+                            'Numeric resolution and live selection of column 4 runtime-key tokens',
                             'Scene-wide MRT2 writers, blending/depth and special effects',
-                            'Viewer depth encoding and alpha-preserving GPU comparison', 'In-game frame parity'],
+                            'Alpha-preserving DOF blur/composite integration', 'In-game frame parity'],
                 game_executed=False, rendering_enabled=False, viewer_defaults_changed=False)
 
 
