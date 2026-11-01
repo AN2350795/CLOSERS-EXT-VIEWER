@@ -15,7 +15,7 @@ class BloomSourceTests(unittest.TestCase):
             self.skipTest('Local game source unavailable')
         report = audit_bloom.audit(workspace, executable)
         self.assertEqual(report['cpu']['established_checks'], 42)
-        self.assertEqual(len(report['cpu']['checks']), 16)
+        self.assertEqual(len(report['cpu']['checks']), 37)
         self.assertTrue(all(c['matches'] for c in report['cpu']['checks']))
         self.assertEqual({s['name'] for s in report['shaders']}, set(audit_bloom.SHADERS))
         self.assertTrue(all(s['sources'] for s in report['shaders']))
@@ -25,6 +25,9 @@ class BloomSourceTests(unittest.TestCase):
         self.assertIn('unresolved', report['hdr_shader']['active_dispatch'])
         self.assertEqual(report['graphic_parameters']['rows'][0]['key'], 0)
         self.assertAlmostEqual(report['graphic_parameters']['rows'][0]['values'][1], 1.1)
+        self.assertEqual(report['blur_path']['reset_values'], dict(level_count=5, sigma=1, mode=0))
+        self.assertEqual(report['blur_path']['direct_glow_call_mode'], 1)
+        self.assertEqual(report['blur_path']['examples'][0]['scope'], 'diagnostic-inputs-only')
         for flag in ('game_executed', 'rendering_enabled', 'viewer_defaults_changed'):
             self.assertFalse(report[flag])
 

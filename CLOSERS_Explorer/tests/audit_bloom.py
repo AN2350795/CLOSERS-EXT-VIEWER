@@ -18,6 +18,7 @@ from closers.loading import LoadingData
 from closers.cmf import Archive
 from closers import ntf
 from closers.color_grading import SOURCE, TYPES
+from bloom_reference import blur_plan
 
 SHADERS = {
     'CW_GETBRIGHT.PS.CSO': '77c293b18e73b2dc379f6d9455b855f6a7c71afbed7d3b384c7eea0b0c0eaaa9',
@@ -46,6 +47,27 @@ EVIDENCE = (
     ('glow_global_param_lookup', 0x141674a13, '4c8d4424708bd3488bc8e82ec3efff'),
     ('glow_global_param_default_key', 0x141674a2e, '4c8d44247033d2e816c3efff'),
     ('glow_global_params_write', 0x141674a3a, 'f30f10442470f30f1105585e9201f30f104c2474f30f110d4e5e9201'),
+    ('reset_level_count_sigma_mode', 0x14157743b, 'c786700200000500000048c786740200000000803f'),
+    ('target_divisors', 0x141574695, 'c7856002000002000000c7856402000004000000c7856802000008000000c7856c02000010000000c7857002000020000000'),
+    ('resource_key2_dimensions', 0x1415747b8, '83ff027511b986010000894c2460c7442458da020000'),
+    ('horizontal_target_dimensions', 0x141574c06, '418b0c2433d28b7424608bc6f7f189858801000033d28b442458f7f189858c010000'),
+    ('vertical_target_dimensions', 0x141574e5b, '418b0c2433d28bc6f7f189858801000033d28b442458f7f189858c010000'),
+    ('sampler_linear_clamp_desc', 0x1415707d6, 'c744243403000000c744243803000000c744243c03000000c744243015000000'),
+    ('first_level_mode1_input', 0x14157082e, '4c8bb7a001000083be7802000001750b85db75074c8bb7a8010000'),
+    ('gaussian_inverse_and_normalizer', 0x1415708b0, 'f3440f1005039ae200450f28c8f3440f5ece0f28c6f30f59053b420401f30f59c6e87a8dab000f28fef30f593d97c1e300f30f59fe410f28f0f30f5ef0'),
+    ('gaussian_kernel_center', 0x1415708fd, 'f3440f1025529be300'),
+    ('target_based_sample_offsets', 0x141570910, '66410f6ed70f5bd2f3410f5cd48b4530660fefc0f3480f2ac0410f28c8f30f5ec8f30f59caf3410f114dfc8b4534660fefc0f3480f2ac0410f28c8f30f5ec8f30f59caf3410f114d00'),
+    ('gaussian_weights_and_nine_taps', 0x141570959, '410f28c1f30f59c2f3410f5cc2f30f59c0410f57c3f30f5ec7e8f990c101f30f59c6f3410f11858c000000f3410f11859000000041ffc74983c5104183ff090f8c72ffffff'),
+    ('sigma_from_runtime_field', 0x141570cff, 'f30f109d740200004c8bc7498bd6488bcde8dbf9ffff'),
+    ('progressive_vertical_input', 0x141570d15, '4d8b5e204b8b7c1d00ffc64983c5083bb570020000'),
+    ('horizontal_quad_input', 0x141570a06, '498bd6488b8e40020000e8cb11ffff'),
+    ('vertical_reads_horizontal_target', 0x141570a43, '488bbda0010000'),
+    ('vertical_quad_input', 0x141570a6d, '488bd5488b8e40020000e89412ffff'),
+    ('sqrt_positive_path', 0x142029715, 'f30f10442460f30f51c0f30f11442470'),
+    ('one_float', 0x14239a2bc, '0000803f'),
+    ('two_pi_float', 0x1425b4b08, 'db0fc940'),
+    ('two_float', 0x1423aca78, '00000040'),
+    ('four_float', 0x1423aa458, '00008040'),
 )
 
 
@@ -98,7 +120,7 @@ def cpu_evidence(executable):
     return dict(sha256=cpu['sha256'], status='verified', established_checks=len(cpu['checks']), checks=checks)
 
 
-def audit(workspace, executable):
+def audit(workspace, executable, *, width=1920, height=1080):
     cpu = cpu_evidence(executable)
     shaders = shader_sources(workspace)
     data = LoadingData(Catalog(workspace))
@@ -124,7 +146,16 @@ def audit(workspace, executable):
                         active_dispatch='unresolved; separate shader, not equivalent to ScreenQuad Glow'),
         viewer=dict(input='enabled avatar emission only, own depth occlusion', levels=1, blur='two-pass half-resolution Gaussian',
                     formula='base.rgb + blur.rgb * strength', alpha='base alpha preserved', original_glow_or_hdr=False),
-        unresolved=['Effective runtime Glow mode and level count', 'Blur target dimensions, offsets, weights and sampler states',
+        blur_path=dict(size_divisors=[2, 4, 8, 16, 32], integer_division=True,
+                       direct_glow_call_mode=1,
+                       formula='k=i-4; offset=(k/targetWidth,k/targetHeight); weight=exp(-((k/sigma)^2)/(2*sigma^2))/sqrt(float32(2*pi)*sigma^2)',
+                       normalization='none after constructing the nine weights',
+                       reset_values=dict(level_count=5, sigma=1, mode=0),
+                       mode1_first_input='source SRV +0x1a8, then previous vertical target +0x1a0',
+                       mode2_first_input='source SRV +0x1a0, then previous vertical target +0x1a0',
+                       resource_key_note='key 2 uses 390x730 dimensions; resource key and Glow mode are separate inputs',
+                       examples=[blur_plan(width, height), blur_plan(width, height, resource_key=2, mode=2)]),
+        unresolved=['Other Glow mode callers, effective level count and sigma overrides',
                     'Complete input routing including additional render target and optional effects',
                     'HDR/GetBright active dispatch and constant upload', 'In-game frame comparison'],
         game_executed=False, rendering_enabled=False, viewer_defaults_changed=False,
@@ -136,9 +167,11 @@ if __name__ == '__main__':
     parser.add_argument('--workspace', required=True, type=Path)
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--width', type=int, default=1920)
+    parser.add_argument('--height', type=int, default=1080)
     args = parser.parse_args()
     try:
-        report = audit(args.workspace, args.exe)
+        report = audit(args.workspace, args.exe, width=args.width, height=args.height)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     except (ValueError, OSError, struct.error) as exc:
         parser.exit(1, str(exc) + '\n')
