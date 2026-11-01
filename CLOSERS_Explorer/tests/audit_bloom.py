@@ -89,11 +89,11 @@ EVIDENCE = (
 )
 
 
-def shader_sources(workspace):
+def shader_sources(workspace, shaders=None):
     catalog = Catalog(workspace)
     data = LoadingData(catalog)
     result = []
-    for name, expected in SHADERS.items():
+    for name, expected in (SHADERS if shaders is None else shaders).items():
         rows = data.rows(name)
         if not rows:
             raise ValueError('Original shader unavailable: ' + name)
@@ -111,7 +111,7 @@ def shader_sources(workspace):
     return result
 
 
-def cpu_evidence(executable):
+def cpu_evidence(executable, evidence=None):
     cpu = audit_cpu(executable)
     if cpu['status'] != 'verified':
         raise ValueError('Established output path evidence mismatch.')
@@ -125,7 +125,7 @@ def cpu_evidence(executable):
     sections = [struct.unpack_from('<IIII', body, section_start + i * 40 + 8)
                 for i in range(struct.unpack_from('<H', body, pe + 6)[0])]
     checks = []
-    for name, address, expected_hex in EVIDENCE:
+    for name, address, expected_hex in (EVIDENCE if evidence is None else evidence):
         expected = bytes.fromhex(expected_hex)
         relative = address - image_base
         section = next((s for s in sections if s[1] <= relative and relative + len(expected) <= s[1] + min(s[0], s[2])), None)
