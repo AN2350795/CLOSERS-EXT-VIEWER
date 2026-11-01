@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three/three.module.min.js';
 import {normalizeColorGrading} from './model-color-grading.js';
 import {normalizeSharpen} from './model-sharpen.js';
+import {normalizeDof,dofFocal,supportsDofModel} from './model-dof.js';
 import {setupLightingMenu} from './model-lighting-menu.js';
 import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from './model-materials.js';
 
@@ -377,6 +378,20 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   sharpRadius.onchange=()=>{const value=sharpRadius.valueAsNumber;if(Number.isFinite(value)&&value>=0&&value<=5)settings.sharpen.radius=value;sharpRadius.value=settings.sharpen.radius;save();apply();};
   sharpPreset.onclick=()=>{const value=sourceSharpen();if(value===null)return;settings.sharpen.radius=value;sharpRadius.value=value;save();apply();};
   $('avatar-sharpen-reset').onclick=()=>{settings.sharpen.radius=0;sharpRadius.value=0;save();apply();};
+  settings.dof=normalizeDof(null);settings.dofVersion=1;let focusCamera=null;
+  try{const saved=JSON.parse(localStorage.getItem(storageKey)||'{}');if(saved?.dofVersion===1)settings.dof=normalizeDof(saved.dof);}catch{}
+  const dofDetails=element('details');dofDetails.innerHTML='<summary>심도 비교 · 초점 밖 흐림</summary><label><input id="avatar-dof-enabled" type="checkbox"> 심도 비교 켜기</label><button id="avatar-dof-focus-model" type="button" class="secondary">현재 모델에 초점 맞추기</button><label>초점 거리<input id="avatar-dof-focus" type="number" min="0.001" max="100000000" step="any"></label><label>초점 범위<input id="avatar-dof-range" type="number" min="0.001" max="100000000" step="any"></label><label>효과 강도<input id="avatar-dof-strength" type="range" min="0" max="1" step="0.05"></label><p id="avatar-dof-status" role="status"></p><p>모델 단위로 초점을 직접 지정하는 비교 기능입니다. 초점 밖의 아바타 표면을 흐리며 바닥과 배경의 빈 공간은 유지합니다. 초점 버튼은 거리와 범위만 입력합니다. 게임의 자동 초점·장면 설정은 연결하지 않습니다.</p>';
+  sharpDetails.after(dofDetails);
+  const dofToggle=$('avatar-dof-enabled'),dofFocus=$('avatar-dof-focus'),dofRange=$('avatar-dof-range'),dofStrength=$('avatar-dof-strength'),dofFocusButton=$('avatar-dof-focus-model');
+  function showDof(){dofToggle.checked=settings.dof.enabled;dofFocus.value=settings.dof.focus??'';dofRange.value=settings.dof.range??'';dofStrength.value=settings.dof.strength;}
+  showDof();dofToggle.onchange=()=>{settings.dof.enabled=dofToggle.checked;save();apply();};
+  for(const [input,key] of [[dofFocus,'focus'],[dofRange,'range'],[dofStrength,'strength']])input.onchange=()=>{settings.dof=normalizeDof({...settings.dof,[key]:input.valueAsNumber});showDof();save();apply();};
+  dofFocusButton.onclick=()=>{
+    if(!focusCamera||!state.model?.root)return;
+    const bounds=new THREE.Box3().setFromObject(state.model.root);if(bounds.isEmpty())return;
+    const center=bounds.getCenter(new THREE.Vector3()),position=focusCamera.getWorldPosition(new THREE.Vector3()),forward=focusCamera.getWorldDirection(new THREE.Vector3()),focus=center.sub(position).dot(forward);
+    settings.dof=normalizeDof({...settings.dof,focus,range:Math.max(bounds.getSize(new THREE.Vector3()).length()*.25,focus*.01,.01)});showDof();save();apply();
+  };
   const presetDetails=element('details');presetDetails.append(element('summary','선택 프리셋의 원본 구성 · 적용 범위'));const presetComposition=element('p'),presetSource=element('p');presetComposition.id='avatar-grade-preset-composition';presetSource.id='avatar-grade-preset-source';presetDetails.append(presetComposition,presetSource);presetRow.append(presetDetails);
   function describeGradePreset(){
     const preset=gradePresets.find(p=>p.key===presetSelect.value);
@@ -450,6 +465,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   for(const key of ['near','far'])$('avatar-camera-mix-mark-'+key).onclick=()=>{if(distanceSample.model===state.model&&distanceSample.character===distanceCharacter())setDistancePoint(key,distanceSample.distance);};
   cameraToggle.onchange=()=>{settings.cameraMix.enabled=cameraToggle.checked;save();apply();};
   function updateCamera(camera){
+    focusCamera=camera;
     const character=distanceCharacter();let distance=null;
     if(character&&state.model?.root?.getWorldPosition&&camera?.getWorldPosition){camera.getWorldPosition(cameraWorld);state.model.root.getWorldPosition(avatarWorld);const value=cameraWorld.distanceTo(avatarWorld);if(Number.isFinite(value))distance=value;}
     const changedModel=distanceSample.model!==state.model||distanceSample.character!==character;
@@ -538,11 +554,15 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     gradeToggle.disabled=!gradeAvailable;for(const input of gradeInputs)input.disabled=!gradeAvailable||!settings.colorGrading.enabled;$('avatar-grade-reset').disabled=!gradeAvailable;
     presetSelect.disabled=!gradeAvailable||!gradePresets.length;$('avatar-grade-preset-apply').disabled=!gradeAvailable||!gradePresets.some(p=>p.key===presetSelect.value);$('avatar-grade-manual-restore').disabled=!gradeAvailable||!settings.colorGradingManual;
     describeGradePreset();
+    const dofAvailable=gradeAvailable&&supportsDofModel(state.model);
+    dofToggle.disabled=!dofAvailable;dofFocusButton.disabled=!dofAvailable;
+    for(const input of [dofFocus,dofRange,dofStrength])input.disabled=!dofAvailable;
+    $('avatar-dof-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!dofAvailable?'현재 재질에서는 심도 비교를 지원하지 않습니다.':!settings.dof.enabled?'심도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 심도 잠시 보류':!dofFocal(settings.dof)?'초점 거리와 범위를 입력하거나 현재 모델에 초점을 맞추세요.':settings.dof.strength===0?'효과 강도 0 · 심도 효과 없음':'수동 심도 비교 중 · 투명도 유지 · 게임 초점 상태 미연결';
     sharpToggle.disabled=!gradeAvailable;sharpRadius.disabled=!gradeAvailable;sharpPreset.disabled=!gradeAvailable||sourceSharpen()===null;$('avatar-sharpen-reset').disabled=!gradeAvailable;
     $('avatar-sharpen-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.sharpen.enabled?'선명도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 선명도 잠시 보류':settings.sharpen.radius===0?'샘플 거리 0 · 선명도 효과 없음':`선명도 비교 중 · 주변 샘플 거리 ${settings.sharpen.radius}픽셀 · 알파 유지 · 게임 실시간 상태 미연결`;
-    $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 게임 프리셋·다른 후처리 미포함';
+    $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 수동 입력값 적용';
     sourceColorToggle.disabled=!state.model;
-    $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?`원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · ${settings.colorGrading.enabled&&!gradePaused?'색상 보정 비교 · 다른 후처리 미포함':'게임 후처리 미포함'}`:'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
+    $('avatar-source-color-status').textContent=!state.model?'아바타를 선택하면 색상 계산을 비교합니다.':settings.sourceColor?`원본 형식 비교 중 · 입력값으로 합성 · 추가 출력 색 변환 없음 · 게임 실시간 상태 미연결`:'기존 뷰어 색상 계산 · 원본 최종 화면과의 일치는 미검증입니다.';
     const secondMaterials=(state.model?.materials||[]).filter(m=>m.userData.secondPreview),secondReady=secondMaterials.filter(m=>m.userData.avatarLighting.avatarSecondMap.value);
     secondToggle.disabled=!secondMaterials.length;secondU.disabled=secondV.disabled=!settings.second||!secondReady.length;
     for(const m of secondMaterials)setAvatarSecond(m,settings.second,settings.secondOffset);
@@ -639,5 +659,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
   $('avatar-emission-mode').onchange=()=>{settings.bloomMode=$('avatar-emission-mode').value==='source'?'source':'viewer';save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
-  return {refresh,updateCamera,getRenderOptions:()=>({bloom:matcap.isMaskInspection()?false:settings.bloom,bloomMode:settings.bloomMode,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null,sharpen:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.sharpen:null})};
+  return {refresh,updateCamera,getRenderOptions:()=>({dof:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.dof:null,bloom:matcap.isMaskInspection()?false:settings.bloom,bloomMode:settings.bloomMode,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null,sharpen:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.sharpen:null})};
 }

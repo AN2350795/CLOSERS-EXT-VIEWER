@@ -2,6 +2,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import {colorGradingFragment,normalizeColorGrading} from './model-color-grading.js';
 import {sharpenFragment,normalizeSharpen} from './model-sharpen.js';
 import {createSourceBloom} from './model-bloom.js';
+import {createDofPipeline,normalizeDof,dofFocal,supportsDofModel} from './model-dof.js';
 
 // Keep input sampling and output transfer paired for the explicit raw-UNORM
 // comparison. Reused GPU-cache entries must follow the active frame's domain.
@@ -22,7 +23,7 @@ export function createEmissionRenderer(renderer){
   const base=target(true),mask=target(true),horizontal=target(false),vertical=target(false),size=new THREE.Vector2();
   const combined=new THREE.WebGLRenderTarget(1,1,{type:THREE.UnsignedByteType,depthBuffer:false,stencilBuffer:false});
   const sharpened=combined.clone();
-  let sourceBloom=null;
+  let sourceBloom=null,dofPipeline=null;
   base.samples=mask.samples=renderer.getContext().getContextAttributes()?.antialias?Math.min(4,renderer.capabilities.maxSamples):0;
   const camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),scene=new THREE.Scene(),geometry=new THREE.PlaneGeometry(2,2),quad=new THREE.Mesh(geometry);scene.add(quad);quad.frustumCulled=false;
   const vertexShader='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
@@ -42,27 +43,30 @@ gl_FragColor=avatarGrade(gl_FragColor);
 #include <colorspace_fragment>
 }`});
   quad.material.dispose();quad.material=blur;
-  function render(world,view,model,{bloom=true,bloomMode='viewer',solo=false,strength=.8,exposure=1,colorGrading=null,sharpen=null}={}){
+  function render(world,view,model,{bloom=true,bloomMode='viewer',solo=false,strength=.8,exposure=1,colorGrading=null,sharpen=null,dof=null}={}){
     const materials=model?.materials||[],ready=materials.some(m=>m.userData.materialPreview?.uniforms.avatarEmissiveMap.value);
     const active=materials.some(m=>m.userData.materialPreview?.uniforms.avatarMaterialEnabled.value>0);
     const grade=normalizeColorGrading(colorGrading),grading=!!model&&!solo&&grade.enabled;
     const sharpenSettings=normalizeSharpen(sharpen),sharpening=!!model&&!solo&&sharpenSettings.enabled&&sharpenSettings.radius>0;
-    if(!model||(!grading&&!sharpening&&!solo&&(!ready||!bloom||!active))){renderer.render(world,view);return;}
+    const focusSettings=normalizeDof(dof),focusRequested=!solo&&focusSettings.enabled&&focusSettings.strength>0&&!!dofFocal(focusSettings)&&supportsDofModel(model);
+    if(!model||(!grading&&!sharpening&&!focusRequested&&!solo&&(!ready||!bloom||!active))){renderer.render(world,view);return;}
     renderer.getDrawingBufferSize(size);if(size.x<1||size.y<1)return;if(base.width!==size.x||base.height!==size.y){base.setSize(size.x,size.y);mask.setSize(size.x,size.y);horizontal.setSize(Math.max(1,Math.ceil(size.x/2)),Math.max(1,Math.ceil(size.y/2)));vertical.setSize(horizontal.width,horizontal.height);}
     const source=bloomMode==='source'&&bloom&&!solo&&ready&&active&&size.x>=32&&size.y>=32?(sourceBloom??=createSourceBloom(base.samples)):null;
     if(source)source.resize(size.x,size.y);
+    const focusing=focusRequested&&size.x>=4&&size.y>=4;
     const frameBase=source?.base||base,frameMask=source?.mask||mask,suppressed=[];
     const output=renderer.getRenderTarget(),background=world.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
     function finish(){
-      if(sharpening||(source&&grading)){
+      if(sharpening||focusing||(source&&grading)){
         if(combined.width!==size.x||combined.height!==size.y){combined.setSize(size.x,size.y);sharpened.setSize(size.x,size.y);}
-        // Source Glow -> Edge -> ColorGrading; both Edge input/output are UNORM8.
+        // Source Glow -> Edge -> DOF -> ColorGrading, with UNORM8 intermediates.
         composite.uniforms.avatarGradeEnabled.value=false;renderer.setRenderTarget(combined);renderer.render(scene,camera);
         if(sharpening){
           quad.material=sharp;sharp.uniforms.image.value=combined.texture;sharp.uniforms.imageSize.value.copy(size);sharp.uniforms.radius.value=sharpenSettings.radius;
           renderer.setRenderTarget(sharpened);renderer.render(scene,camera);
         }
-        const finished=sharpening?sharpened.texture:combined.texture;
+        let finished=sharpening?sharpened.texture:combined.texture;
+        if(focusing){dofPipeline??=createDofPipeline(renderer);finished=dofPipeline.render(world,view,model,finished,focusSettings,size.x,size.y,(material,target)=>{quad.material=material;renderer.setRenderTarget(target);renderer.render(scene,camera);});}
         quad.material=composite;composite.uniforms.sourceMode.value=false;composite.uniforms.baseImage.value=finished;composite.uniforms.glowImage.value=finished;composite.uniforms.strength.value=0;composite.uniforms.exposure.value=1;composite.uniforms.avatarGradeEnabled.value=grading;
       }
       renderer.setRenderTarget(output);renderer.render(scene,camera);
@@ -92,5 +96,5 @@ gl_FragColor=avatarGrade(gl_FragColor);
       quad.material=composite;composite.uniforms.baseImage.value=solo?frameMask.texture:frameBase.texture;composite.uniforms.glowImage.value=source?source.layers[0]:vertical.texture;composite.uniforms.strength.value=bloom?strength:0;composite.uniforms.exposure.value=solo?exposure:1;finish();
     }finally{for(const [u,value] of suppressed)u.value=value;for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=0;world.background=background;for(const child of hidden)child.visible=true;renderer.setClearColor(clear,alpha);renderer.setRenderTarget(output);renderer.autoClear=autoClear;}
   }
-  return {render,dispose(){sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
+  return {render,dispose(){dofPipeline?.dispose();sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
 }
