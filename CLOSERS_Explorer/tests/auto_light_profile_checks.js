@@ -20,7 +20,7 @@ try{
  check(select.disabled&&select.value===nether.key&&u.avatarToonEnabled.value===1&&Math.abs(u.avatarToonColor.value.r-.3)<1e-6,'auto target did not reach toon uniforms');
  check(u.avatarToonIntensity.value===1.025,'auto target source intensity not used');
  let saved=JSON.parse(localStorage.getItem('closers-avatar-lighting-v2'));check(saved.selected===common.key,'auto overwrote manual backup');
- check($('avatar-toon-enabled').checked&&!$('avatar-lighting-enabled').checked&&!$('avatar-second-enabled').checked,'auto changed effect switches');
+ check($('avatar-toon-enabled').checked&&!$('avatar-lighting-enabled')&&!$('avatar-second-enabled').checked,'auto changed effect switches');
  for(const status of ['incomplete','ambiguous','unverified','unavailable']){state.data.lighting_conditions=condition(status);ui.refresh();check(u.avatarToonEnabled.value===0&&select.value===''&&$('avatar-lighting-auto-status').textContent.includes('보류'),'invalid candidate retained automatic lighting: '+status);}
  state.data.lighting_conditions=condition('ready');state.data.lighting_conditions.candidates.push({status:'unverified',target_group:1411});ui.refresh();check(u.avatarToonEnabled.value===0,'unverified competing condition ignored');
  state.data.lighting_conditions=condition('ready',1411);ui.refresh();check(select.value===common.key&&u.avatarToonColor.value.r===1,'equipment change did not switch auto light');

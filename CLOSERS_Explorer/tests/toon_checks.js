@@ -51,14 +51,14 @@ try{
     if(path.startsWith('/api/model-scene')){const data=fixture(),info={name:'CTT_BASIC0.BMP',candidates:missing?[]:[{id:71,archive:'fixture',ordinal:0}],selected:missing?null:71};data.meshes[0].materials[0].image={...info,name:'BASE.PNG'};data.meshes[0].materials[0].toon_preview.image=info;return Response.json({...data,sources:[{name:'fixture.X',entry_id:1}],skeleton_source:{name:'fixture.X',entry_id:1},motion:{candidates:[]},animation:{candidates:[]},warnings:[]});}
     return originalFetch(url,options);
   };
-  localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify({enabled:true,selected:'source'}));
+  localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify({enabled:true,legacyExplicit:true,selected:'source'}));
   await import('/model.js');await modelViewer.loadModel([1]);
   const $=id=>document.getElementById(id),toggle=$('avatar-toon-enabled'),legacy=$('avatar-lighting-enabled'),select=$('avatar-lighting-profile');check(!toggle.checked&&!toggle.disabled,'toon must be opt-in');
-  check(!legacy.checked&&modelViewer.state.model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'old automatic legacy setting restored without explicit choice');
+  check(!legacy&&modelViewer.state.model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'retired legacy setting or control restored');
   $('open-avatar-lighting').click();for(let i=0;i<100&&!select.querySelector('option[value="source"]');i++)await new Promise(r=>setTimeout(r,5));
-  select.value='source';select.dispatchEvent(new Event('change'));check(!legacy.checked&&modelViewer.state.model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'choosing a toon light silently enabled hidden legacy tint');toggle.click();
+  select.value='source';select.dispatchEvent(new Event('change'));check(!legacy&&modelViewer.state.model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'choosing a toon light silently enabled hidden legacy tint');toggle.click();
   let uniforms=()=>modelViewer.state.model.materials[0].userData.avatarLighting;
-  check(!legacy.checked&&uniforms().avatarLightEnabled.value===0&&uniforms().avatarToonEnabled.value===1,'toon and old comparison were double applied');
+  check(!legacy&&uniforms().avatarLightEnabled.value===0&&uniforms().avatarToonEnabled.value===1,'toon and old comparison were double applied');
   const texture=modelViewer.state.textures.get('toon:71');check(texture!==modelViewer.state.textures.get('base:71')&&texture.wrapS===T.ClampToEdgeWrapping&&texture.wrapT===T.ClampToEdgeWrapping,'toon role uses mutable base map or wrong wrapping');
   {
     const data=fixture();data.meshes[0].materials[0].material_preview={kind:'emissive',status:'approximate',color:[1,.5,.25,1],strength:.2};const model=buildModel(data),scene=new T.Scene();model.root.scale.z=1;scene.add(model.root);const m=model.materials[0],index=(48*96+24)*4,off=capture(scene);
@@ -68,8 +68,8 @@ try{
     setAvatarToon(m,false,null);setMaterialPreviewMap(m,null);check(capture(scene).every((v,i)=>v===off[i]),'loaded toon OFF did not restore base');check(texture.colorSpace===T.NoColorSpace&&modelViewer.state.textures.get('base:71').colorSpace===T.SRGBColorSpace,'toon/base color roles not isolated');model.dispose();
   }
   $('avatar-toon-power').value='1.25';$('avatar-toon-power').dispatchEvent(new Event('input'));await modelViewer.loadModel([1]);check(toggle.checked&&uniforms().avatarToonEnabled.value===1&&uniforms().avatarToonPower.value===1.25,'toon preference lost on model reload');
-  legacy.click();check(!toggle.checked&&uniforms().avatarToonEnabled.value===0&&uniforms().avatarLightEnabled.value===1,'old comparison did not disable toon');check(JSON.parse(localStorage.getItem('closers-avatar-lighting-v2')).legacyExplicit===true,'explicit legacy preference not recorded');
-  select.value='';select.dispatchEvent(new Event('change'));check(!legacy.checked&&uniforms().avatarLightEnabled.value===0,'clearing light did not disable legacy');select.value='source';select.dispatchEvent(new Event('change'));check(!legacy.checked&&uniforms().avatarLightEnabled.value===0,'reselecting light reenabled legacy');toggle.click();
+  check(!('legacyExplicit' in JSON.parse(localStorage.getItem('closers-avatar-lighting-v2'))),'retired preference still saved');
+  select.value='';select.dispatchEvent(new Event('change'));check(uniforms().avatarLightEnabled.value===0&&uniforms().avatarToonEnabled.value===0,'clearing light did not disable toon');select.value='source';select.dispatchEvent(new Event('change'));check(uniforms().avatarLightEnabled.value===0&&uniforms().avatarToonEnabled.value===1,'reselecting light reenabled legacy');
   document.querySelector('#avatar-lighting-dialog button').click();failProfiles=true;$('open-avatar-lighting').click();for(let i=0;i<100&&!$('avatar-lighting-status').textContent.includes('toon source changed');i++)await new Promise(r=>setTimeout(r,5));check(uniforms().avatarToonEnabled.value===0,'failed source kept stale toon active');document.querySelector('#avatar-lighting-dialog button').click();failProfiles=false;
   $('open-avatar-lighting').click();for(let i=0;i<100&&uniforms().avatarToonEnabled.value===0;i++)await new Promise(r=>setTimeout(r,5));check(uniforms().avatarToonEnabled.value===1,'toon cannot retry after source failure');document.querySelector('#avatar-lighting-dialog button').click();
   missing=true;await modelViewer.loadModel([1]);check(uniforms().avatarToonEnabled.value===0&&$('avatar-toon-status').textContent.includes('텍스처 확인 필요'),'missing toon texture left a stale effect');
