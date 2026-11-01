@@ -84,6 +84,8 @@ EVIDENCE = (
     ('resolve_before_postprocess', 0x14159c40a, '488bcbe86ecd06004180fc010f856e01000083be2c050000017608488bcbe863cb0600'),
     ('main_scene_draw_between_bind_and_glow', 0x140d7108f, 'e87cd77f00488b30e8b4aa820041b8000000ff488bd6488bc8e8639b820033d2448d4240498bcfe8f511beff'),
     ('main_postprocess_same_target', 0x140d71110, 'e8fbd67f00488b30e833aa8200488bc841b1014c8bc6410fb6d1e881b28200e8dcd67f00c644242800c7442420000000ff4533c94533c0418d5101488bc8e88d4e8000'),
+    ('conditional_independent_blending', 0x14161bf25, '8b4308c74304010000004489432c895330c7434801000000c7434c05000000894328c7435006000000'),
+    ('create_blend_state_after_rewrite', 0x14161bf5e, 'e8fd8919004c8d442468488bd34c8b08488bc841ff91a0000000'),
 )
 
 
@@ -161,7 +163,8 @@ def audit(workspace, executable, *, width=1920, height=1080):
                         constants='CBPerPostProcess[20].xy = power, minimum', alpha='resampled source alpha',
                         active_dispatch='unresolved; separate shader, not equivalent to ScreenQuad Glow'),
         viewer=dict(input='enabled avatar emission only, own depth occlusion', levels=1, blur='two-pass half-resolution Gaussian',
-                    formula='base.rgb + blur.rgb * strength', alpha='base alpha preserved', original_glow_or_hdr=False),
+                    formula='base.rgb + blur.rgb * strength', alpha='base alpha preserved', original_glow_or_hdr=False,
+                    comparison=dict(mode='source', levels=5, surface_emission='separated', alpha='preserved', scope='partial mode1 structure; viewer material depth/blending')),
         first_input=dict(status='slot-association-verified', slot=1,
                          texture_array='target+0x50+8*slot', srv_array='target+0x1a0+8*slot',
                          rtv_array='target+0xe0+8*slot (single sample) / target+0x120+8*slot (MSAA)',
@@ -172,6 +175,11 @@ def audit(workspace, executable, *, width=1920, height=1080):
                          scope='shader output before per-target blend/depth/UNORM; not the complete scene MRT1',
                          viewer_difference='viewer adds emission to surface and keeps a separate RGB-only bloom mask',
                          example=avatar_mrt([.1,.2,.3,.4],[.2,.4,.6,.8],[.5,.5,.5,.5],2,.5)),
+        blend_state=dict(status='conditional-independent-target-rewrite-verified',
+                         independent_blend_enable=True,
+                         target1='copies target0 blend enable/source/destination factors in investigated branch',
+                         target2='enables source-alpha / inverse-source-alpha in investigated branch',
+                         runtime_per_draw_state='unresolved; do not apply one universal alpha formula'),
         blur_path=dict(size_divisors=[2, 4, 8, 16, 32], integer_division=True,
                        direct_glow_call_mode=1,
                        formula='k=i-4; offset=(k/targetWidth,k/targetHeight); weight=exp(-((k/sigma)^2)/(2*sigma^2))/sqrt(float32(2*pi)*sigma^2)',

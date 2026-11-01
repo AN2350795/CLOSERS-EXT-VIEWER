@@ -13,6 +13,9 @@ try{
     const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);const center=box.getCenter(new T.Vector3()),size=box.getSize(new T.Vector3()),distance=size.length()*1.45,camera=new T.PerspectiveCamera(40,1,.1,100000);camera.position.copy(center).add(new T.Vector3(0,distance*.12,distance));camera.lookAt(center);camera.updateMatrixWorld(true);
     const capture=(mode,options)=>{fx.render(scene,camera,model,options);window.testCaptures.push({name:test.label+'-'+mode,body:renderer.domElement.toDataURL('image/png')});const p=new Uint8Array(512*512*4);gl.readPixels(0,0,512,512,gl.RGBA,gl.UNSIGNED_BYTE,p);return p;};
     const plain=capture('surface',{bloom:false}),bloom=capture('bloom',{bloom:true,strength:1}),solo=capture('emission-only',{solo:true,bloom:false,exposure:4});
+    const five=capture('bloom-five-level',{bloom:true,bloomMode:'source',strength:.8});
+    let fiveHalo=0;for(let i=0;i<plain.length;i+=4)if(five[i]+five[i+1]+five[i+2]>plain[i]+plain[i+1]+plain[i+2]+10)fiveHalo++;
+    check(fiveHalo>20,'five-level bloom creates a real costume halo on '+test.label+': '+fiveHalo);
     const pixels=solo.reduce((n,v,i)=>n+(i%4!==3&&v>10?1:0),0);check(pixels>50,'real visible emission exists on '+test.label+': '+pixels);
     let halo=0;for(let i=0;i<plain.length;i+=4)if(bloom[i]+bloom[i+1]+bloom[i+2]>plain[i]+plain[i+1]+plain[i+2]+10)halo++;
     check(halo>20,'real emission creates a visible bloom change on '+test.label+': '+halo);

@@ -59,6 +59,7 @@ class AvatarLightingTests(unittest.TestCase):
                 with urlopen(base+'/model-color-grading.js') as response:self.assertIn(b'colorGradingFragment',response.read())
                 with urlopen(base+'/model-sharpen.js') as response:self.assertIn(b'sharpenFragment',response.read())
                 with urlopen(base+'/model-lighting-menu.js') as response:self.assertIn(b'setupLightingMenu',response.read())
+                with urlopen(base+'/model-bloom.js') as response:self.assertIn(b'createSourceBloom',response.read())
             finally:server.shutdown();server.server_close();thread.join()
 
     def fixture(self):

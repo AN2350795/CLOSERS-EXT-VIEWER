@@ -8,9 +8,10 @@ model.materials[0].userData.input.second_preview.speed=[0,0];
 const map=new T.DataTexture(new Uint8Array([255,255,255,255]),1,1);map.needsUpdate=true;setAvatarToonMap(model.materials[0],map);setAvatarExtMap(model.materials[0],map);setMatcapPreviewMap(model.materials[0],map);setMaterialPreviewMap(model.materials[0],map);$('material-preview').disabled=false;
 const profile={key:'source',label:'지역 · 평화의 광장 (황혼)',color:[1,.96,1,1],intensity:1,near_intensity:1.2,direction:[1,2,-3]};
 const saved={selected:'source',enabled:true,legacyExplicit:true,toon:true,second:true,extSurfaceVersion:1,extSurface:true,extSurfaceFactor:.75,toonRotationVersion:1,toonRotation:{enabled:true,angles:[10,20,30]},cameraMixVersion:1,cameraMix:{enabled:true,calibrations:{REAPER:{near:10,far:20}}}};
-saved.secondVersion=2;localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify(saved));const state={model,data:{sources:[{entry_id:1,display_name:'성야의 바니 · 상의',model_group:{kind:'avatar',character:'REAPER'}}]}};
+saved.secondVersion=2;saved.bloomMode='source';localStorage.setItem('closers-avatar-lighting-v2',JSON.stringify(saved));const state={model,data:{sources:[{entry_id:1,display_name:'성야의 바니 · 상의',model_group:{kind:'avatar',character:'REAPER'}}]}};
 try{
  const ui=setupAvatarLighting({state,api:async()=>({profiles:[profile],color_grading_presets:[]}),element:(tag,text)=>{const e=document.createElement(tag);if(text)e.textContent=text;return e;},getEmissionEnabled:()=>$('material-preview').checked});
+ check(ui.getRenderOptions().bloomMode==='source'&&$('avatar-emission-mode').value==='source','saved bloom mode was lost');
  const opener=$('open-avatar-lighting');opener.focus();opener.click();for(let i=0;i<100&&$('avatar-lighting-profile').value!=='source';i++)await new Promise(r=>setTimeout(r,10));
  check(!$('avatar-lighting-enabled')&&!$('avatar-lighting-influence')&&model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'retired comparison survived');
  check(document.querySelectorAll('#avatar-lighting-dialog [role=tab]').length===4&&$('avatar-lighting-tab-light').getAttribute('aria-selected')==='true','simple initial navigation');

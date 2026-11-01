@@ -15,7 +15,7 @@ class BloomSourceTests(unittest.TestCase):
             self.skipTest('Local game source unavailable')
         report = audit_bloom.audit(workspace, executable)
         self.assertEqual(report['cpu']['established_checks'], 42)
-        self.assertEqual(len(report['cpu']['checks']), 49)
+        self.assertEqual(len(report['cpu']['checks']), 51)
         self.assertTrue(all(c['matches'] for c in report['cpu']['checks']))
         self.assertEqual({s['name'] for s in report['shaders']}, set(audit_bloom.SHADERS))
         self.assertTrue(all(s['sources'] for s in report['shaders']))
@@ -32,6 +32,7 @@ class BloomSourceTests(unittest.TestCase):
         self.assertEqual(report['first_input']['status'], 'slot-association-verified')
         self.assertIn('t9', report['first_input']['exception'])
         self.assertFalse(report['first_input']['example']['blending_applied'])
+        self.assertTrue(report['blend_state']['independent_blend_enable'])
         for flag in ('game_executed', 'rendering_enabled', 'viewer_defaults_changed'):
             self.assertFalse(report[flag])
 
