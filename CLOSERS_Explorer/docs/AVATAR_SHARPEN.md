@@ -53,4 +53,4 @@ python tests/audit_sharpen.py --workspace ../results --exe 'C:/Program Files (x8
 python -m unittest discover -s tests -p test_sharpen_browser.py -v
 ```
 
-다음은 **원본 Glow/HDR 빛 번짐 경로와 현재 발광 전용 번짐의 범위를 대조**하는 작업이다. 원본 심도 효과, 실제 장면·B 공용 계수·회전·거리 상태 연결, 전체 의상과 인게임 화면 대조도 남아 있다.
+[원본 Glow/HDR와 발광 전용 번짐의 범위 대조](AVATAR_BLOOM.md)를 진행했다. 다음은 원본 blur 타깃·계수·입력과 실제 모드 연결 확인이다. 원본 심도 효과, 실제 장면·B 공용 계수·회전·거리 상태 연결, 전체 의상과 인게임 화면 대조도 남아 있다.
