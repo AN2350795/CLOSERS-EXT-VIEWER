@@ -10,6 +10,25 @@ DIVISORS = (2, 4, 8, 16, 32)
 TWO_PI = struct.unpack('<f', bytes.fromhex('db0fc940'))[0]
 
 
+def avatar_mrt(surface, emission_texture, emission_color, strength_x=1, strength_y=1):
+    """Normal DEFAULT/CARTOONLIGHT output before target blending/quantization.
+
+    `surface` is the already shaded/alpha-adjusted pixel. Refraction and other
+    special shader paths are outside this diagnostic reconstruction.
+    """
+    vectors = [list(v) for v in (surface, emission_texture, emission_color)]
+    values = [n for v in vectors for n in v] + [strength_x, strength_y]
+    if any(len(v) != 4 for v in vectors) or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
+        raise ValueError('Finite RGBA inputs and strengths required.')
+    emission = [t * c * strength_x * strength_y for t, c in zip(vectors[1], vectors[2])]
+    if not all(math.isfinite(v) for v in emission):
+        raise ValueError('Emission result is outside the diagnostic numeric range.')
+    if all(v == 0 for v in emission[:3]):
+        emission = [0, 0, 0, vectors[0][3] if emission[3] > 0 else 1]
+    return dict(scope='normal-avatar-shader-preblend', target0=vectors[0], target1=emission,
+                blending_applied=False, quantization_applied=False, rendering_enabled=False)
+
+
 def blur_plan(width, height, *, resource_key=1, mode=1, sigma=1):
     if any(type(v) is not int or v <= 0 for v in (width, height)):
         raise ValueError('Positive integer input dimensions required.')

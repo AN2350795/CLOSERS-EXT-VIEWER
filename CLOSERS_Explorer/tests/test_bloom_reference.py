@@ -1,9 +1,36 @@
 import math
 import unittest
-from bloom_reference import blur_plan
+from bloom_reference import blur_plan, avatar_mrt
 
 
 class BloomReferenceTests(unittest.TestCase):
+    def test_avatar_keeps_surface_and_emission_in_separate_targets(self):
+        surface = [.1, .2, .3, .4]
+        report = avatar_mrt(surface, [.2, .4, .6, .8], [.5, .5, .5, .5], 2, .5)
+        self.assertEqual(report['target0'], surface)
+        self.assertEqual(report['target1'], [.1, .2, .3, .4])
+        changed = avatar_mrt([.9, .8, .7, .6], [.2, .4, .6, .8], [.5, .5, .5, .5], 2, .5)
+        self.assertEqual(changed['target1'], report['target1'])
+        self.assertFalse(report['blending_applied'])
+        self.assertFalse(report['quantization_applied'])
+
+    def test_zero_emission_rgb_has_two_distinct_alpha_fallbacks(self):
+        self.assertEqual(avatar_mrt([1, 1, 1, .25], [0, 0, 0, .5], [1]*4)['target1'], [0, 0, 0, .25])
+        self.assertEqual(avatar_mrt([1, 1, 1, .25], [0, 0, 0, 0], [1]*4)['target1'], [0, 0, 0, 1])
+        self.assertEqual(avatar_mrt([1, 1, 1, .25], [1]*4, [1]*4, 0)['target1'], [0, 0, 0, 1])
+
+    def test_nonzero_rgb_does_not_use_alpha_to_multiply_or_clamp_shader_output(self):
+        report = avatar_mrt([0, 0, 0, .25], [.25, .5, 1, 0], [1]*4, 2, 2)
+        self.assertEqual(report['target1'], [1, 2, 4, 0])
+        self.assertEqual(report['target0'], [0, 0, 0, .25])
+
+    def test_avatar_diagnostic_rejects_invalid_values(self):
+        for rgba in ([1, 1, 1], [1, 1, 1, float('nan')], [1, True, 1, 1]):
+            with self.subTest(rgba=rgba), self.assertRaises(ValueError):
+                avatar_mrt([1]*4, rgba, [1]*4)
+        with self.assertRaises(ValueError):
+            avatar_mrt([1]*4, [1]*4, [1]*4, float('inf'))
+
     def test_five_progressive_targets_use_integer_dimensions_and_target_offsets(self):
         report = blur_plan(1920, 1080)
         levels = report['levels']

@@ -18,7 +18,7 @@ from closers.loading import LoadingData
 from closers.cmf import Archive
 from closers import ntf
 from closers.color_grading import SOURCE, TYPES
-from bloom_reference import blur_plan
+from bloom_reference import blur_plan, avatar_mrt
 
 SHADERS = {
     'CW_GETBRIGHT.PS.CSO': '77c293b18e73b2dc379f6d9455b855f6a7c71afbed7d3b384c7eea0b0c0eaaa9',
@@ -26,6 +26,10 @@ SHADERS = {
     'CW_BLUR_VERTICAL.PS.CSO': '5b64415466127603a251733aba9ecd4dfa543dfe5e5fea39778f9a0c6180e29f',
     'CW_SCREENQUAD_GLOW.PS.CSO': 'fcb39bf7b94d8f15d64fb5068522b639222f21041a26676baa2c0e788771ac0e',
     'CW_HDR.PS.CSO': 'a3afb80486347d88618cde88438dd3c4ba68bc8e7f24d52dee77991bc4b3639b',
+    'CW_CARTOONLIGHT.PS.CSO': 'd41123ea082cf12b5ba605d5d736029098f2e6cdd1c207ec685232f105cbe85e',
+    'CW_ADD_CARTOONLIGHT.PS.CSO': '59f1288a494457455a5fb1d0e78635b803e01aa3fdf6010e2ef15a4614696730',
+    'CW_DEFAULT.PS.CSO': 'c128360275e910029de5f05742c3e40df03db9b3be138d4871e3866798f43eaa',
+    'CW_NOLIGHT.PS.CSO': '19a853af9d1a4279d61f24533859d5f7fba6b78f02ce8ead9ae640461e31c1d3',
 }
 
 # Exact instructions checked against the same executable fingerprint as the
@@ -68,6 +72,18 @@ EVIDENCE = (
     ('two_pi_float', 0x1425b4b08, 'db0fc940'),
     ('two_float', 0x1423aca78, '00000040'),
     ('four_float', 0x1423aa458, '00008040'),
+    ('target_texture_array', 0x1416095c0, '8bce4c8d4ccf504533c0488d9570010000488bc841ff5228'),
+    ('target_srv_array', 0x141609898, '418bcc4c8d8ccfa00100004c8d4560498b95b0feffff488bc841ff5238'),
+    ('target_msaa_rtv_array', 0x141609e5c, '4e8d8ce7200100004c8d442440498b16488bc841ff5248'),
+    ('target_single_rtv_array', 0x14160a3df, '4c8d8ccfe00000004c8d442440498b9570ffffff488bc841ff5248'),
+    ('bind_msaa_or_single_rtvs', 0x1416090c5, 'e816b91a004c8b8be80100004c8d8320010000eb13e801b91a004c8b8be00100004c8d83e00000004c8b108b931c020000488bc841ff9208010000'),
+    ('bind_target_count', 0x1416090ed, '4c8b108b931c020000488bc841ff9208010000'),
+    ('clear_msaa_rtvs', 0x141608ec0, '488db120010000e814bb1a00488b164c8d4424304c8b08488bc841ff9190010000ffc34883c6083b9f1c02000072d8'),
+    ('clear_single_rtvs', 0x141608f05, '488db1e00000000f1f4000e8cbba1a00488b164c8d4424304c8b08488bc841ff9190010000ffc34883c6083b9f1c02000072d8'),
+    ('resolve_all_targets', 0x141608fb3, '488d7950e824ba1a004c8b4f40488b174c8b104533c0488bc8c74424281c000000896c242041ff92c8010000ffc64883c7083bb31c02000072ca'),
+    ('resolve_before_postprocess', 0x14159c40a, '488bcbe86ecd06004180fc010f856e01000083be2c050000017608488bcbe863cb0600'),
+    ('main_scene_draw_between_bind_and_glow', 0x140d7108f, 'e87cd77f00488b30e8b4aa820041b8000000ff488bd6488bc8e8639b820033d2448d4240498bcfe8f511beff'),
+    ('main_postprocess_same_target', 0x140d71110, 'e8fbd67f00488b30e833aa8200488bc841b1014c8bc6410fb6d1e881b28200e8dcd67f00c644242800c7442420000000ff4533c94533c0418d5101488bc8e88d4e8000'),
 )
 
 
@@ -146,6 +162,16 @@ def audit(workspace, executable, *, width=1920, height=1080):
                         active_dispatch='unresolved; separate shader, not equivalent to ScreenQuad Glow'),
         viewer=dict(input='enabled avatar emission only, own depth occlusion', levels=1, blur='two-pass half-resolution Gaussian',
                     formula='base.rgb + blur.rgb * strength', alpha='base alpha preserved', original_glow_or_hdr=False),
+        first_input=dict(status='slot-association-verified', slot=1,
+                         texture_array='target+0x50+8*slot', srv_array='target+0x1a0+8*slot',
+                         rtv_array='target+0xe0+8*slot (single sample) / target+0x120+8*slot (MSAA)',
+                         msaa='resolve target+0x90+8*slot into target+0x50+8*slot before postprocess',
+                         normal_avatar_formula='E=sample(t12)*CB5[16]*CB5[17].x*CB5[17].y; target0=surface; target1=E',
+                         zero_rgb_alpha='if all E.rgb==0: target1=(0,0,0,E.a>0?surface.a:1)',
+                         exception='NOLIGHT refraction branch (CB5[23].x>0) writes sampled t9 to target1',
+                         scope='shader output before per-target blend/depth/UNORM; not the complete scene MRT1',
+                         viewer_difference='viewer adds emission to surface and keeps a separate RGB-only bloom mask',
+                         example=avatar_mrt([.1,.2,.3,.4],[.2,.4,.6,.8],[.5,.5,.5,.5],2,.5)),
         blur_path=dict(size_divisors=[2, 4, 8, 16, 32], integer_division=True,
                        direct_glow_call_mode=1,
                        formula='k=i-4; offset=(k/targetWidth,k/targetHeight); weight=exp(-((k/sigma)^2)/(2*sigma^2))/sqrt(float32(2*pi)*sigma^2)',
@@ -156,7 +182,7 @@ def audit(workspace, executable, *, width=1920, height=1080):
                        resource_key_note='key 2 uses 390x730 dimensions; resource key and Glow mode are separate inputs',
                        examples=[blur_plan(width, height), blur_plan(width, height, resource_key=2, mode=2)]),
         unresolved=['Other Glow mode callers, effective level count and sigma overrides',
-                    'Complete input routing including additional render target and optional effects',
+                    'Per-target blending, depth and other scene writers to MRT1; optional preceding effects',
                     'HDR/GetBright active dispatch and constant upload', 'In-game frame comparison'],
         game_executed=False, rendering_enabled=False, viewer_defaults_changed=False,
     )
