@@ -73,13 +73,25 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     }
     if(!entries.length)container.append(element('p',packets.some(p=>p.extras_index_available)?'이 동작에 연결된 연출이 없습니다.':'연출 정보가 없습니다. 라이브러리에서 후처리만 실행하면 연결 정보를 갱신할 수 있습니다.'));
   }
+  function assertCurrent(current,signal){
+    if(disposed||current!==version||signal.aborted)throw new DOMException('연출 선택이 변경되었습니다.','AbortError');
+  }
   async function image(info,current,signal,asset,entry){
+    assertCurrent(current,signal);
     if(!info?.selected){entry.loadWarnings.push('텍스처 미확인 · '+(info?.name||'원본 없음')+' · 단색 미리보기');return null;}
-    const metadata=await api('/api/composition-source/'+info.selected,signal),key=current+':'+info.selected+':'+metadata.image_sha256;
+    const metadata=await api('/api/composition-source/'+info.selected,signal);
+    assertCurrent(current,signal);
+    const key=current+':'+info.selected+':'+metadata.image_sha256;
     const map=await cache.acquire(key,metadata.width*metadata.height,async()=>{
+      assertCurrent(current,signal);
       const value=await loader.loadAsync('/api/composition-image/'+info.selected+'?token='+encodeURIComponent(token)+'&sha256='+metadata.image_sha256);
+      // The decoder cannot be aborted. Reject before the cache takes ownership
+      // so a late result is disposed once, even if reset already cleared it.
+      try{assertCurrent(current,signal);}catch(e){value.dispose();throw e;}
       value.colorSpace=THREE.SRGBColorSpace;value.flipY=false;value.wrapS=value.wrapT=THREE.RepeatWrapping;return value;
-    });asset.textureKeys.push(key);return map;
+    });
+    try{assertCurrent(current,signal);}catch(e){cache.release(key);throw e;}
+    asset.textureKeys.push(key);return map;
   }
   async function load(entry,resource,current,signal){
     if(resource&&!resource.selected)throw Error('모델 출처를 선택해 주세요: '+resource.name);
@@ -179,6 +191,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     }catch(e){disposeAsset(asset);throw e;}
   }
   async function refresh(){
+    if(disposed)return;
     const current=++version;controller?.abort();controller=new AbortController();const signal=controller.signal;
     setLoading(true);
     try{
@@ -208,6 +221,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     }finally{if(current===version)setLoading(false);}
   }
   function select(clips,steps=[]){
+    if(disposed)return Promise.resolve();
     reset();packets=clips;button.disabled=!clips.length;
     clips.forEach((packet,index)=>{
       const all=packet.extras||[],known=steps[index]?.state,states=new Set(all.filter(e=>e.kind!=='model'&&e.state).map(e=>e.state));
@@ -222,9 +236,9 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     soundGroup.replaceChildren();const base=element('option','기본 음원');base.value='';soundGroup.append(base);for(const group of new Set(entries.filter(e=>e.kind==='sound'&&e.sound_group!=null).map(e=>e.sound_group))){const option=element('option','변형 음원 '+group);option.value=group;soundGroup.append(option);}soundGroup.hidden=soundGroup.options.length===1;
     render();return refresh();
   }
-  function seek(){audio.seek();lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
+  function seek(){if(disposed)return;audio.seek();lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
   function update(delta=0){
-    if(loading)return;
+    if(disposed||loading)return;
     restoreColors();
     if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
@@ -303,5 +317,5 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   conditionCheck.onchange=()=>void refresh();stateChoice.onchange=()=>void refresh();
   soundGroup.onchange=()=>void refresh();
   for(const [id] of preferences)$(id).onchange=()=>{try{localStorage.setItem('closers-motion-extras',JSON.stringify(Object.fromEntries(preferences.map(([id,key])=>[key,$(id).checked]))));}catch{}void refresh();};
-  reset();return {select,reset,seek,update,unlockAudio:()=>audio.unlock(),pauseAudio:()=>audio.pause(),setBusy(value){button.disabled=value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){disposed=true;reset();void audio.dispose();}};
+  reset();return {select,reset,seek,update,unlockAudio:()=>{if(!disposed)return audio.unlock();},pauseAudio:()=>{if(!disposed)audio.pause();},setBusy(value){button.disabled=disposed||value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){if(disposed)return;disposed=true;reset();void audio.dispose();}};
 }
