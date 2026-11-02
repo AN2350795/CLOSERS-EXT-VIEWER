@@ -64,6 +64,46 @@ def output_targets(body):
     return signatures[0]
 
 
+def constant_variable(body, buffer_name, variable_name):
+    """Read bounded SM5 RDEF metadata; no shader execution or disassembly."""
+    output_targets(body)  # Validate the whole chunk table and all chunk extents.
+    chunks = []
+    count = struct.unpack_from('<I', body, 28)[0]
+    for offset in struct.unpack_from('<'+'I'*count, body, 32):
+        if body[offset:offset+4] == b'RDEF':
+            length = struct.unpack_from('<I', body, offset+4)[0]
+            chunks.append(body[offset+8:offset+8+length])
+    if len(chunks) != 1 or len(chunks[0]) < 28:
+        raise ValueError('Expected one SM5 reflection chunk.')
+    data = chunks[0]
+    buffers, buffer_start, resources, resource_start, version = struct.unpack_from('<5I', data)
+    if version != 0xffff0500:
+        raise ValueError('Only the investigated ps_5_0 reflection layout is supported.')
+
+    def records(start, count, stride):
+        if start < 28 or start > len(data) or count > (len(data)-start)//stride:
+            raise ValueError('Invalid reflection record range.')
+        return [struct.unpack_from('<'+'I'*(stride//4), data, start+i*stride) for i in range(count)]
+
+    def string(offset):
+        end = data.find(b'\0', offset)
+        if offset < 28 or end < offset:
+            raise ValueError('Invalid reflection string.')
+        return data[offset:end].decode('ascii')
+
+    matches = [r for r in records(buffer_start, buffers, 24) if string(r[0]) == buffer_name]
+    bindings = [r for r in records(resource_start, resources, 32) if string(r[0]) == buffer_name and r[1] == 0]
+    if len(matches) != 1 or len(bindings) != 1 or bindings[0][6] != 1:
+        raise ValueError('Missing/ambiguous constant buffer binding.')
+    buffer = matches[0]
+    variables = [r for r in records(buffer[2], buffer[1], 40) if string(r[0]) == variable_name]
+    if len(variables) != 1 or variables[0][1]+variables[0][2] > buffer[3]:
+        raise ValueError('Missing/invalid constant variable.')
+    variable = variables[0]
+    return dict(buffer=buffer_name, variable=variable_name, slot=bindings[0][5],
+                offset=variable[1], size=variable[2], buffer_size=buffer[3])
+
+
 def audit(workspace):
     catalog = Catalog(workspace)
     data = LoadingData(catalog)
@@ -73,6 +113,7 @@ def audit(workspace):
         if not rows:
             raise ValueError('Original shader unavailable: '+name)
         sources = []
+        layout = None
         for row in rows:
             catalog.verify_source(row)
             with Archive(row['archive']) as archive:
@@ -80,8 +121,12 @@ def audit(workspace):
             catalog.verify_source(row)
             if hashlib.sha256(body).hexdigest() != expected or output_targets(body) != targets:
                 raise ValueError('Shader changed; re-investigate: '+name)
+            if name == 'CW_QUAD.PS.CSO':
+                layout = constant_variable(body, 'CBPerQuad', 'g_v4UseTextureMaskMap')
+            elif name == 'CW_NOLIGHT.PS.CSO':
+                layout = constant_variable(body, 'CBPerMaterial', 'g_v4MatUseTextureMaskMap')
             sources.append(dict(entry=row['id'], archive=row['archive'], ordinal=row['ordinal']))
-        shaders.append(dict(name=name, sha256=expected, targets=targets, sources=sources))
+        shaders.append(dict(name=name, sha256=expected, targets=targets, sources=sources, alpha_mode_layout=layout))
     definitions = []
     for filename, (expected, names) in DEFINITIONS.items():
         body = data.body(filename)

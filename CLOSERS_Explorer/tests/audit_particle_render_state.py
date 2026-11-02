@@ -33,6 +33,19 @@ EVIDENCE = (
     ('missing_saved_blend_skips_flag_reset', 0x141614ec4, '493b5950743e'),
     ('restore_saved_blend', 0x141614eca, 'e8d1300000488b5328488bc8e8550e0000'),
     ('restore_clears_both_alpha_flags', 0x141614ef5, '0f57edf30f112d945d9801f30f112d0c5c9801'),
+    ('constant_buffer_switch_table', 0x141602648, 'cd246001d6246001df246001e8246001f1246001fa2460010c256001152560011e2560010325600127256001'),
+    ('material_slot_source', 0x1416024fa, '488d05df849901eb2b'),
+    ('quad_slot_source', 0x14160250c, '488d057d879901eb19'),
+    ('buffer_source_pointer_store', 0x14160252e, '4a8984db70010000'),
+    ('particle_quad_upload', 0x1415b65a2, 'e8496004004533c0418d5006488bc8e83a500400'),
+    ('constant_buffer_map', 0x1415fb632, '41b9040000004533c0488bc8c74424200000000041ff5270'),
+    ('constant_buffer_copy', 0x1415fb64f, '4b8d1464448bc685f67508448b84d778010000488b94d770010000e8b16ca200'),
+    ('constant_buffer_unmap', 0x1415fb66f, 'e86c931b00488b55004c8b084533c0488bc841ff5178'),
+    ('constant_buffer_vs_ps_bind', 0x1415fb685, '4183fc067c49e850931b00488b0d69d799014c8bcd428b14a14c8b1041b801000000488bc841ff5238e82d931b00488b0d46d79901428b14a14c8b104c8bcd41b801000000488bc841ff9280000000'),
+    ('scene_target_bind', 0x140d71077, '498bcfe82185880041b8000000ffb201498bcce8a17f8900'),
+    ('target_slot_bind_arrays', 0x1416090c5, 'e816b91a004c8b8be80100004c8d8320010000eb13e801b91a004c8b8be00100004c8d83e00000004c8b108b931c020000488bc8'),
+    ('target_bind_call', 0x1416090ed, '4c8b108b931c020000488bc841ff9208010000'),
+    ('dof_depth_srv_slot_two', 0x141571c92, '498bbeb0010000'),
 )
 
 
@@ -68,6 +81,26 @@ def audit(executable):
                for address in (0x142f9ac94, 0x142f9ab14)}
     if not all(initial.values()):
         raise ValueError('Shared alpha flags are not in PE zero-fill tails.')
+
+    def read(address, size):
+        relative = address-base
+        for virtual, rva, raw, offset in sections:
+            if rva <= relative and relative+size <= rva+min(virtual, raw):
+                return body[offset+relative-rva:offset+relative-rva+size]
+        raise ValueError('Constant buffer mapping outside file-backed sections.')
+
+    buffers = []
+    for slot, name, variable_offset, expected_flag in (
+            (5, 'CBPerMaterial', 304, 0x142f9ab14), (6, 'CBPerQuad', 0, 0x142f9ac94)):
+        case = base+struct.unpack('<I', read(0x141602648+slot*4, 4))[0]
+        instruction = read(case, 7)
+        if instruction[:3] != bytes.fromhex('488d05'):
+            raise ValueError('Unexpected constant-buffer source selector.')
+        source = case+7+struct.unpack_from('<i', instruction, 3)[0]
+        if source+variable_offset+4 != expected_flag:
+            raise ValueError('Shared flag does not match constant-buffer Y component.')
+        buffers.append(dict(slot=slot, buffer=name, source=hex(source),
+                            variable_offset=variable_offset, component='y', shared_flag=hex(expected_flag)))
     return dict(cpu=cpu,
         scope='Particle render 0x1415b94a0; normal 3D plane without mask -> shader group 4 / CW_Quad.PS.cso',
         depth=dict(template_test='0x354', template_write='0x355', type_2d_override='test disabled; write flag still copied'),
@@ -79,8 +112,16 @@ def audit(executable):
                      saved_blend_missing='Skip both saved-state restore and flag zeroing.',
                      nested_state='Flags are zeroed, not restored to their prior float values.'),
         initial_pe_zero_fill=initial,
+        constant_buffers=buffers,
+        upload=dict(function='0x1415fb5f0', particle_call='0x1415b65b1', input_slot=6,
+                    transfer='Map WRITE_DISCARD -> copy registered CPU source -> Unmap -> VS/PS bind for slots >= 6',
+                    shader_layout='Independently checked by audit_particle_depth.py RDEF metadata'),
+        targets=dict(scene_bind='0x140d7108a -> 0x141609030',
+                     arrays='single RTV +0xe0; MSAA RTV +0x120; count +0x21c',
+                     dof_depth='slot 2 SRV +0x1b0',
+                     scope='Scene-level binding only; per-particle inherited/overridden live target is unverified.'),
         unresolved=['Masked, mesh, Spine/FBX and alternative particle draw paths',
-                    'Initial/shared alpha-mode state before a draw and alternate restoration paths',
+                    'Shared alpha-mode overrides before a draw and alternate restoration paths',
                     'Live MRT bindings, draw order, depth state overrides and frame comparison',
                     'Particle MRT2/DOF integration in the viewer'],
         game_executed=False, rendering_enabled=False)

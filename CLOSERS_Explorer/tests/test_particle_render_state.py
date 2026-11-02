@@ -10,7 +10,7 @@ class ParticleRenderStateTests(unittest.TestCase):
         if not executable.exists():
             self.skipTest('Local game source unavailable')
         report = source.audit(executable)
-        self.assertEqual(len(report['cpu']['checks']), 25)
+        self.assertEqual(len(report['cpu']['checks']), 38)
         self.assertTrue(all(check['matches'] for check in report['cpu']['checks']))
         self.assertIn('group 4', report['scope'])
         self.assertEqual(report['blend']['additive']['target0']['rgb'], [5, 2])
@@ -21,6 +21,11 @@ class ParticleRenderStateTests(unittest.TestCase):
         self.assertIn('Skip both', report['restore']['saved_blend_missing'])
         self.assertIn('not restored', report['restore']['nested_state'])
         self.assertEqual(report['initial_pe_zero_fill'], {'0x142f9ac94': True, '0x142f9ab14': True})
+        self.assertEqual(report['constant_buffers'], [
+            dict(slot=5, buffer='CBPerMaterial', source='0x142f9a9e0', variable_offset=304, component='y', shared_flag='0x142f9ab14'),
+            dict(slot=6, buffer='CBPerQuad', source='0x142f9ac90', variable_offset=0, component='y', shared_flag='0x142f9ac94')])
+        self.assertEqual(report['upload']['input_slot'], 6)
+        self.assertIn('Scene-level', report['targets']['scope'])
         self.assertTrue(report['unresolved'])
         self.assertFalse(report['game_executed'])
         self.assertFalse(report['rendering_enabled'])

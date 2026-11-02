@@ -6,12 +6,36 @@ import audit_particle_depth
 
 
 class ParticleDepthSourceTests(unittest.TestCase):
+    def test_reflection_ranges_binding_and_variable_extent(self):
+        buffer_name = b'CBPerQuad\0'
+        variable_name = b'g_v4UseTextureMaskMap\0'
+        reflection = (struct.pack('<7I', 1, 28, 1, 92, 0xffff0500, 0, 0)
+            + struct.pack('<6I', 124, 1, 52, 128, 0, 0)
+            + struct.pack('<10I', 124+len(buffer_name), 0, 16, 2, 0, 0, 0xffffffff, 0, 0xffffffff, 0)
+            + struct.pack('<8I', 124, 0, 0, 0, 0, 6, 1, 1)+buffer_name+variable_name)
+
+        def container(payload):
+            rdef = b'RDEF'+struct.pack('<I', len(payload))+payload
+            osgn = b'OSGN'+struct.pack('<3I', 8, 0, 8)
+            return b'DXBC'+bytes(20)+struct.pack('<4I', 40+len(rdef)+len(osgn), 2, 40, 40+len(rdef))+rdef+osgn
+
+        result = audit_particle_depth.constant_variable(container(reflection), 'CBPerQuad', 'g_v4UseTextureMaskMap')
+        self.assertEqual(result['slot'], 6)
+        self.assertEqual(result['offset'], 0)
+        for offset in (0, 4, 8, 12, 16, 28, 32, 36, 40, 52, 56, 60, 92, 116):
+            bad = bytearray(reflection)
+            struct.pack_into('<I', bad, offset, 0 if offset == 40 else 0xffffffff)
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                audit_particle_depth.constant_variable(container(bad), 'CBPerQuad', 'g_v4UseTextureMaskMap')
+
     def test_installed_shader_outputs_and_literal_depth_flags(self):
         workspace = Path(__file__).resolve().parents[2] / 'results'
         if not (workspace / 'catalog.sqlite3').exists():
             self.skipTest('Local game source unavailable')
         report = audit_particle_depth.audit(workspace)
         self.assertEqual([s['targets'] for s in report['shaders']], [[0, 1, 2], [0, 1, 2], [0]])
+        self.assertEqual(report['shaders'][0]['alpha_mode_layout'], dict(buffer='CBPerQuad', variable='g_v4UseTextureMaskMap', slot=6, offset=0, size=16, buffer_size=128))
+        self.assertEqual(report['shaders'][1]['alpha_mode_layout'], dict(buffer='CBPerMaterial', variable='g_v4MatUseTextureMaskMap', slot=5, offset=304, size=16, buffer_size=480))
         rows = {r['name']: r for r in report['definitions']}
         dust = rows['FOOT_DUST']
         self.assertEqual(dust['defaults'], ['m_bZEnable', 'm_bZWriteEnable'])
