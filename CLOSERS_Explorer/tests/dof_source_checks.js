@@ -1,6 +1,6 @@
 import * as T from '/vendor/three/three.module.min.js';
 import {buildModel} from '/model-core.js';
-import {setMaterialPreviewMap} from '/model-materials.js';
+import {setMaterialPreviewMap,setMatcapPreviewMap,setMatcapNormalMap,setMatcapPreview} from '/model-materials.js';
 import {createEmissionRenderer,applyAvatarColorSpace} from '/model-emission.js';
 import {createDofDepthPass} from '/model-dof-depth.js';
 import {dofFocal,supportsDofModel,measureDofFocus} from '/model-dof.js';
@@ -20,7 +20,9 @@ try{
   for(const material of model.materials){
    const input=material.userData.input;if(input.image?.selected){material.map=maps.get(input.image.selected);material.color.set(0xffffff);material.needsUpdate=true;}
    if(material.userData.materialPreview){const map=maps.get(input.material_preview.image?.selected);check(map,'missing real emissive texture');setMaterialPreviewMap(material,map);}
+   if(fixture.gloss&&material.userData.matcapPreview){const cap=input.matcap_preview;setMatcapPreviewMap(material,maps.get(cap.image?.selected)||null);setMatcapNormalMap(material,maps.get(cap.normal_image?.selected)||null);setMatcapPreview(material,true,1,true);}
   }
+  if(fixture.gloss)check(model.materials.some(m=>m.userData.matcapPreview?.uniforms.avatarMatcapEnabled.value>0),'real gloss/mask did not activate');
   applyAvatarColorSpace(renderer,new Map([...maps].map(([id,map])=>['base:'+id,map])),true);
   const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);const center=box.getCenter(new T.Vector3()),extent=box.getSize(new T.Vector3()).length();
   grid=new T.GridHelper(extent*2,20,0x606060,0x303030);grid.position.set(center.x,box.min.y,center.z);scene.add(grid);
