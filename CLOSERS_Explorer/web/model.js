@@ -23,7 +23,7 @@ const preserveViewKey='closers-model-preserve-view-v1';
 try{$('preserve-view').checked=localStorage.getItem(preserveViewKey)!=='false';}catch{}
 $('preserve-view').onchange=()=>{try{localStorage.setItem(preserveViewKey,String($('preserve-view').checked));}catch{}};
 let modelController,operationVersion=0,animationVersion=0,clipVersion=0,viewerDisposed=false;
-let renderer,scene,camera,boneHelper,stage,emissionRenderer;
+let renderer,scene,camera,boneHelper,stage,emissionRenderer,resizeObserver;
 const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,onLoadingChange:value=>{state.extrasLoading=value;updatePlaybackControls();updateSequenceControls();},onEquipmentVisibility:()=>updateMeshVisibility(),onVisible:()=>{if(state.sequence)return;scene.updateMatrixWorld(true);resetCamera();},element});
 const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked,setConditionItems:updateConditionItems});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
@@ -39,7 +39,7 @@ function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.user
 async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
 function updatePlaybackControls(){const blocked=state.busy||state.extrasLoading;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=blocked||!state.clip;$('animation-loop').disabled=blocked||!state.clip||!!state.sequence;$('viewport').setAttribute('aria-busy',String(!!blocked));}
 function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input,#avatar-lighting-condition-items input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
-async function operation(fn,replace=false){if(state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}
+async function operation(fn,replace=false){if(viewerDisposed||state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}
 function stop(){state.playing=false;extras.pauseAudio();$('play-animation').textContent='재생';$('play-animation').setAttribute('aria-pressed','false');}
 function updateMotionName(){
   const clip=state.clip?.clip,name=state.model?(state.sequence?.definition.label||clip?.game_names?.[0]||clip?.display_name||clip?.name||'기본 자세'):'모델을 선택하세요';
@@ -79,7 +79,7 @@ function initRenderer(){
   emissionRenderer=createEmissionRenderer(renderer);
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(40,1,.1,100000);
   stage=setupModelStage({scene});
-  const observer=new ResizeObserver(()=>{const rect=$('viewport').getBoundingClientRect();renderer.setSize(rect.width,rect.height,false);stage.resize(rect.width,rect.height);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();});observer.observe($('viewport'));
+  resizeObserver=new ResizeObserver(()=>{if(viewerDisposed)return;const rect=$('viewport').getBoundingClientRect();renderer.setSize(rect.width,rect.height,false);stage.resize(rect.width,rect.height);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();});resizeObserver.observe($('viewport'));
   let pointer=null;
   $('model-canvas').oncontextmenu=e=>e.preventDefault();
   $('model-canvas').onpointerdown=e=>{pointer={id:e.pointerId,x:e.clientX,y:e.clientY,pan:e.button===2};$('model-canvas').setPointerCapture(e.pointerId);};
@@ -207,11 +207,12 @@ async function updateConditionItems(ids){
   history.replaceState(null,'','?'+parameters);
 }
 async function loadModel(ids,skeleton=null,eye=state.eye,items=Object.fromEntries((state.data?.sources||[]).filter(s=>ids.includes(s.entry_id)&&s.appearance_key).map(s=>[s.entry_id,s.appearance_key])),conditionItems=ids.every(id=>state.ids.includes(id))?state.data?.lighting_conditions?.selected_items||[]:[]){
+  if(viewerDisposed)return;
   cancelSequence();stop();
   const generation=++state.generation,started=performance.now();animationVersion++;clipVersion++;
   modelController?.abort();modelController=new AbortController();
   const timings=state.timings={uploadMs:0};
-  const current=()=>state.generation===generation;
+  const current=()=>!viewerDisposed&&state.generation===generation;
   if(eye&&!ids.includes(eye.face_id))eye=null;
   const parameters=new URLSearchParams({entries:ids.join(',')});if(Object.keys(items).length)parameters.set('items',JSON.stringify(items));if(skeleton)parameters.set('skeleton',skeleton);if(eye){parameters.set('eye',eye.key);parameters.set('eye_face',eye.face_id);if(eye.texture_id)parameters.set('eye_texture',eye.texture_id);}
   if(conditionItems.length)parameters.set('condition_items',JSON.stringify(conditionItems));
@@ -284,7 +285,15 @@ $('show-helpers').onchange=$('show-equipment-hidden').onchange=updateMeshVisibil
 $('material-preview').onchange=updateMaterialPreview;
 $('finish-motion').onclick=()=>{if(!state.sequence||state.busy||state.extrasLoading||state.sequence.completed)return;void extras.unlockAudio();state.sequence.requestFinish();state.playing=true;$('play-animation').textContent='일시정지';$('play-animation').setAttribute('aria-pressed','true');updateSequenceControls();};
 $('animation-clip').onchange=()=>{if($('animation-clip').value!=='')operation(()=>chooseClip(Number($('animation-clip').value)));};$('play-animation').onclick=()=>{if(!state.clip||state.busy||state.extrasLoading)return;void extras.unlockAudio();if(state.sequence?.completed){state.sequence.restart();extras.seek();state.clip=state.sequence.clip;state.time=state.sequence.time;}state.playing=!state.playing;if(!state.playing)extras.pauseAudio();if(!state.sequence&&state.playing&&state.time>=state.clip.clip.duration){state.time=0;extras.seek();}$('play-animation').textContent=state.playing?'일시정지':'재생';$('play-animation').setAttribute('aria-pressed',String(state.playing));};$('animation-seek').oninput=()=>{if(!state.clip||state.busy||state.extrasLoading)return;stop();state.time=Number($('animation-seek').value);if(state.sequence){state.sequence.seek(state.time);state.time=state.sequence.time;}extras.seek();applyPose(state.model,state.clip,state.time);updateTime();};
-document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',()=>{viewerDisposed=true;state.generation++;modelController?.abort();renderer?.setAnimationLoop(null);disposeModel();extras.dispose();stage?.dispose();textureCache.clear();emissionRenderer?.dispose();renderer?.dispose();});
+function disposeViewer(){
+  if(viewerDisposed)return;
+  viewerDisposed=true;operationVersion++;state.generation++;closeNotice();
+  modelController?.abort();modelController=null;resizeObserver?.disconnect();resizeObserver=null;
+  renderer?.setAnimationLoop(null);disposeModel();setBusy(false);
+  $('model-status').classList.remove('is-loading');
+  extras.dispose();stage?.dispose();textureCache.clear();emissionRenderer?.dispose();renderer?.dispose();
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();});window.addEventListener('pagehide',disposeViewer);
 // Readable state also allows the isolated browser checks to inspect actual bone/mesh results.
 window.modelViewer={get view(){return {target:target.toArray(),...orbit};},state,loadModel:(...args)=>operation(()=>loadModel(...args),true),chooseClip:index=>operation(()=>chooseClip(index)),textureCache,extras,THREE};
 try{initRenderer();await operation(async()=>{await search();const query=new URLSearchParams(location.search),ids=(query.get('entries')||'').split(',').filter(Boolean).map(Number);if(ids.length)await loadModel(ids,query.has('skeleton')?Number(query.get('skeleton')):null,query.has('eye')?{key:query.get('eye'),face_id:Number(query.get('eye_face')),texture_id:query.has('eye_texture')?Number(query.get('eye_texture')):null}:null,query.has('items')?JSON.parse(query.get('items')):{},JSON.parse(query.get('condition_items')||'[]'));});}catch(e){status('3D 그래픽 초기화 실패: '+e.message);}

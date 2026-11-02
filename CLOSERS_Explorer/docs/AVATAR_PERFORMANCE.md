@@ -102,6 +102,26 @@ python CLOSERS_Explorer/tests/benchmark_avatar_profile.py local
 node CLOSERS_Explorer/tests/benchmark_avatar_viewer.mjs local
 ```
 
+## 모델 교체·후처리 종료 추가 검증 (2026-11-02)
+
+`test_model_postprocess_lifecycle_browser.py`는 실제 `model.js`·애니메이션 루프·GPU 업로드와 후처리를 실행하고, 모델 응답 및 텍스처 디코딩 완료 시점을 제어한다. 1×1 텍스처의 디코딩만 대기 가능한 테스트 로더로 바꾸므로 실제 이미지 파일 디코딩 성능이나 게임 모델 표시 시간을 재측정한 검사는 아니다.
+
+- 색상 보정·선명도·심도·5단계 번짐을 선택한 상태로 발광 모델과 일반 모델을 반복 교체해, 이전 재질의 한 번 해제·실제 출력 변경·GPU 텍스처 참조 반환을 확인한다.
+- 교체 실패 시 기존 후처리 프레임과 텍스처 참조를 유지하는지 검사한다. 취소 신호를 무시하고 뒤늦게 도착한 모델 응답도 최신 모델과 로딩 상태를 덮어쓰지 않아야 한다.
+- 이전 모델의 디코딩을 교체 후에 완료해도 이미 해제된 재질에 텍스처가 연결되지 않고 캐시 참조가 0으로 반환되는지 확인한다.
+- 디코딩 중 페이지 종료, 늦은 디코딩 완료, 종료 후 새 모델 요청, 이미 큐에 있던 크기 변경 콜백과 반복 종료를 검사한다. 모델·캐시·로딩 표시를 정리하고 종료 뒤 WebGL 핸들 수가 늘지 않으며 설정 저장값을 유지해야 한다.
+
+검사에서 종료 후에도 viewport의 `ResizeObserver`가 연결되어 있었고 새 모델 요청을 받아 닫힌 뷰어에 모델을 다시 만들 수 있었다. 이제 종료 시 감시자·알림 타이머·모델 요청·애니메이션 루프를 정리하고 작업/모델 버전을 무효화한다. 종료 처리는 한 번만 실행하고 이후 작업·로딩과 큐에 남은 크기 변경 콜백을 무시한다. 캐시 예산이나 메뉴·그래픽 계산식은 바꾸지 않는다.
+
+```powershell
+cd CLOSERS_Explorer
+python -m unittest discover -s tests -p test_model_postprocess_lifecycle_browser.py -v
+python -m unittest discover -s tests -p test_model_lifecycle_browser.py -v
+python -m unittest discover -s tests -p test_model_loading_browser.py -v
+python -m unittest discover -s tests -p test_texture_cache.py -v
+python -m unittest discover -s tests -p test_postprocess_lifecycle_browser.py -v
+```
+
 ## 남은 비용과 범위
 
 4,658개 이름 원본의 작업별 검사는 여전히 약 0.25초를 쓴다. 전신 JSON은 약 4.25 MB이며 인코딩과 디코딩 비용이 남는다. 첫 텍스처 변환은 서버의 기존 단일 이미지 준비 게이트에서 직렬화된다. 이번 변경에서 화질·스킨 가중치·입력 제한을 낮추거나 이 게이트를 풀지 않았다. GPU 픽셀 예산은 원래와 같은 픽셀 수 기준이며 GPU 드라이버의 총 메모리 사용량을 정확히 나타내지는 않는다. 동작 목록 연결과 클립 매핑도 별도 대기 시간으로 남는다.
