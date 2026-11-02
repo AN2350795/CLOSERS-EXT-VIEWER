@@ -7,6 +7,7 @@ import test_picker_browser
 
 class EmissionSourceBrowserTests(test_picker_browser.PickerBrowserTests):
     checks_script='emission_source_checks.js'
+    reference_script=None
 
     def test_picker(self):
         from closers.catalog import Catalog
@@ -37,5 +38,6 @@ class EmissionSourceBrowserTests(test_picker_browser.PickerBrowserTests):
                         if not info or not info.get('selected') or info['selected'] in images:continue
                         path,metadata=composition.prepare(info['selected']);images[info['selected']]=dict(metadata,body=base64.b64encode(path.read_bytes()).decode())
             scenes.append(dict(label=label,data=data))
-        self.script_prefix='const emissionFixture='+json.dumps(dict(scenes=scenes,images=images),ensure_ascii=True)+';\n'
+        reference=(Path(__file__).with_name(self.reference_script).read_text(encoding='utf-8')+'\n') if self.reference_script else ''
+        self.script_prefix=reference+'const emissionFixture='+json.dumps(dict(scenes=scenes,images=images),ensure_ascii=True)+';\n'
         super().test_picker()
