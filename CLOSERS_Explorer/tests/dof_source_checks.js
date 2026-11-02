@@ -1,5 +1,5 @@
 import * as T from '/vendor/three/three.module.min.js';
-import {buildModel} from '/model-core.js';
+import {buildModel,setAvatarBaseMap} from '/model-core.js';
 import {setMaterialPreviewMap,setMatcapPreviewMap,setMatcapNormalMap,setMatcapPreview} from '/model-materials.js';
 import {createEmissionRenderer,applyAvatarColorSpace} from '/model-emission.js';
 import {createDofDepthPass} from '/model-dof-depth.js';
@@ -16,13 +16,14 @@ try{
   try{const map=await loader.loadAsync(url);map.flipY=false;map.wrapS=map.wrapT=T.RepeatWrapping;maps.set(Number(id),map);}finally{URL.revokeObjectURL(url);}
  }
  for(const fixture of emissionFixture.scenes){
-  const model=current=buildModel(fixture.data),scene=new T.Scene();scene.add(model.root);check(supportsDofModel(model),'unsupported real costume '+fixture.label);
+  const model=current=buildModel(fixture.data),scene=new T.Scene();scene.add(model.root);
   for(const material of model.materials){
-   const input=material.userData.input;if(input.image?.selected){material.map=maps.get(input.image.selected);material.color.set(0xffffff);material.needsUpdate=true;}
+   const input=material.userData.input;if(input.image?.selected)setAvatarBaseMap(material,maps.get(input.image.selected));
    if(material.userData.materialPreview){const map=maps.get(input.material_preview.image?.selected);check(map,'missing real emissive texture');setMaterialPreviewMap(material,map);}
    if(fixture.gloss&&material.userData.matcapPreview){const cap=input.matcap_preview;setMatcapPreviewMap(material,maps.get(cap.image?.selected)||null);setMatcapNormalMap(material,maps.get(cap.normal_image?.selected)||null);setMatcapPreview(material,true,1,true);}
   }
   if(fixture.gloss)check(model.materials.some(m=>m.userData.matcapPreview?.uniforms.avatarMatcapEnabled.value>0),'real gloss/mask did not activate');
+  const supported=supportsDofModel(model);
   applyAvatarColorSpace(renderer,new Map([...maps].map(([id,map])=>['base:'+id,map])),true);
   const box=new T.Box3();for(const mesh of model.meshes)if(mesh.visible)box.expandByObject(mesh,true);const center=box.getCenter(new T.Vector3()),extent=box.getSize(new T.Vector3()).length();
   grid=new T.GridHelper(extent*2,20,0x606060,0x303030);grid.position.set(center.x,box.min.y,center.z);scene.add(grid);
@@ -34,6 +35,11 @@ try{
     const options={bloom:mode!=='off',bloomMode:mode==='source'?'source':'viewer',strength:.8},prefix='dof-'+fixture.label+'-'+view+'-'+mode;
     const render=dof=>{fx.render(scene,camera,model,{...options,dof});return read();};
     const base=render(null);capture(prefix+'-base');const focused=render(sharp);const blurred=render(blur);capture(prefix+'-blur');
+    if(!supported){
+     check(model.materials.some(m=>m.userData.avatarAlphaOverlay),'unexpected unsupported source material '+prefix);
+     check(same(base,focused)&&same(base,blurred),'unsupported source alpha DOF changed output '+prefix);
+     window.dofSourceResults??=[];window.dofSourceResults.push({fixture:fixture.label,view,bloom:mode,supported:false,reason:'alpha-overlay'});continue;
+    }
     const depthPixels=read(depth.render(scene,camera,model,dofFocal(blur)));renderer.setRenderTarget(null);
     let covered=0,outside=0,changed=0,focusDelta=0,blurDelta=0;
     for(let i=0;i<base.length;i+=4){

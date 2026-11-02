@@ -555,9 +555,10 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     presetSelect.disabled=!gradeAvailable||!gradePresets.length;$('avatar-grade-preset-apply').disabled=!gradeAvailable||!gradePresets.some(p=>p.key===presetSelect.value);$('avatar-grade-manual-restore').disabled=!gradeAvailable||!settings.colorGradingManual;
     describeGradePreset();
     const dofAvailable=gradeAvailable&&supportsDofModel(state.model);
+    const dofUnavailable=state.model?.materials.some(m=>m.userData.avatarAlphaOverlay)?'시스루 재질이 포함되어 심도 비교를 지원하지 않습니다.':'현재 재질에서는 심도 비교를 지원하지 않습니다.';
     dofToggle.disabled=!dofAvailable;dofFocusButton.disabled=!dofAvailable;
     for(const input of [dofFocus,dofRange,dofStrength])input.disabled=!dofAvailable;
-    $('avatar-dof-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!dofAvailable?'현재 재질에서는 심도 비교를 지원하지 않습니다.':focusNotice||(!settings.dof.enabled?'심도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 심도 잠시 보류':!dofFocal(settings.dof)?'초점 거리와 범위를 입력하거나 현재 모델에 초점을 맞추세요.':settings.dof.strength===0?'효과 강도 0 · 심도 효과 없음':'수동 심도 비교 중 · 투명도 유지 · 게임 초점 상태 미연결');
+    $('avatar-dof-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!dofAvailable?dofUnavailable:focusNotice||(!settings.dof.enabled?'심도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 심도 잠시 보류':!dofFocal(settings.dof)?'초점 거리와 범위를 입력하거나 현재 모델에 초점을 맞추세요.':settings.dof.strength===0?'효과 강도 0 · 심도 효과 없음':'수동 심도 비교 중 · 투명도 유지 · 게임 초점 상태 미연결');
     sharpToggle.disabled=!gradeAvailable;sharpRadius.disabled=!gradeAvailable;sharpPreset.disabled=!gradeAvailable||sourceSharpen()===null;$('avatar-sharpen-reset').disabled=!gradeAvailable;
     $('avatar-sharpen-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.sharpen.enabled?'선명도 비교 꺼짐':gradePaused?'진단 화면 확인 중 · 선명도 잠시 보류':settings.sharpen.radius===0?'샘플 거리 0 · 선명도 효과 없음':`선명도 비교 중 · 주변 샘플 거리 ${settings.sharpen.radius}픽셀 · 알파 유지 · 게임 실시간 상태 미연결`;
     $('avatar-grade-status').textContent=!gradeAvailable?'아바타를 선택하고 원본 형식의 색상 계산을 켜세요.':!settings.colorGrading.enabled?'색상 보정 꺼짐':gradePaused?'진단 화면 확인 중 · 색상 보정 잠시 보류':'색상 보정 비교 중 · 수동 입력값 적용';

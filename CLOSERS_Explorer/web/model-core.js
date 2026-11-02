@@ -3,6 +3,40 @@ import {isFaceShadingMaterial} from './face-preview.js';
 import {installMaterialPreview,installMatcapPreview} from './model-materials.js';
 import {installAvatarLighting,updateAvatarFaceFrame} from './model-lighting.js';
 import {prepareMatcapBasis} from './model-tangents.js';
+import {installAvatarAlphaSort} from './model-alpha-sort.js';
+
+function textureAlphaMode(map){
+  if(map.userData.avatarAlphaMode)return map.userData.avatarAlphaMode;
+  const image=map.image;let clear=false,partial=false,canvas;
+  const scan=data=>{for(let i=3;i<data.length;i+=4){if(data[i]===0)clear=true;else if(data[i]<255){partial=true;break;}}};
+  try{
+    if(image?.data&&map.type===THREE.UnsignedByteType&&map.format===THREE.RGBAFormat)scan(image.data);
+    else{
+      const width=image?.naturalWidth||image?.width,height=image?.naturalHeight||image?.height;
+      if(!width||!height)return 'unknown';
+      // Inspect short strips once per cached texture rather than retaining a
+      // second full-resolution RGBA copy just to classify cloth opacity.
+      canvas=document.createElement('canvas');canvas.width=width;canvas.height=Math.min(64,height);
+      const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)return 'unknown';
+      for(let y=0;y<height&&!partial;y+=64){const rows=Math.min(64,height-y);context.clearRect(0,0,width,rows);context.drawImage(image,0,y,width,rows,0,0,width,rows);scan(context.getImageData(0,0,width,rows).data);}
+    }
+    return map.userData.avatarAlphaMode=partial?'blend':clear?'cutout':'opaque';
+  }catch{return 'unknown';}
+  finally{if(canvas)canvas.width=canvas.height=0;}
+}
+
+export function setAvatarBaseMap(material,map){
+  material.map=map;material.color.set(0xffffff);
+  if(material.userData.avatarAlphaComponent){
+    const mode=textureAlphaMode(map);
+    if(mode!=='unknown'){
+      const overlay=mode==='blend';material.userData.avatarAlphaOverlay=overlay;
+      material.transparent=overlay||material.userData.input.color[3]<1;
+      material.depthWrite=!overlay;material.alphaTest=overlay?1/255:.1;
+    }
+  }
+  material.needsUpdate=true;
+}
 
 // Store a sparse list rather than reserving a fixed number of influences per
 // vertex. WebGL2 vertex shaders can fetch every influence without truncation.
@@ -74,14 +108,17 @@ export function buildModel(data){
         const faceShadingAlpha=isFaceShadingMaterial(m,v);
         // Avatar ALPHA components carry cloth opacity in their own diffuse
         // texture even when the X material's scalar alpha is exactly one.
-        // Restrict blending to those component/texture pairs: skin and face
-        // maps can use alpha for unrelated shader inputs.
+        // Only ALPHA components opt in: skin and face maps can use alpha for
+        // unrelated shader inputs. The filename is an initial fallback until
+        // setAvatarBaseMap classifies the actual decoded texture.
         const source=data.sources?.find(s=>s.entry_id===m.source_id)?.model_group;
-        const alphaOverlay=!faceShadingAlpha&&source?.kind==='avatar'&&source.variant==='ALPHA'&&/_ALPHA\.[^.]+$/i.test(v.texture||'');
+        const alphaComponent=!faceShadingAlpha&&source?.kind==='avatar'&&source.variant==='ALPHA';
+        const alphaOverlay=alphaComponent&&/_ALPHA\.[^.]+$/i.test(v.texture||'');
         // X meshes include reverse-facing outline/interior surfaces. Drawing
         // both sides exposes those surfaces as patches on skin, hair and cloth.
         const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(...v.color.slice(0,3)),opacity:faceShadingAlpha?1:v.color[3],transparent:alphaOverlay||!faceShadingAlpha&&v.color[3]<1,depthWrite:!alphaOverlay,side:THREE.FrontSide,alphaTest:faceShadingAlpha?0:alphaOverlay?1/255:.1});
         mat.userData.avatarAlphaOverlay=alphaOverlay;
+        mat.userData.avatarAlphaComponent=alphaComponent;
         mat.userData.input=v;mat.userData.faceShadingAlpha=faceShadingAlpha;mat.userData.avatarSourceId=m.source_id;mat.userData.avatarMeshName=m.name;installMatcapPreview(mat);installMaterialPreview(mat);installAvatarLighting(mat);materials.push(mat);return mat;
       });
       let mesh;
@@ -104,6 +141,7 @@ export function buildModel(data){
       const faceHeads=new Map();
       for(const mat of mats)if(mat.userData.faceSdfPreview){const matches=bones.filter(b=>b.name===mat.userData.input.face_sdf_preview.head_bone);faceHeads.set(mat,matches.length===1?matches[0]:null);}
       if(faceHeads.size){mesh.userData.faceHeads=faceHeads;mesh.onBeforeRender=(_renderer,_scene,_camera,_geometry,material)=>{if(faceHeads.has(material))updateAvatarFaceFrame(material,faceHeads.get(material)?.matrixWorld);};}
+      installAvatarAlphaSort(mesh);
       mesh.name=m.name;mesh.userData.helper=m.helper;mesh.userData.equipmentHidden=!!m.equipment_hidden;mesh.userData.part=data.sources?.find(s=>s.entry_id===m.source_id)?.model_group?.part;mesh.visible=!m.helper&&!m.equipment_hidden;mesh.frustumCulled=false;meshes.push(mesh);
     }
   }catch(e){geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());skeletons.forEach(s=>s.dispose());textures.forEach(t=>t.dispose());throw e;}

@@ -1,5 +1,5 @@
 import * as T from '/vendor/three/three.module.min.js';
-import {buildModel} from '/model-core.js';
+import {buildModel,setAvatarBaseMap} from '/model-core.js';
 const check=(v,m)=>{if(!v)throw Error(m);};
 const renderer=new T.WebGLRenderer({alpha:true,premultipliedAlpha:false,antialias:false,preserveDrawingBuffer:true});renderer.outputColorSpace=T.LinearSRGBColorSpace;renderer.setSize(128,128);renderer.setClearColor(0,0);
 const world=new T.Scene(),camera=new T.OrthographicCamera(-1,1,1,-1,.1,100);camera.position.z=10;camera.updateMatrixWorld(true);
@@ -20,11 +20,28 @@ try{
   for(const [source_id,texture,alpha,expected] of [[1,'CLOTH_ALPHA.PNG',1,false],[2,'SKIN.PNG',1,false],[1,'SKIN.PNG',.4,true]]){
     model=buildModel({frames:[],sources,meshes:[geometry(source_id,texture,0,[1,1,1,alpha])]});check(model.materials[0].transparent===expected&&model.materials[0].depthWrite,'unrelated/base/ordinary opacity material changed');model.dispose();model=null;
   }
+  const partial=new T.DataTexture(new Uint8Array([255,0,0,128]),1,1),opaque=new T.DataTexture(new Uint8Array([255,255,255,255]),1,1),cutout=new T.DataTexture(new Uint8Array([255,255,255,0]),1,1);maps.push(partial,opaque,cutout);partial.needsUpdate=opaque.needsUpdate=cutout.needsUpdate=true;
+  model=buildModel({frames:[],sources,meshes:[geometry(1,'SKIN.PNG',0,[0,0,1,1]),geometry(2,'SHARED_01.TGA',.1,[1,1,1,1])]});model.root.scale.z=1;world.add(model.root);
+  setAvatarBaseMap(model.materials[1],partial);const shared=read().slice((64*128+64)*4,(64*128+64)*4+4);check(shared.every((v,i)=>Math.abs(v-[128,0,127,255][i])<=1),'shared texture must use actual alpha on ALPHA component: '+shared);
+  setAvatarBaseMap(model.materials[1],opaque);check(!model.materials[1].transparent&&model.materials[1].depthWrite,'opaque texture replacement must restore opaque depth');
+  setAvatarBaseMap(model.materials[1],cutout);check(!model.materials[1].transparent&&model.materials[1].depthWrite,'binary cutout must retain depth writes');check(read().slice((64*128+64)*4,(64*128+64)*4+4).every((v,i)=>v===[0,0,255,255][i]),'fully clear cutout hid skin');
+  setAvatarBaseMap(model.materials[0],partial);check(!model.materials[0].transparent&&model.materials[0].depthWrite,'ordinary base material must not treat texture alpha as cloth');world.remove(model.root);model.dispose();model=null;
+  const folded=geometry(2,'FOLD_ALPHA.PNG',0,[1,1,1,1]);folded.vertices=[-.8,-.8,.2,.8,-.8,.2,.8,.8,.2,-.8,.8,.2,-.8,-.8,.1,.8,-.8,.1,.8,.8,.1,-.8,.8,.1];folded.indices=[0,1,2,0,2,3,4,5,6,4,6,7];folded.uv=[.25,.5,.25,.5,.25,.5,.25,.5,.75,.5,.75,.5,.75,.5,.75,.5];folded.groups=[[0,12,0]];
+  const foldMap=new T.DataTexture(new Uint8Array([255,0,0,128,0,255,0,128]),2,1);foldMap.needsUpdate=true;maps.push(foldMap);
+  model=buildModel({frames:[],sources,meshes:[folded]});model.root.scale.z=1;model.materials[0].side=T.DoubleSide;setAvatarBaseMap(model.materials[0],foldMap);world.add(model.root);
+  const sorted=()=>read().slice((64*128+64)*4,(64*128+64)*4+4),sortStats=model.meshes[0].userData.avatarAlphaSort;
+  check(sorted().every((v,i)=>Math.abs(v-[128,64,0,192][i])<=2),'folded cloth must draw back triangles before front triangles');const warmSorts=sortStats.sorts;read();check(sortStats.sorts===warmSorts,'stationary cloth was sorted again');
+  model.root.scale.z=-1;check(sorted().every((v,i)=>Math.abs(v-[64,128,0,192][i])<=2),'cloth order did not follow model transform');model.root.scale.z=1;check(sorted().every((v,i)=>Math.abs(v-[128,64,0,192][i])<=2),'cloth transform restore did not restore order');
+  world.remove(model.root);model.dispose();model=null;
+  const identity=new T.Matrix4().toArray();folded.skin=[{bone:'FRONT',indices:[0,1,2,3],weights:[1,1,1,1],offset:identity},{bone:'BACK',indices:[4,5,6,7],weights:[1,1,1,1],offset:identity}];
+  model=buildModel({frames:['FRONT','BACK'].map(name=>({name,parent:-1,matrix:identity})),sources,meshes:[folded]});model.root.scale.z=1;model.materials[0].side=T.DoubleSide;setAvatarBaseMap(model.materials[0],foldMap);world.add(model.root);
+  check(sorted().every((v,i)=>Math.abs(v-[128,64,0,192][i])<=2),'skinned cloth initial order failed');model.bones[0].position.z=-.3;check(sorted().every((v,i)=>Math.abs(v-[64,128,0,192][i])<=2),'cloth sort cache ignored changed bone pose');model.bones[0].position.z=0;check(sorted().every((v,i)=>Math.abs(v-[128,64,0,192][i])<=2),'restored bone pose changed cloth output');
+  world.remove(model.root);model.dispose();model=null;
   if(window.avatarAlphaFixture){
     renderer.setSize(384,384);const loader=new T.TextureLoader();window.testCaptures=[];
     for(const fixture of window.avatarAlphaFixture.scenes){
       model=buildModel(fixture.data);world.add(model.root);
-      for(const m of model.materials){const id=m.userData.input.image?.selected;if(!id)continue;const image=window.avatarAlphaFixture.images[id],texture=await loader.loadAsync('data:image/png;base64,'+image);maps.push(texture);texture.flipY=false;texture.colorSpace=T.NoColorSpace;m.map=texture;m.color.set(0xffffff);m.needsUpdate=true;}
+      for(const m of model.materials){const id=m.userData.input.image?.selected;if(!id)continue;const image=window.avatarAlphaFixture.images[id],texture=await loader.loadAsync('data:image/png;base64,'+image);maps.push(texture);texture.flipY=false;texture.colorSpace=T.NoColorSpace;setAvatarBaseMap(m,texture);}
       const overlays=model.materials.filter(m=>m.userData.avatarAlphaOverlay);check(overlays.length===2,'expected two ALPHA-textured materials for '+fixture.label);
       check(model.materials.filter(m=>!overlays.includes(m)).every(m=>!m.transparent&&m.depthWrite),'skin/base materials changed for '+fixture.label);
       const bounds=new T.Box3().setFromObject(model.root),center=bounds.getCenter(new T.Vector3()),size=bounds.getSize(new T.Vector3()),half=Math.max(size.y*.6,size.x*.22),distance=size.length()*2;

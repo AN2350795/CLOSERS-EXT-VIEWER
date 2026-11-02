@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {buildModel,applyPose} from './model-core.js';
+import {buildModel,applyPose,setAvatarBaseMap} from './model-core.js';
 import {TextureCache} from './model-texture-cache.js';
 import {createTracks,random,vector,sample,EFFECT_ROTATION_ORDER} from './effect-timeline.js';
 import {createParticleModel,applyBlend,EFFECT_ALPHA_TEST,effectRenderOrder} from './particle-model.js';
@@ -106,7 +106,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       if(model)for(const material of model.materials){
         const info=material.userData.input.image;if(!info)continue;
         const map=await image(info,current,signal,asset,entry);
-        if(map){material.map=map;material.color.set(0xffffff);material.needsUpdate=true;}
+        if(map)setAvatarBaseMap(material,map);
         const sequence=chooseTextureSequence(material.userData.input,entry.packet);
         if(!sequence&&material.userData.input.texture_animation_choices?.length)entry.loadWarnings.push('재질 애니메이션 후보가 중복되어 첫 이미지로 표시합니다: '+material.userData.input.texture_animation_choices.map(s=>s.name).join(', '));
         if(sequence&&entry.kind!=='particle'){

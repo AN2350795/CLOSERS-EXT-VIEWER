@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {buildModel} from './model-core.js';
+import {buildModel,setAvatarBaseMap} from './model-core.js';
 
 // Four visible image jobs at a time. HTTP revalidation owns source freshness;
 // decoded images belong to the current DOM, with no retained page-lifetime copies.
@@ -69,7 +69,7 @@ export function setupPreviews({api}){
           const map=await loader.loadAsync('/api/composition-image/'+info.selected+'?'+new URLSearchParams({token,sha256:image.image_sha256}));
           map.colorSpace=THREE.SRGBColorSpace;map.flipY=false;map.wrapS=map.wrapT=THREE.RepeatWrapping;textures.push(map);maps.set(info.selected,map);
         }
-        material.map=maps.get(info.selected);material.color.set(0xffffff);material.needsUpdate=true;
+        setAvatarBaseMap(material,maps.get(info.selected));
       }
       if(stopped)throw Error('미리보기 종료');
       const scene=new THREE.Scene();scene.add(model.root);

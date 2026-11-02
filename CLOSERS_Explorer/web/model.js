@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
-import {buildModel,applyPose,restorePose} from './model-core.js';
+import {buildModel,applyPose,restorePose,setAvatarBaseMap} from './model-core.js';
 import {slots,partLabels} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
 import {setupPreviews} from './model-preview.js';
@@ -119,7 +119,7 @@ async function texture(id,materials,role='base'){
   })());
   let map;try{map=await model.textureTasks.get(taskKey);}catch(e){model.textureTasks.delete(taskKey);throw e;}
   if(!map||state.generation!==generation||state.model!==model)return;
-  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else if(role==='matcap')setMatcapPreviewMap(m,map);else if(role==='matcap-normal')setMatcapNormalMap(m,map);else if(role==='toon')setAvatarToonMap(m,map);else if(role==='glow')setAvatarGlowMap(m,map);else if(role==='ext')setAvatarExtMap(m,map);else if(role==='second')setAvatarSecondMap(m,map);else{m.map=map;m.color.set(0xffffff);m.needsUpdate=true;}});
+  materials.forEach(m=>{if(role==='auxiliary')setMaterialPreviewMap(m,map);else if(role==='matcap')setMatcapPreviewMap(m,map);else if(role==='matcap-normal')setMatcapNormalMap(m,map);else if(role==='toon')setAvatarToonMap(m,map);else if(role==='glow')setAvatarGlowMap(m,map);else if(role==='ext')setAvatarExtMap(m,map);else if(role==='second')setAvatarSecondMap(m,map);else setAvatarBaseMap(m,map);});
 }
 function sourceSelector(info,callback){const select=element('select');select.append(element('option',info.candidates.length?'출처를 선택하세요':'일치하는 파일 없음'));select.firstChild.value='';for(const row of info.candidates){const option=element('option',row.archive+' · #'+row.ordinal);option.value=row.id;select.append(option);}if(info.selected)select.value=info.selected;select.onchange=()=>{if(select.value)operation(()=>callback(Number(select.value)));};return select;}
 async function showTextures(){
