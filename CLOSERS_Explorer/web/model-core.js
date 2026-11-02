@@ -72,9 +72,16 @@ export function buildModel(data){
         // Observed face SDF maps store shading data in alpha. Cutting them out
         // removes a cheek. Keep opacity testing for eyes, hair and other maps.
         const faceShadingAlpha=isFaceShadingMaterial(m,v);
+        // Avatar ALPHA components carry cloth opacity in their own diffuse
+        // texture even when the X material's scalar alpha is exactly one.
+        // Restrict blending to those component/texture pairs: skin and face
+        // maps can use alpha for unrelated shader inputs.
+        const source=data.sources?.find(s=>s.entry_id===m.source_id)?.model_group;
+        const alphaOverlay=!faceShadingAlpha&&source?.kind==='avatar'&&source.variant==='ALPHA'&&/_ALPHA\.[^.]+$/i.test(v.texture||'');
         // X meshes include reverse-facing outline/interior surfaces. Drawing
         // both sides exposes those surfaces as patches on skin, hair and cloth.
-        const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(...v.color.slice(0,3)),opacity:faceShadingAlpha?1:v.color[3],transparent:!faceShadingAlpha&&v.color[3]<1,side:THREE.FrontSide,alphaTest:faceShadingAlpha?0:.1});
+        const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(...v.color.slice(0,3)),opacity:faceShadingAlpha?1:v.color[3],transparent:alphaOverlay||!faceShadingAlpha&&v.color[3]<1,depthWrite:!alphaOverlay,side:THREE.FrontSide,alphaTest:faceShadingAlpha?0:alphaOverlay?1/255:.1});
+        mat.userData.avatarAlphaOverlay=alphaOverlay;
         mat.userData.input=v;mat.userData.faceShadingAlpha=faceShadingAlpha;mat.userData.avatarSourceId=m.source_id;mat.userData.avatarMeshName=m.name;installMatcapPreview(mat);installMaterialPreview(mat);installAvatarLighting(mat);materials.push(mat);return mat;
       });
       let mesh;
