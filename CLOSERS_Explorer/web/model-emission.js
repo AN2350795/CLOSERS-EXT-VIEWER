@@ -23,7 +23,7 @@ export function createEmissionRenderer(renderer){
   const base=target(true),mask=target(true),horizontal=target(false),vertical=target(false),size=new THREE.Vector2();
   const combined=new THREE.WebGLRenderTarget(1,1,{type:THREE.UnsignedByteType,depthBuffer:false,stencilBuffer:false});
   const sharpened=combined.clone();
-  let sourceBloom=null,dofPipeline=null,postBase=null;
+  let sourceBloom=null,dofPipeline=null,postBase=null,disposed=false;
   base.samples=mask.samples=renderer.getContext().getContextAttributes()?.antialias?Math.min(4,renderer.capabilities.maxSamples):0;
   const camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),scene=new THREE.Scene(),geometry=new THREE.PlaneGeometry(2,2),quad=new THREE.Mesh(geometry);scene.add(quad);quad.frustumCulled=false;
   const vertexShader='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
@@ -44,6 +44,7 @@ gl_FragColor=avatarGrade(gl_FragColor);
 }`});
   quad.material.dispose();quad.material=blur;
   function render(world,view,model,{bloom=true,bloomMode='viewer',solo=false,strength=.8,exposure=1,colorGrading=null,sharpen=null,dof=null}={}){
+    if(disposed)throw Error('종료된 후처리 렌더러입니다.');
     const materials=model?.materials||[],ready=materials.some(m=>m.userData.materialPreview?.uniforms.avatarEmissiveMap.value);
     const active=materials.some(m=>m.userData.materialPreview?.uniforms.avatarMaterialEnabled.value>0);
     const grade=normalizeColorGrading(colorGrading),grading=!!model&&!solo&&grade.enabled;
@@ -106,5 +107,5 @@ gl_FragColor=avatarGrade(gl_FragColor);
       quad.material=composite;composite.uniforms.baseImage.value=solo?frameMask.texture:frameBase.texture;composite.uniforms.glowImage.value=source?source.layers[0]:vertical.texture;composite.uniforms.strength.value=bloom?strength:0;composite.uniforms.exposure.value=solo?exposure:1;finish();
     }finally{for(const [u,value] of suppressed)u.value=value;for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=0;world.background=background;for(const child of hidden)child.visible=true;renderer.setClearColor(clear,alpha);renderer.setRenderTarget(output);renderer.autoClear=autoClear;}
   }
-  return {render,dispose(){postBase?.dispose();dofPipeline?.dispose();sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
+  return {render,dispose(){if(disposed)return;disposed=true;postBase?.dispose();dofPipeline?.dispose();sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
 }

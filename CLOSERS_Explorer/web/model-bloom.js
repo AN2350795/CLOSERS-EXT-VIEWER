@@ -12,8 +12,10 @@ export function createSourceBloom(samples=0){
     uniforms:{image:{value:null},direction:{value:new THREE.Vector2()},weights:{value:weights}},
     vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}',
     fragmentShader:'varying vec2 vUv;uniform sampler2D image;uniform vec2 direction;uniform float weights[9];void main(){vec3 color=vec3(0.0);for(int i=0;i<9;i++){color+=texture2D(image,vUv+float(i-4)*direction).rgb*weights[i];}gl_FragColor=vec4(clamp(color,0.0,1.0),1.0);}'});
+  let disposed=false;
   return {base,mask,layers:pairs.map(pair=>pair[1].texture),
     resize(width,height){
+      if(disposed)throw Error('종료된 번짐 비교입니다.');
       if(width<32||height<32)return false;
       if(base.width===width&&base.height===height)return true;
       base.setSize(width,height);mask.setSize(width,height);
@@ -21,6 +23,7 @@ export function createSourceBloom(samples=0){
       return true;
     },
     render(draw){
+      if(disposed)throw Error('종료된 번짐 비교입니다.');
       let input=mask.texture;
       for(const [horizontal,vertical] of pairs){
         blur.uniforms.image.value=input;blur.uniforms.direction.value.set(1/horizontal.width,0);draw(blur,horizontal);
@@ -28,6 +31,6 @@ export function createSourceBloom(samples=0){
         input=vertical.texture;
       }
     },
-    dispose(){for(const t of [base,mask,...pairs.flat()])t.dispose();blur.dispose();}
+    dispose(){if(disposed)return;disposed=true;for(const t of [base,mask,...pairs.flat()])t.dispose();blur.dispose();}
   };
 }
