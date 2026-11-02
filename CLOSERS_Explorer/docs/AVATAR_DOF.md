@@ -88,6 +88,14 @@ GPU 검사는 독립 CPU bilinear/clamp 및 매 단계 UNORM8 계산과 강도 0
 
 ## 재검증과 결과
 
+### 반투명·겹친 표면 확인
+
+`dof_transparency_checks.js`는 알파 테스트가 0인 일반 반투명 재질에서 텍스처 알파 0/128/255와 재질 불투명도 0.25/0.5/0.75를 조합한다. 기존 화면 알파 유지(오차 1 이하), 투명 구멍, 효과 끄기 후 원본 복원, 투명 앞면 뒤의 표면 깊이와 겹친 두 표면을 검사한다. 이 검사는 카탈로그 없이 실행하는 통제된 재질 조건이며 특정 의상의 실제 반투명 상태를 복원한 것으로 간주하지 않는다.
+
+알파 테스트를 사용하지 않을 때 완전히 투명한 픽셀이 DOF 커버리지 알파 1로 기록되던 문제를 수정했다. 깊이 출력 직전에 일반 반투명 표면의 유효 알파가 0이면 버린다. 이제 불투명도 0인 모델은 뒤의 패턴 배경을 흐리지 않고, 보이는 뒷면의 깊이를 가리지 않는다. 불투명 재질은 Three.js의 `OPAQUE` 동작처럼 알파 1 의미를 유지한다. 깊이 훅 캐시 키는 v2로 갱신했고 일반 렌더링은 변경하지 않는다.
+
+부분적으로 투명한 여러 층을 각각 다른 초점으로 분리 합성하는 기능은 아니다. 현재 최종 화면 RGB를 단일 깊이 기준으로 처리하며, retained 표면 깊이를 커버리지 알파 1로 기록하는 뷰어 비교 방식은 유지한다.
+
 ### 실제 의상·MSAA 경계 확인
 
 로컬 게임 카탈로그에서 `ROGUE`의 트리니티 날개(`449991012`)와 `RARE_7_A` 의상 6부위(머리·상의·하의·손·발·무기)를 불러와 검사했다. 실제 기본·발광 텍스처, 투명 배경, 격자 바닥, MSAA를 사용한다. 정면·근접 측면과 번짐 꺼짐·기본 번짐·5단계 번짐의 **12개 조합**에서 넓은 초점보다 초점 밖 설정의 변화가 크고, DOF를 끄면 원래 픽셀이 정확히 복원되는지 확인한다. 모델 밖의 격자·배경·번짐과 화면 알파는 채널 오차 1까지 유지한다. 직접 MSAA 출력과 중간 타깃을 거친 출력 사이의 반올림 차이를 허용한 값이다.
@@ -104,6 +112,7 @@ python tests/audit_dof.py --workspace ../results --exe 'C:/Program Files (x86)/N
 python -m unittest discover -s tests -p test_dof_reference.py -v
 python -m unittest discover -s tests -p test_dof_source.py -v
 python -m unittest discover -s tests -p test_dof_depth_browser.py -v
+python -m unittest discover -s tests -p test_dof_transparency_browser.py -v
 python -m unittest discover -s tests -p test_dof_browser.py -v
 python -m unittest discover -s tests -p test_dof_msaa_browser.py -v
 python -m unittest discover -s tests -p test_dof_focus_browser.py -v

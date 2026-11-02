@@ -21,11 +21,18 @@ function installDepth(material){
   const uniforms={avatarDofDepthPass:{value:false},avatarDofFocal:{value:new THREE.Vector4()}};
   material.userData.dofDepth=uniforms;
   const previous=material.onBeforeCompile,key=material.customProgramCacheKey;
-  material.customProgramCacheKey=()=>key.call(material)+'|avatar-dof-depth-v1';
+  material.customProgramCacheKey=()=>key.call(material)+'|avatar-dof-depth-v2';
   material.onBeforeCompile=function(shader){
     previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
     shader.vertexShader='varying float avatarDofViewDepth;\n'+shader.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\navatarDofViewDepth=-mvPosition.z;');
-    shader.fragmentShader='varying float avatarDofViewDepth;\nuniform bool avatarDofDepthPass;\nuniform vec4 avatarDofFocal;\n'+dofDepthFragment+shader.fragmentShader.replace('#include <opaque_fragment>',`if(avatarDofDepthPass){float depth=avatarDofEncodedDepth(avatarDofViewDepth,avatarDofFocal);gl_FragColor=vec4(vec3(depth),1.0);return;}
+    shader.fragmentShader='varying float avatarDofViewDepth;\nuniform bool avatarDofDepthPass;\nuniform vec4 avatarDofFocal;\n'+dofDepthFragment+shader.fragmentShader.replace('#include <opaque_fragment>',`if(avatarDofDepthPass){
+// Opaque materials force alpha to one in the normal shader. For blended
+// surfaces, zero effective alpha must not become depth coverage merely
+// because this comparison encodes the retained samples with alpha one.
+#ifndef OPAQUE
+if(diffuseColor.a<=0.0)discard;
+#endif
+float depth=avatarDofEncodedDepth(avatarDofViewDepth,avatarDofFocal);gl_FragColor=vec4(vec3(depth),1.0);return;}
 #include <opaque_fragment>`);
   };
   material.needsUpdate=true;return uniforms;
