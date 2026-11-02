@@ -117,3 +117,24 @@ python tests/audit_particle_render_state.py --exe 'C:/Program Files (x86)/Naddic
 ```
 
 일반 3D 평면의 셰이더 선택·쓰기 마스크·블렌딩 전달, 공유 플래그 초기화·복원·QUAD 업로드와 명시적 GPU 비교를 확인했다. 장면 타깃 연결은 확인했으며 개별 파티클의 타깃 상속/덮어쓰기는 남아 있다. 다음은 이 개별 호출 경로를 좁혀 추적하고, 뷰어에서 원본 근거에 따라 적용할 수 있는 평면 파티클의 조건을 정하는 것이다. 이번 조사로 메뉴·저장값·깊이 기본값을 바꾸지 않았다.
+
+### 개별 호출의 UI 분기 확인 (2026-11-03)
+
+`audit_particle_dispatch.py`는 실행 파일 지문과 파일에 저장된 19개 바이트 구간을 검증한다. RTTI와 가상 함수 테이블에서 `CNKDGParticleSeq`의 `+0x10` 슬롯이 기존에 조사한 `0x1415b94a0`을 가리키는 것을 확인했다. UI 필드 로더의 RIP 상대 문자열 주소와 대상 필드 오프셋도 계산해 필터와 대조한다.
+
+| 원본 필드 | 템플릿 오프셋 | 가상 그리기 호출 |
+| --- | --- | --- |
+| `m_bDownUI` | `+0x7c` | `0x1415ce70e` |
+| `m_bOverUI` | `+0x7d` | `0x1415cea0e` |
+| `m_bInnerUI` | `+0x7e` | `0x1415cce7f` |
+
+세 경로는 시퀀스 `+0xdc`의 상태 ID로 `0x14161c820`을 호출하고 가상 그리기를 수행한다. 단일 InnerUI 경로 `0x1415cce20`은 현재 상태 ID를 저장했다가 그리기 후 복원한다. 상태 적용 함수에는 래스터라이저·깊이·블렌드 설정 호출이 있다. **이 상태 ID를 렌더 타깃 ID로 해석하면 안 된다.** 이 분기만으로 장면 MRT2 상속 여부를 확정할 수 없다.
+
+별도 경로는 시퀀스 `+0x4e0` 값이 호출자의 RDX와 같은 대상을 모아 `0x1415ced1e`에서 그린다. 이 선택 값의 의미와 상위 호출 단계는 아직 확인하지 못했다. 이를 장면용 또는 InnerUI 경로라고 임의로 분류하지 않는다. Lua에서 UI 필드가 생략된 경우의 생성자 기본값도 미확인이다.
+
+따라서 3D 평면 타입만으로 파티클을 아바타 심도 입력에 포함하지 않는다. 현재 뷰어의 파티클 심도 제외 처리를 유지한다. 다음은 각 분기의 상위 호출자와 타깃 바인딩, `+0x4e0` 선택 값의 생산자를 추적하는 작업이다. 실제 게임 화면과의 일치나 파티클 DOF 구현 완료를 의미하지 않는다.
+
+```powershell
+python -m unittest discover -s tests -p test_particle_dispatch.py -v
+python tests/audit_particle_dispatch.py --exe 'C:/Program Files (x86)/NaddicGames/Closers/CW.EXE' --output ../diagnostics/particle-dispatch.json
+```
