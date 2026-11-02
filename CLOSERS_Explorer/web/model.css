@@ -263,7 +263,7 @@
 #close-avatar-lighting{grid-column:2;grid-row:1;white-space:nowrap;min-height:34px}
 #avatar-lighting-experiments-notice{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:4px;font-size:12px;color:var(--accent)}
 #avatar-lighting-experiments-notice button{font-size:11px;padding:4px 9px}
-.lighting-menu-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.lighting-menu-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:8px 12px;border-bottom:1px solid var(--line)}
 .lighting-menu-tabs button{min-width:0;padding:10px 4px;background:transparent;border:1px solid transparent;color:var(--muted);font-size:12px;border-radius:7px}
 .lighting-menu-tabs [aria-selected=true]{color:var(--accent);background:var(--soft);border-color:var(--line)}
 .lighting-menu-tabs button:focus-visible,#avatar-lighting-dialog summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
@@ -275,7 +275,7 @@
 #avatar-lighting-dialog label:has(select),#avatar-lighting-dialog label:has(input[type=number]){flex-direction:column;align-items:stretch}
 #avatar-lighting-dialog select,#avatar-lighting-dialog input[type=number]{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
 #avatar-lighting-dialog p{line-height:1.65;font-size:12px;overflow-wrap:anywhere}
-#avatar-lighting-dialog details{min-width:0;padding:11px 12px;border:1px solid var(--line);border-radius:8px}
+#avatar-lighting-dialog details{min-width:0;margin:0;padding:11px 12px;border:1px solid var(--line);border-radius:8px}
 #avatar-lighting-dialog details>summary{cursor:pointer;font-size:12px;color:var(--muted);line-height:1.6}
 #avatar-lighting-dialog details[open]>summary{margin-bottom:12px;color:var(--accent)}
 #avatar-lighting-dialog details[open]>label{margin-top:10px}
@@ -283,6 +283,12 @@
 #avatar-lighting-dialog .lighting-unavailable>label,#avatar-lighting-dialog .lighting-unavailable>details,#avatar-lighting-dialog .lighting-unavailable>#avatar-emission-master{display:none}
 #avatar-lighting-panel-advanced>p{margin:0;color:var(--muted)}
 #avatar-lighting-experiments-off{justify-self:start}
+.lighting-help{margin:0;color:var(--muted)}
+.lighting-brief{margin:0;color:var(--accent)}
+#avatar-lighting-active-settings{display:grid;gap:10px;padding:14px;border:1px solid var(--line);border-radius:8px;background:var(--soft)}
+.lighting-active-list{display:flex;gap:6px;flex-wrap:wrap}
+.lighting-active-list button{font-size:12px;white-space:normal;text-align:left}
+#avatar-lighting-dialog .lighting-unavailable>#avatar-toon-profile{display:none}
 #avatar-grade-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 @media(max-width:600px){#avatar-lighting-dialog .lighting-menu-heading{padding:14px 12px 10px}.lighting-menu-title h2{font-size:17px}.lighting-menu-tabs{padding:6px}.lighting-menu-tabs button{font-size:11px;padding:9px 2px}#avatar-lighting-scroll{padding:12px}#avatar-lighting-dialog fieldset{padding:12px}#avatar-grade-values{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .motion-audio-controls{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding-top:8px;margin-top:8px;border-top:1px solid var(--line);color:var(--muted);font-size:11px}.motion-audio-controls[hidden]{display:none}.motion-audio-controls label{display:flex;align-items:center;gap:8px}.motion-audio-controls input{width:120px;accent-color:var(--accent)}.motion-audio-controls output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}.motion-audio-controls button{font-size:11px;padding:4px 9px}

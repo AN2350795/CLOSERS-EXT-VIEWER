@@ -14,16 +14,29 @@ try{
  check(ui.getRenderOptions().bloomMode==='source'&&$('avatar-emission-mode').value==='source','saved bloom mode was lost');
  const opener=$('open-avatar-lighting');opener.focus();opener.click();for(let i=0;i<100&&$('avatar-lighting-profile').value!=='source';i++)await new Promise(r=>setTimeout(r,10));
  check(!$('avatar-lighting-enabled')&&!$('avatar-lighting-influence')&&model.materials[0].userData.avatarLighting.avatarLightEnabled.value===0,'retired comparison survived');
- check(document.querySelectorAll('#avatar-lighting-dialog [role=tab]').length===4&&$('avatar-lighting-tab-light').getAttribute('aria-selected')==='true','simple initial navigation');
+ check(document.querySelectorAll('#avatar-lighting-dialog [role=tab]').length===3&&$('avatar-lighting-tab-light').getAttribute('aria-selected')==='true','simple initial navigation');
  check($('avatar-lighting-experiments-notice').textContent.includes('4개')&&!$('avatar-lighting-experiments-notice').hidden,'saved experiments hidden without notice');
- check(!$('avatar-lighting-panel-advanced').contains($('avatar-matcap-enabled'))&&$('avatar-lighting-panel-advanced').contains($('avatar-second-enabled')),'normal effects and experiments mixed');
+ check($('avatar-lighting-panel-light').contains($('avatar-matcap-enabled'))&&$('avatar-lighting-panel-light').contains($('avatar-emission-bloom'))&&$('avatar-lighting-panel-advanced').contains($('avatar-second-enabled')),'normal effects and experiments mixed');
+ check([...$('avatar-lighting-panel-light').querySelectorAll('details')].every(d=>!d.open),'basic details open by default');
+ check(!$('avatar-lighting-panel-light').contains($('avatar-glow-enabled'))&&$('avatar-emission-mode').closest('details')&&!$('avatar-emission-mode').closest('details').open,'technical options clutter basics');
+ check($('avatar-lighting-panel-light').querySelectorAll(':scope > fieldset').length===3&&document.querySelectorAll('.lighting-help').length>=7,'basic effects/help missing');
+ const glossWasOn=$('avatar-matcap-enabled').checked;if(!glossWasOn)$('avatar-matcap-enabled').click();check($('avatar-lighting-basic-gloss').textContent.includes('대기'),'missing mask incorrectly shown as applied gloss');if(!glossWasOn)$('avatar-matcap-enabled').click();
  $('avatar-lighting-review-advanced').click();check(!$('avatar-lighting-panel-advanced').hidden,'review action did not reveal saved experiments');
  $('avatar-lighting-experiments-off').click();const after=JSON.parse(localStorage.getItem('closers-avatar-lighting-v2'));
  check(!after.second&&!after.extSurface&&!after.toonRotation.enabled&&!after.cameraMix.enabled,'batch OFF lost effect state');
  check(after.toon&&after.selected==='source'&&after.extSurfaceFactor===.75&&after.toonRotation.angles.join(',')==='10,20,30'&&after.cameraMix.calibrations.REAPER.far===20,'batch OFF destroyed useful settings or calibration');
  check($('avatar-lighting-experiments-notice').hidden&&$('avatar-lighting-experiments-off').disabled,'notice stayed stale after OFF');
- const keys=['light','material','color','advanced'];for(const key of keys){$('avatar-lighting-tab-'+key).click();check(keys.every(other=>$('avatar-lighting-panel-'+other).hidden===(other!==key)),'multiple panels visible');}
- $('avatar-lighting-tab-light').focus();$('avatar-lighting-tab-light').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));check(document.activeElement===$('avatar-lighting-tab-material')&&!$('avatar-lighting-panel-material').hidden,'keyboard tab navigation');
+ const keys=['light','color','advanced'];for(const key of keys){$('avatar-lighting-tab-'+key).click();check(keys.every(other=>$('avatar-lighting-panel-'+other).hidden===(other!==key)),'multiple panels visible');}
+ $('avatar-lighting-tab-light').focus();$('avatar-lighting-tab-light').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));check(document.activeElement===$('avatar-lighting-tab-color')&&!$('avatar-lighting-panel-color').hidden,'keyboard tab navigation');
+ // Saved selections remain discoverable even while their prerequisite is off.
+ const change=(id,value)=>{const input=$(id);if(input.type==='checkbox')input.checked=value;else input.value=value;input.dispatchEvent(new Event('change',{bubbles:true}));};
+ change('avatar-grade-enabled',true);change('avatar-sharpen-enabled',true);change('avatar-dof-enabled',true);change('avatar-dof-focus','100');change('avatar-dof-range','20');
+ check($('avatar-dof-enabled').closest('details').querySelector('summary').textContent.includes('대기'),'disabled saved choice looks active');
+ $('avatar-lighting-review-advanced').click();const jump=[...document.querySelectorAll('.lighting-active-list button')].find(b=>b.textContent==='초점 밖 흐림');check(jump,'saved effect missing from overview');jump.click();check(!$('avatar-lighting-panel-color').hidden&&$('avatar-dof-enabled').closest('details').open,'overview did not reveal paused effect');
+ change('avatar-source-color',true);check($('avatar-lighting-tab-color').textContent.includes('4'),'color selections not counted');
+ $('avatar-lighting-base-region').append(Object.assign(document.createElement('option'),{value:'test-region',textContent:'Test region'}));change('avatar-lighting-base-region','test-region');
+ check([...document.querySelectorAll('.lighting-active-list button')].some(b=>b.textContent==='지역 조명 합성'),'selected region missing from overview');
+ $('avatar-lighting-review-advanced').click();$('avatar-lighting-experiments-off').click();const cleared=JSON.parse(localStorage.getItem('closers-avatar-lighting-v2'));check(!cleared.sourceColor&&!cleared.colorGrading.enabled&&!cleared.sharpen.enabled&&!cleared.dof.enabled&&cleared.dof.focus===100&&cleared.dof.range===20&&cleared.baseRegion===''&&cleared.toon,'batch OFF lost numeric settings or basic effects');
  $('close-avatar-lighting').click();check(!$('avatar-lighting-dialog').open&&document.activeElement===opener,'close did not restore focus');opener.click();
  const ids=[...document.querySelectorAll('#avatar-lighting-dialog [id]')].map(e=>e.id);check(new Set(ids).size===ids.length,'moved controls duplicated IDs');
  window.checkLightingMenuLayout=async()=>{
@@ -33,11 +46,12 @@ try{
   const top=rect(close);body.scrollTop=body.scrollHeight;await frame();const bottom=rect(close),bounds=rect(dialog);
   if(!inside(bounds,{left:0,right:innerWidth,top:0,bottom:innerHeight})||!inside(bottom,bounds)||Math.abs(top.top-bottom.top)>1||Math.abs(top.right-bottom.right)>1)return {status:'failed',errors:'Close button moves outside fixed header '+innerWidth+'/'+innerHeight};
   if(body.scrollHeight<=body.clientHeight||body.scrollTop<=0||body.scrollWidth>body.clientWidth+1||dialog.scrollWidth>dialog.clientWidth+1)return {status:'failed',errors:'Dialog scrolling or overflow '+innerWidth+'/'+innerHeight};
-  for(const key of ['material','color','light']){
+  for(const key of ['color','light']){
    $('avatar-lighting-tab-'+key).click();for(const d of $('avatar-lighting-panel-'+key).querySelectorAll('details'))d.open=true;await frame();
    if(body.scrollTop!==0||body.scrollWidth>body.clientWidth+1)return {status:'failed',errors:key+' panel overflow/reset'};
   }
   $('avatar-second-enabled').checked=false;$('avatar-second-enabled').dispatchEvent(new Event('change',{bubbles:true}));
+  for(const d of dialog.querySelectorAll('details'))d.open=false;$('avatar-lighting-tab-light').click();await frame();
   return {status:'passed'};
  };
  await window.checkLightingMenuLayout().then(result=>check(result.status==='passed',result.errors));
