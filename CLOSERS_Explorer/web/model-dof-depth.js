@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import {renderAuxiliaryDepth} from './model-occlusion.js';
 
 // Preparation pass only: encode positive view distance using the investigated
 // MRT2 RGB formula. No UI, focus guessing, blur, or game-state activation.
@@ -42,7 +43,7 @@ export function createDofDepthPass(renderer){
   const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.UnsignedByteType,depthBuffer:true,stencilBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
   const size=new THREE.Vector2();let disposed=false;
   return {target,
-    render(scene,camera,model,focal){
+    render(scene,camera,model,focal,occluders=[]){
       if(disposed)throw Error('종료된 DOF 깊이 비교입니다.');
       if(!validDofFocal(focal))throw Error('DOF 깊이 비교에는 근거리 < 초점 < 원거리와 0~1 원거리 제한이 필요합니다.');
       if(!model?.root||!model.materials?.length)throw Error('DOF 깊이를 비교할 모델이 없습니다.');
@@ -53,10 +54,12 @@ export function createDofDepthPass(renderer){
       const output=renderer.getRenderTarget(),background=scene.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
       try{
         for(const [u] of saved){u.avatarDofDepthPass.value=true;u.avatarDofFocal.value.fromArray(focal);}
-        for(const child of scene.children)if(child!==model.root&&child.visible){child.visible=false;hidden.push(child);}
         scene.background=null;renderer.autoClear=true;
         // Diagnostic empty pixels: focus-neutral RGB, zero coverage alpha.
-        renderer.setClearColor(new THREE.Color(.5,.5,.5),0);renderer.setRenderTarget(target);renderer.render(scene,camera);
+        renderer.setClearColor(new THREE.Color(.5,.5,.5),0);renderer.setRenderTarget(target);
+        if(renderAuxiliaryDepth(renderer,scene,camera,model,occluders))renderer.autoClear=false;
+        for(const child of scene.children)if(child!==model.root&&child.visible){child.visible=false;hidden.push(child);}
+        renderer.render(scene,camera);
         return target;
       }finally{
         for(const [u,enabled,prior] of saved){u.avatarDofDepthPass.value=enabled;u.avatarDofFocal.value.copy(prior);}

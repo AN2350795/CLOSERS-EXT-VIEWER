@@ -3,6 +3,7 @@ import {colorGradingFragment,normalizeColorGrading} from './model-color-grading.
 import {sharpenFragment,normalizeSharpen} from './model-sharpen.js';
 import {createSourceBloom} from './model-bloom.js';
 import {createDofPipeline,normalizeDof,dofFocal,supportsDofModel} from './model-dof.js';
+import {renderAuxiliaryDepth} from './model-occlusion.js';
 
 // Keep input sampling and output transfer paired for the explicit raw-UNORM
 // comparison. Reused GPU-cache entries must follow the active frame's domain.
@@ -43,7 +44,7 @@ gl_FragColor=avatarGrade(gl_FragColor);
 #include <colorspace_fragment>
 }`});
   quad.material.dispose();quad.material=blur;
-  function render(world,view,model,{bloom=true,bloomMode='viewer',solo=false,strength=.8,exposure=1,colorGrading=null,sharpen=null,dof=null}={}){
+  function render(world,view,model,{bloom=true,bloomMode='viewer',solo=false,strength=.8,exposure=1,colorGrading=null,sharpen=null,dof=null,occluders=[]}={}){
     if(disposed)throw Error('종료된 후처리 렌더러입니다.');
     const materials=model?.materials||[],ready=materials.some(m=>m.userData.materialPreview?.uniforms.avatarEmissiveMap.value);
     const active=materials.some(m=>m.userData.materialPreview?.uniforms.avatarMaterialEnabled.value>0);
@@ -77,7 +78,7 @@ gl_FragColor=avatarGrade(gl_FragColor);
           renderer.setRenderTarget(sharpened);renderer.render(scene,camera);
         }
         let finished=sharpening?sharpened.texture:combined.texture;
-        if(focusing){dofPipeline??=createDofPipeline(renderer);finished=dofPipeline.render(world,view,model,finished,focusSettings,size.x,size.y,(material,target)=>{quad.material=material;renderer.setRenderTarget(target);renderer.render(scene,camera);});}
+        if(focusing){dofPipeline??=createDofPipeline(renderer);finished=dofPipeline.render(world,view,model,finished,focusSettings,size.x,size.y,(material,target)=>{quad.material=material;renderer.setRenderTarget(target);renderer.render(scene,camera);},occluders);}
         quad.material=composite;composite.uniforms.sourceMode.value=false;composite.uniforms.baseImage.value=finished;composite.uniforms.glowImage.value=finished;composite.uniforms.strength.value=0;composite.uniforms.exposure.value=1;composite.uniforms.avatarGradeEnabled.value=grading;
       }
       renderer.setRenderTarget(output);renderer.render(scene,camera);
@@ -96,10 +97,12 @@ gl_FragColor=avatarGrade(gl_FragColor);
       if(!solo&&(!ready||!bloom||!active)){
         quad.material=composite;composite.uniforms.baseImage.value=frameBase.texture;composite.uniforms.glowImage.value=frameBase.texture;composite.uniforms.strength.value=0;composite.uniforms.exposure.value=1;finish();return;
       }
-      for(const child of world.children)if(child!==model.root&&child.visible){hidden.push(child);child.visible=false;}
       world.background=null;renderer.setClearColor(0x000000,1);
+      renderer.setRenderTarget(frameMask);
+      if(renderAuxiliaryDepth(renderer,world,view,model,occluders))renderer.autoClear=false;
+      for(const child of world.children)if(child!==model.root&&child.visible){hidden.push(child);child.visible=false;}
       for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=1;
-      renderer.setRenderTarget(frameMask);renderer.render(world,view);
+      renderer.render(world,view);renderer.autoClear=true;
       for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=0;
       world.background=background;for(const child of hidden)child.visible=true;
       if(source)source.render((material,target)=>{quad.material=material;renderer.setRenderTarget(target);renderer.render(scene,camera);});

@@ -77,7 +77,7 @@ vec3 rgb=total>0.000001?sum/total:original.rgb;gl_FragColor=vec4(mix(original.rg
     gather.uniforms.image.value=image;gather.uniforms.depthImage.value=depthImage;gather.uniforms.blurImage.value=input;gather.uniforms.imageSize.value.set(width,height);gather.uniforms.strength.value=normalizeDof(settings).strength;draw(gather,result);return result.texture;
   }
   return {result,renderImages,
-    render(world,camera,model,image,settings,width,height,draw){const focal=dofFocal(settings);if(!focal)throw Error('DOF 초점 거리와 범위를 지정하세요.');return renderImages(image,depth.render(world,camera,model,focal).texture,width,height,settings,draw);},
+    render(world,camera,model,image,settings,width,height,draw,occluders=[]){const focal=dofFocal(settings);if(!focal)throw Error('DOF 초점 거리와 범위를 지정하세요.');return renderImages(image,depth.render(world,camera,model,focal,occluders).texture,width,height,settings,draw);},
     dispose(){if(disposed)return;disposed=true;depth.dispose();for(const target of [result,...pairs.flat()])target.dispose();blur.dispose();gather.dispose();}
   };
 }
