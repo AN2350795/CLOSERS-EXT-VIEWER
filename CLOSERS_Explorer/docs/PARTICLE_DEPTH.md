@@ -18,7 +18,7 @@ QUAD는 `cb6[0].y == 1`, NOLIGHT는 `cb5[19].y == 1` 조건에 따라 MRT2 알�
 
 ## 일반 3D 평면의 상태 전달 추가 조사 (2026-11-03)
 
-`tests/audit_particle_render_state.py`는 설치 `CW.EXE`의 지문과 명령 바이트 **20곳**을 확인한다. 분석에 사용한 디스어셈블러는 게임 파일을 읽기만 하며, 재검증 도구는 별도 디스어셈블러 설치 없이 실행할 수 있다.
+`tests/audit_particle_render_state.py`는 설치 `CW.EXE`의 지문과 명령 바이트 **25곳**, 두 공유 플래그의 PE 초기 상태를 확인한다. 분석에 사용한 디스어셈블러는 게임 파일을 읽기만 하며, 재검증 도구는 별도 디스어셈블러 설치 없이 실행할 수 있다.
 
 | 연결 | 확인한 주소와 내용 |
 | --- | --- |
@@ -46,7 +46,9 @@ QUAD는 `cb6[0].y == 1`, NOLIGHT는 `cb5[19].y == 1` 조건에 따라 MRT2 알�
 
 설명 생성자는 RGB·알파 연산을 ADD=1, 알파 계수를 ONE / ONE=2 / 2로 초기화한다. 이것은 뷰어의 투명 배경 커버리지용 ONE / INVSRCALPHA와 다르다. MRT2 알파를 뷰어의 커버리지 알파로 그대로 대체하지 않는다.
 
-재작성 분기는 공유 float `0x142f9ac94`와 `0x142f9ab14`에도 1을 기록한다. **분기를 건너뛸 때는 이 구간에서 0을 기록하지 않는다.** 따라서 일반 블렌딩의 알파 모드를 항상 0으로 가정할 수 없다. 두 주소의 전체 초기화·복원과 셰이더 상수 업로드 연결은 추가 확인이 필요하다. 보고서의 `alpha_mode_write=null`은 0이라는 뜻이 아니라 이 호출에서 기록하지 않았다는 뜻이다.
+재작성 분기는 공유 float `0x142f9ac94`와 `0x142f9ab14`에도 1을 기록한다. **분기를 건너뛸 때는 이 구간에서 0을 기록하지 않는다.** 따라서 일반 블렌딩의 알파 모드를 항상 0으로 가정할 수 없다. 보고서의 `alpha_mode_write=null`은 0이라는 뜻이 아니라 이 호출에서 기록하지 않았다는 뜻이다.
+
+추가 조사에서 두 주소가 PE의 zero-fill 가상 영역에 있어 런타임 초기화 전에는 0임을 확인했다. 파티클 종료 `0x1415b9791` → 상태 복원 `0x141615400` → 블렌드 복원 `0x141614e60`도 연결했다. 복원 함수는 저장된 상태를 찾으면 `0x141614ed6`에서 이전 GPU 블렌드 상태를 적용하고, `0x141614ef5~0x141614f00`에서 두 float를 0으로 쓴다. 저장된 항목을 찾지 못하면 `0x141614ec8`에서 이 전체 처리를 건너뛴다. 이전 float 값 자체를 저장했다 복원하는 동작은 아니다. 중첩 호출·다른 경로의 쓰기와 셰이더 상수 업로드 연결까지 확정한 결과는 아니다.
 
 `blend_description()`은 이 생성자와 분기만을 재구성한 독립 계산 자료다. 기본 계수 11×11의 121개 입력에서 재작성 조건·타깃별 계수·쓰기 마스크·분기 생략 시 공유 상태 미확정을 검사한다. 실제 draw의 전체 상태를 읽어온 결과는 아니다.
 
@@ -76,13 +78,23 @@ QUAD는 `cb6[0].y == 1`, NOLIGHT는 `cb5[19].y == 1` 조건에 따라 MRT2 알�
 
 ## 재검증과 다음 단계
 
+### 명시적인 MRT2 GPU 비교 (2026-11-03)
+
+`test_particle_mrt_browser.py`는 조사한 QUAD의 저알파 색상 0 처리·초점 기준 깊이 RGB·두 가지 알파 모드와 타깃별 블렌딩을 재구성한다. 실제 게임 셰이더를 실행하지 않는다. WebGL의 타깃별 블렌딩 지원에 의존하지 않도록 RGB 출력과 MRT2 출력을 동일 형상·순서의 **별도 UNORM8 패스**로 계산한다. 원본의 단일 MRT draw·MSAA·실시간 상태를 그대로 재생한 검사는 아니다.
+
+일반·가산·DESTALPHA·ZERO/INVSRCCOLOR·ONE/ONE 블렌딩, 초기 알파 모드 0/1, 근거리/초점/원거리, 알파 0·1/255·0.5·1, 앞뒤 겹침과 깊이 검사/쓰기, 투명 구멍, 공유 상태 유지/복원을 포함한 **131개 조건**을 사용한다. Python 독립 계산이 매 draw의 UNORM8 저장·블렌딩·깊이 통과 여부를 계산하며, GPU의 양쪽 내부 픽셀과 형상 밖 픽셀을 **786개 비교**한다. 각 채널 오차 2 이내로 통과했다. 간단한 알파 모드 차이와 복원 결과는 수계산 예제로도 검증한다.
+
+깊이 쓰기가 켜진 QUAD 경로에서는 저알파 표면 색을 0으로 만들어도 `discard`하지 않은 픽셀은 하드웨어 깊이를 기록해 뒤쪽 draw를 가릴 수 있다. 기존 뷰어 파티클의 낮은 알파 테스트는 그 픽셀을 버리므로 이 동작을 재현하지 않는다. 현재 뷰어는 투명 사각형이 다른 모델을 가리는 문제를 막기 위한 기존 동작을 유지한다. 이번 GPU 검사를 파티클 자체의 DOF가 구현되었다는 의미로 표시하지 않는다.
+
 ```powershell
 cd CLOSERS_Explorer
 python -m unittest discover -s tests -p test_particle_depth_source.py -v
 python -m unittest discover -s tests -p test_particle_depth_browser.py -v
 python -m unittest discover -s tests -p test_particle_render_state.py -v
+python -m unittest discover -s tests -p test_particle_mrt_reference.py -v
+python -m unittest discover -s tests -p test_particle_mrt_browser.py -v
 python tests/audit_particle_depth.py --workspace ../results --output ../diagnostics/particle-depth-source.json
 python tests/audit_particle_render_state.py --exe 'C:/Program Files (x86)/NaddicGames/Closers/CW.EXE' --output ../diagnostics/particle-render-state.json
 ```
 
-일반 3D 평면의 셰이더 선택·쓰기 마스크·블렌딩 전달을 확인했다. 다음은 확인한 MRT2 분기와 두 가지 알파 모드를 명시한 GPU 비교를 만들어 깊이 합성 결과를 대조하는 것이다. 공유 상수 초기화/복원과 실제 타깃 연결을 더 확인한 뒤 파티클 자체의 심도 적용 범위를 결정한다. 이번 조사로 메뉴·저장값·깊이 기본값을 바꾸지 않았다.
+일반 3D 평면의 셰이더 선택·쓰기 마스크·블렌딩 전달, 공유 플래그의 초기 상태·조건부 복원과 명시적 GPU 비교를 확인했다. 다음은 두 공유 주소에서 실제 셰이더 상수로 업로드되는 연결과 그리기 시점의 타깃 연결을 추적하는 것이다. 이를 확인한 뒤 파티클 자체의 심도 적용 범위를 결정한다. 이번 조사로 메뉴·저장값·깊이 기본값을 바꾸지 않았다.
