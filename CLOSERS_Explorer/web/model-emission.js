@@ -23,7 +23,7 @@ export function createEmissionRenderer(renderer){
   const base=target(true),mask=target(true),horizontal=target(false),vertical=target(false),size=new THREE.Vector2();
   const combined=new THREE.WebGLRenderTarget(1,1,{type:THREE.UnsignedByteType,depthBuffer:false,stencilBuffer:false});
   const sharpened=combined.clone();
-  let sourceBloom=null,dofPipeline=null,dofBase=null;
+  let sourceBloom=null,dofPipeline=null,postBase=null;
   base.samples=mask.samples=renderer.getContext().getContextAttributes()?.antialias?Math.min(4,renderer.capabilities.maxSamples):0;
   const camera=new THREE.OrthographicCamera(-1,1,1,-1,0,1),scene=new THREE.Scene(),geometry=new THREE.PlaneGeometry(2,2),quad=new THREE.Mesh(geometry);scene.add(quad);quad.frustumCulled=false;
   const vertexShader='varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.0,1.0);}';
@@ -54,19 +54,22 @@ gl_FragColor=avatarGrade(gl_FragColor);
     const source=bloomMode==='source'&&bloom&&!solo&&ready&&active&&size.x>=32&&size.y>=32?(sourceBloom??=createSourceBloom(base.samples)):null;
     if(source)source.resize(size.x,size.y);
     const focusing=focusRequested&&size.x>=4&&size.y>=4;
-    // With DOF alone, match the normal framebuffer's per-sample UNORM clamp.
-    // Resolving HDR emission first would brighten MSAA silhouettes even where
-    // the depth coverage says to retain the original scene pixel.
-    if(focusing&&(!ready||!bloom||!active)){
-      if(!dofBase){dofBase=combined.clone();dofBase.depthBuffer=true;dofBase.samples=base.samples;}
-      if(dofBase.width!==size.x||dofBase.height!==size.y)dofBase.setSize(size.x,size.y);
+    // Without bloom, match the normal framebuffer's per-sample UNORM clamp.
+    // Resolving HDR emission first would brighten MSAA silhouettes before
+    // postprocessing can preserve or adjust the original scene pixel.
+    const boundedSurface=!solo&&(grading||sharpening||focusing)&&(!ready||!bloom||!active);
+    if(boundedSurface){
+      if(!postBase){postBase=combined.clone();postBase.depthBuffer=true;postBase.samples=base.samples;}
+      if(postBase.width!==size.x||postBase.height!==size.y)postBase.setSize(size.x,size.y);
     }
-    const frameBase=source?.base||(focusing&&(!ready||!bloom||!active)?dofBase:base),frameMask=source?.mask||mask,suppressed=[];
+    const frameBase=source?.base||(boundedSurface?postBase:base),frameMask=source?.mask||mask,suppressed=[];
     const output=renderer.getRenderTarget(),background=world.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
     function finish(){
-      if(sharpening||focusing||(source&&grading)){
+      if(sharpening||focusing||grading){
         if(combined.width!==size.x||combined.height!==size.y){combined.setSize(size.x,size.y);sharpened.setSize(size.x,size.y);}
-        // Source Glow -> Edge -> DOF -> ColorGrading, with UNORM8 intermediates.
+        // Always bound the completed frame before ColorGrading, including
+        // grade-only frames. Otherwise adding Edge/DOF would change HDR clipping
+        // even where those spatial effects leave the image unchanged.
         composite.uniforms.avatarGradeEnabled.value=false;renderer.setRenderTarget(combined);renderer.render(scene,camera);
         if(sharpening){
           quad.material=sharp;sharp.uniforms.image.value=combined.texture;sharp.uniforms.imageSize.value.copy(size);sharp.uniforms.radius.value=sharpenSettings.radius;
@@ -103,5 +106,5 @@ gl_FragColor=avatarGrade(gl_FragColor);
       quad.material=composite;composite.uniforms.baseImage.value=solo?frameMask.texture:frameBase.texture;composite.uniforms.glowImage.value=source?source.layers[0]:vertical.texture;composite.uniforms.strength.value=bloom?strength:0;composite.uniforms.exposure.value=solo?exposure:1;finish();
     }finally{for(const [u,value] of suppressed)u.value=value;for(const m of materials)if(m.userData.avatarLighting)m.userData.avatarLighting.avatarEmissionPass.value=0;world.background=background;for(const child of hidden)child.visible=true;renderer.setClearColor(clear,alpha);renderer.setRenderTarget(output);renderer.autoClear=autoClear;}
   }
-  return {render,dispose(){dofBase?.dispose();dofPipeline?.dispose();sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
+  return {render,dispose(){postBase?.dispose();dofPipeline?.dispose();sourceBloom?.dispose();for(const t of [base,mask,horizontal,vertical,combined,sharpened])t.dispose();geometry.dispose();blur.dispose();composite.dispose();sharp.dispose();}};
 }
