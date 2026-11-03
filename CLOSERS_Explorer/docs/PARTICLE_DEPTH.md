@@ -239,3 +239,25 @@ python -m unittest discover -s tests -p test_particle_dof_source_browser.py -v
 효과 로더의 일반 패스를 명시적으로 표시하고, 현재 불투명도 1·일반 알파 블렌딩·깊이 검사/쓰기 켜짐·추가 알파 입력 없음·텍스처 알파가 전부 255인 표면만 가림에 포함한다. dissolve와 dual 보조 패스는 제외한다. 텍스처 알파 분류는 시스루와 같은 캐시를 사용하며 공통 모듈 `model-texture-alpha.js`로 분리했다. 실제 HTTP 모듈 제공 목록에도 등록했다.
 
 바이크의 `bike_BLamb_01.png`는 알파가 모두 255이고, `bike_BLamb_02.png`는 183~255였다. 따라서 메시 전체를 불투명 처리하지 않고 재질 그룹별로 가림 대상을 고른다. 부분 알파·필터링된 cutout 경계·투명도 변화·가산 효과·알 수 없는 재질은 새 경로에 포함하지 않는다. 그룹의 표시 상태와 colorWrite는 성공·예외 모두에서 복원한다. 기본/MSAA의 혼합 재질 GPU 검사로 그룹별 가림과 원래 화면 복원을 확인했다.
+
+### 실제 의상·모션·부모/자식 연출 통합 비교 (2026-11-03)
+
+`test_particle_dof_motion_source_browser.py`는 다음 원본들을 읽어 재생한다. 캐릭터 동작은 XMD이며, 바이크 자체 동작은 해당 X 모델의 내장 애니메이션이다.
+
+- 이세하 `RARE_7_A`의 머리·상의·하의·손·발·무기 6부위와 실제 텍스처.
+- `MOTION_STRIKER.X`, `MOTION_STRIKER_ATTACK.XMD`의 `ASTART`.
+- `XX_STRIKER_RARE_7_ASTART_BIKE.X`와 원본 자체 애니메이션.
+- `PE_RARE_7_BLAMB_BIKE_SKID_MARK` 두 항목. 원본의 `G_PIN_R`·`G_PIN_B` 뼈와 0.6·0.7초 생성 시점을 사용.
+
+기본 ASTART가 참조하는 여러 의상 연출 중 바이크 본체와 두 자식만 선택한다. 다른 의상 변형을 함께 재현했다고 표시하지 않는다. 의상·모션·부모 뼈·입자 수명·크기·위치·색상은 원본 패킷을 사용하며, 카메라와 수동 초점만 비교용으로 정한다. 테스트 API 응답은 원본 검증을 거친 모델/동작 데이터로 준비하고 실제 `setupMotionExtras`, `applyPose`, `createEmissionRenderer`를 실행한다.
+
+생성 전 0.4초와 생성 후 0.9·1.2초, 정면/측면, 실제 발광 입력의 번짐 켜기/끄기를 조합한 **12개 조건**을 통과했다. 생성 전에는 파티클의 깊이/화면 기여가 없어야 하고, 생성 후에는 파티클을 심도에서 제외한 대조군과 깊이 및 RGB가 달라야 한다. 원래 출력 알파는 오차 1 이내로 유지하며 효과 해제 시 같은 프레임을 정확히 복원한다. 불투명 바이크 그룹의 가림과 부분 알파 그룹의 제외, 매 프레임의 재질 상태 복원도 확인했다.
+
+실제 `http://127.0.0.1:8765/model` 페이지에서도 같은 6부위·공통 ASTART·선택된 바이크 연출을 연결하고 기존 화면 효과/초점 컨트롤을 사용했다. 850×715 뷰포트의 해당 비교에서는 심도 켜기 전후 RGB 오차 1을 넘는 픽셀이 9,871개였고, 파티클 심도만 제외한 대조군과는 6,306개가 달랐다. 두 파티클의 실제 재질 훅이 연결되었으며 JS 오류·모듈 404는 없었다. 이 수치는 해당 카메라/프레임의 진단 결과이며 보편적인 화질 지표가 아니다. 진단 출력은 `diagnostics/particle-dof-actual-state.json`, 비교 캡처는 `diagnostics/particle-dof-actual-off.png`, `diagnostics/particle-dof-actual-on.png`에 저장했다.
+
+의상/모션 조합의 뷰어 통합 검증을 이 범위에서 마무리한다. 레어 전용 변형 클립과 기본 상태 이벤트 사이의 모든 연결, 다른 의상/동작, 가산·마스크·메시 심도 합성, 시스루 아바타의 심도, 인게임 실제 프레임 대조는 남아 있다. 특히 이 검사는 기본 `ASTART`와 연결된 연출을 사용하며 `CASH_RARE_7_ASTART`의 이벤트 연결까지 입증하지 않는다.
+
+```powershell
+python -m unittest discover -s tests -p test_effect_occlusion_browser.py -v
+python -m unittest discover -s tests -p test_particle_dof_motion_source_browser.py -v
+```
