@@ -35,6 +35,18 @@ class MotionExtrasTests(unittest.TestCase):
         self.assertEqual(mesh['layer'],'ROL_EFFECT_3')
         self.assertEqual(particle['layer'],'ROL_EFFECT_0')
 
+    def test_dof_plane_requires_ordinary_world_particle_inputs(self):
+        base=dict(m_TexName='WHITE.PNG',m_Layer='ROL_EFFECT_0')
+        self.assertTrue(particle_rule(base)['dof_plane'])
+        self.assertTrue(particle_rule(dict(base,m_bZWriteEnable='TRUE'))['dof_plane'])
+        for extra in [dict(m_bDownUI='TRUE'),dict(m_bOverUI=True),dict(m_bInnerUI='TRUE'),
+                      dict(m_bUISeq='TRUE'),dict(m_bDownUI='UNKNOWN'),dict(m_bZEnable='FALSE'),
+                      dict(m_Layer='ROL_EFFECT_59'),dict(m_Layer=None),dict(m_bDualBlending='TRUE'),
+                      dict(m_ParticleType='PCT_2D_PLANE'),dict(m_MaskTexName='MASK.PNG'),
+                      dict(m_DissolveTexName='MASK.PNG'),dict(m_bTrace='TRUE'),dict(m_bLandConnect='TRUE')]:
+            with self.subTest(extra=extra):
+                self.assertFalse(particle_rule(dict(base,**extra))['dof_plane'])
+
     def test_land_trace_mask_requires_one_matching_sibling_emission(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work')

@@ -55,7 +55,7 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
   panels.get('color').prepend(note('화면 전체의 색감·또렷함·흐림을 조절합니다. 각 효과는 따로 켤 수 있습니다.'));
   rename('avatar-source-color','화면 효과 사용');label('avatar-source-color').after(note('켜면 색상 계산 방식도 함께 바뀝니다. 아래에서 사용할 효과를 선택하세요.'));
   const colorSource=details('색상 계산 방식·지원 범위',$('avatar-source-color-status'));colorField.append(colorSource);
-  const featureCards=[['avatar-grade-enabled','색상 조절','밝기·대비·채도를 바꿉니다. 프리셋을 고르거나 직접 입력하세요.'],['avatar-sharpen-enabled','또렷하게','주변 픽셀을 이용해 윤곽을 강조합니다. 샘플 거리가 0이면 효과가 없습니다.'],['avatar-dof-enabled','초점 밖 흐림','초점 밖의 모델 표면을 흐립니다. 먼저 현재 모델에 초점을 맞추세요.']];
+  const featureCards=[['avatar-grade-enabled','색상 조절','밝기·대비·채도를 바꿉니다. 프리셋을 고르거나 직접 입력하세요.'],['avatar-sharpen-enabled','또렷하게','주변 픽셀을 이용해 윤곽을 강조합니다. 샘플 거리가 0이면 효과가 없습니다.'],['avatar-dof-enabled','초점 밖 흐림','모델과 일반 평면 효과에 흐림을 적용합니다. 먼저 현재 모델에 초점을 맞추세요.']];
   for(const [id,title,help] of featureCards){const section=$(id).closest('details');section.dataset.effectTitle=title;section.querySelector('summary').after(note(help));rename(id,title+' 사용');const notes=[...section.children].filter(e=>e.tagName==='P'&&!e.id&&!e.classList.contains('lighting-help'));if(notes.length)section.append(details('자세한 설명',...notes));}
   rename('avatar-glow-enabled','표면 밝기 보조 · GLOW');rename('avatar-ext-enabled','환경 반사 더하기 · EXT');rename('avatar-rim-enabled','가장자리 빛 더하기');
   secondDetails.querySelector('summary').after(note('하이퍼 모드 효과 텍스처의 색을 더합니다. 모델이 푸르게 보이면 이 설정을 끄세요.'));

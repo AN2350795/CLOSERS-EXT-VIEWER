@@ -1,6 +1,7 @@
 """Source-attributed props and mesh effects referenced by character motions."""
 import json
 import math
+import re
 import zlib
 from collections import defaultdict,OrderedDict
 from collections.abc import Mapping
@@ -147,6 +148,13 @@ def particle_rule(row,texanims=None):
                 blend=blend(row),dual=row.get('m_bDualBlending','FALSE') in (True,'TRUE'),
                 depth_test=row.get('m_bZEnable','TRUE') in (True,'TRUE'),depth_write=row.get('m_bZWriteEnable','FALSE') in (True,'TRUE'),
                 seed=zlib.crc32(str(row.get('m_SeqName','')).encode()),source=row.get('source',''))
+    # A deliberately narrow viewer comparison path. Missing UI flags use the
+    # viewer's ordinary-scene default; this does not establish engine defaults.
+    layer=re.fullmatch(r'ROL_EFFECT_(\d{1,2})',rule['layer'] or '')
+    rule['dof_plane']=(kind=='PCT_3D_PLANE' and bool(layer) and int(layer[1])<59
+        and all(row.get(field,'FALSE') in (False,'FALSE') for field in ('m_bDownUI','m_bOverUI','m_bInnerUI','m_bUISeq'))
+        and rule['blend']==['SRCALPHA','INVSRCALPHA'] and rule['depth_test'] and not rule['dual']
+        and not any(rule.get(key) for key in ('models','spine','trace','land_connect','mask_texture','dissolve_texture')))
     if maximum>256:rule['warnings'].append('입자는 이미터마다 최대 256개를 표시합니다.')
     return rule
 

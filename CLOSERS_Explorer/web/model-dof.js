@@ -54,7 +54,7 @@ export function createDofPipeline(renderer){
   const gather=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,toneMapped:false,blending:THREE.NoBlending,vertexShader,
     uniforms:{image:{value:null},depthImage:{value:null},blurImage:{value:null},imageSize:{value:new THREE.Vector2()},disc:{value:disc.map(v=>new THREE.Vector2(...v))},strength:{value:1}},
     fragmentShader:`varying vec2 vUv;uniform sampler2D image;uniform sampler2D depthImage;uniform sampler2D blurImage;uniform vec2 imageSize;uniform vec2 disc[8];uniform float strength;
-void main(){vec4 original=texture2D(image,vUv);vec4 center=texture2D(depthImage,vUv);if(center.a<0.5){gl_FragColor=original;return;}
+void main(){vec4 original=texture2D(image,vUv);vec4 center=texture2D(depthImage,vUv);if(center.a<=0.0){gl_FragColor=original;return;}
 float radius=abs(center.r-0.5);vec3 sum=vec3(0.0);float total=0.0;
 for(int i=0;i<8;i++){
  vec4 coarse=texture2D(blurImage,vUv+disc[i]*radius*2.0/imageSize);

@@ -39,6 +39,29 @@ float depth=avatarDofEncodedDepth(avatarDofViewDepth,avatarDofFocal);gl_FragColo
   material.needsUpdate=true;return uniforms;
 }
 
+function particleMaterials(mesh){
+  if(!mesh.isInstancedMesh||mesh.userData.dofParticle!==true||mesh.count<1)return null;
+  const materials=Array.isArray(mesh.material)?mesh.material:[mesh.material];
+  return materials.length&&materials.every(m=>m?.isMeshBasicMaterial&&m.transparent&&m.depthTest&&m.colorWrite&&m.alphaTest===1/255&&m.blending===THREE.CustomBlending&&m.blendEquation===THREE.AddEquation&&m.blendSrc===THREE.SrcAlphaFactor&&m.blendDst===THREE.OneMinusSrcAlphaFactor)?materials:null;
+}
+
+function installParticleDepth(material){
+  if(material.userData.particleDofDepth)return material.userData.particleDofDepth;
+  const uniforms={particleDofDepthPass:{value:false},particleDofFocal:{value:new THREE.Vector4()}};
+  material.userData.particleDofDepth=uniforms;
+  const previous=material.onBeforeCompile,key=material.customProgramCacheKey;
+  material.customProgramCacheKey=()=>key.call(material)+'|particle-dof-depth-v1';
+  material.onBeforeCompile=function(shader){
+    previous.call(this,shader);Object.assign(shader.uniforms,uniforms);
+    shader.vertexShader='varying float particleDofViewDepth;\n'+shader.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\nparticleDofViewDepth=-mvPosition.z;');
+    shader.fragmentShader='varying float particleDofViewDepth;\nuniform bool particleDofDepthPass;\nuniform vec4 particleDofFocal;\n'+dofDepthFragment+shader.fragmentShader.replace('#include <opaque_fragment>',`if(particleDofDepthPass){
+float depth=avatarDofEncodedDepth(particleDofViewDepth,particleDofFocal);
+gl_FragColor=vec4(vec3(depth),diffuseColor.a);return;}
+#include <opaque_fragment>`);
+  };
+  material.needsUpdate=true;return uniforms;
+}
+
 export function createDofDepthPass(renderer){
   const target=new THREE.WebGLRenderTarget(1,1,{type:THREE.UnsignedByteType,depthBuffer:true,stencilBuffer:false,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
   const size=new THREE.Vector2();let disposed=false;
@@ -50,19 +73,35 @@ export function createDofDepthPass(renderer){
       // Install before changing any live render state, so unsupported materials
       // fail without leaving other materials in the transient pass.
       const inputs=model.materials.map(installDepth),saved=inputs.map(u=>[u,u.avatarDofDepthPass.value,u.avatarDofFocal.value.clone()]);
+      const requested=new Set(occluders),particles=new Set(),particleInputs=new Map();
+      scene.traverseVisible(object=>{
+        if(!requested.has(object))return;
+        const materials=particleMaterials(object);if(!materials)return;
+        particles.add(object);
+        for(const m of materials)if(!particleInputs.has(m)){
+          const u=installParticleDepth(m);
+          particleInputs.set(m,[u,u.particleDofDepthPass.value,u.particleDofFocal.value.clone(),m.blendSrcAlpha,m.blendDstAlpha,m.blendEquationAlpha]);
+        }
+      });
       renderer.getDrawingBufferSize(size);if(size.x<1||size.y<1)throw Error('DOF 깊이를 비교할 화면 크기가 없습니다.');if(target.width!==size.x||target.height!==size.y)target.setSize(size.x,size.y);
       const output=renderer.getRenderTarget(),background=scene.background,clear=renderer.getClearColor(new THREE.Color()),alpha=renderer.getClearAlpha(),autoClear=renderer.autoClear,hidden=[];
       try{
         for(const [u] of saved){u.avatarDofDepthPass.value=true;u.avatarDofFocal.value.fromArray(focal);}
+        for(const [m,[u]] of particleInputs){u.particleDofDepthPass.value=true;u.particleDofFocal.value.fromArray(focal);m.blendSrcAlpha=THREE.OneFactor;m.blendDstAlpha=THREE.OneFactor;m.blendEquationAlpha=THREE.AddEquation;}
         scene.background=null;renderer.autoClear=true;
         // Diagnostic empty pixels: focus-neutral RGB, zero coverage alpha.
         renderer.setClearColor(new THREE.Color(.5,.5,.5),0);renderer.setRenderTarget(target);
         if(renderAuxiliaryDepth(renderer,scene,camera,model,occluders))renderer.autoClear=false;
-        for(const child of scene.children)if(child!==model.root&&child.visible){child.visible=false;hidden.push(child);}
+        scene.traverse(object=>{
+          if(!object.visible||!(object.isMesh||object.isLine||object.isPoints||object.isSprite)||particles.has(object))return;
+          for(let parent=object;parent;parent=parent.parent)if(parent===model.root)return;
+          object.visible=false;hidden.push(object);
+        });
         renderer.render(scene,camera);
         return target;
       }finally{
         for(const [u,enabled,prior] of saved){u.avatarDofDepthPass.value=enabled;u.avatarDofFocal.value.copy(prior);}
+        for(const [m,[u,enabled,prior,src,dst,equation]] of particleInputs){u.particleDofDepthPass.value=enabled;u.particleDofFocal.value.copy(prior);m.blendSrcAlpha=src;m.blendDstAlpha=dst;m.blendEquationAlpha=equation;}
         scene.background=background;for(const child of hidden)child.visible=true;
         renderer.setClearColor(clear,alpha);renderer.setRenderTarget(output);renderer.autoClear=autoClear;
       }

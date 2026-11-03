@@ -76,6 +76,10 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
       if(frames[fi]){material.map=frames[fi];material.color.set(0xffffff);}applyBlend(material,pass?['SRCALPHA','DESTALPHA']:rule.blend);installAlpha(material);if(dissolveMap)installDissolve(material,dissolveMap,true);if(traceMask)installTraceMask(material,traceMask);return material;
     });
     const mesh=new THREE.InstancedMesh(geometry,materials,capacity);mesh.count=0;mesh.frustumCulled=false;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Old indexes lack the explicit opt-in and remain on the existing path.
+    // Guard the actual construction too: a plane rule may be supplied a mesh
+    // source or an extra coverage texture by its caller.
+    mesh.userData.dofParticle=rule.dof_plane===true&&rule.type==='PCT_3D_PLANE'&&!source&&!rule.dual&&!dissolveMap&&!traceMask&&!coverageMap;
     mesh.renderOrder=effectRenderOrder(rule.layer);
     mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,dissolveColor,dissolveParams,frame:fi,pass});
   }
