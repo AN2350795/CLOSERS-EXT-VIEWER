@@ -166,10 +166,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       asset.base=model.materials.map(m=>({color:m.color.clone(),opacity:m.opacity,material:m,dual:false}));
       if(entry.kind==='effect'){
         for(const mesh of model.meshes)mesh.renderOrder=effectRenderOrder(entry.layer);
-        for(const m of model.materials){m.transparent=true;m.alphaTest=EFFECT_ALPHA_TEST;m.depthTest=entry.depth_test;m.depthWrite=entry.depth_write;applyBlend(m,entry.blend||['SRCALPHA',entry.additive?'ONE':'INVSRCALPHA']);m.needsUpdate=true;}
+        for(const m of model.materials){m.transparent=true;m.alphaTest=EFFECT_ALPHA_TEST;m.depthTest=entry.depth_test;m.depthWrite=entry.depth_write;applyBlend(m,entry.blend||['SRCALPHA',entry.additive?'ONE':'INVSRCALPHA']);m.userData.motionOpaqueOccluder=!entry.dissolve_texture;m.needsUpdate=true;}
         if(entry.dual)for(const mesh of [...model.meshes]){
           const copy=mesh.clone(false);copy.material=mesh.material.map(original=>{const m=original.clone();m.onBeforeCompile=original.onBeforeCompile;m.customProgramCacheKey=original.customProgramCacheKey;applyBlend(m,['SRCALPHA','DESTALPHA']);m.transparent=true;asset.owned.push(m);asset.base.push({color:m.color.clone(),opacity:m.opacity,material:m,dual:true});const sequence=asset.textureAnimations.find(s=>s.material===original);if(sequence)asset.textureAnimations.push({...sequence,material:m});return m;});
-          mesh.parent.add(copy);asset.extraMeshes.push(copy);
+          copy.material.forEach(m=>m.userData.motionOpaqueOccluder=false);mesh.parent.add(copy);asset.extraMeshes.push(copy);
         }
         if(entry.dissolve_texture){
           const map=await image(entry.dissolve_image,current,signal,asset,entry);

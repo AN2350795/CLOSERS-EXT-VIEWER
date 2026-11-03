@@ -231,3 +231,11 @@ python tests/audit_particle_scene.py --exe 'C:/Program Files (x86)/NaddicGames/C
 python -m unittest discover -s tests -p test_particle_dof_browser.py -v
 python -m unittest discover -s tests -p test_particle_dof_source_browser.py -v
 ```
+
+### 실제 바이크 연출에서 확인한 가림 보완 (2026-11-03)
+
+이세하 레어 7 의상 6부위, 공용 뼈, `MOTION_STRIKER_ATTACK.XMD`의 `ASTART`와 원본 바이크/타이어 자국 연출을 함께 표시하며, 효과용으로 로드한 본체 재질이 심도·번짐 가림에서 제외되는 문제를 찾았다. 효과 로더가 표면 전체에 투명·CustomBlending을 설정하기 때문에 실제로 불투명한 표면도 기존 불투명 보조 모델 검사에 들어오지 않았다.
+
+효과 로더의 일반 패스를 명시적으로 표시하고, 현재 불투명도 1·일반 알파 블렌딩·깊이 검사/쓰기 켜짐·추가 알파 입력 없음·텍스처 알파가 전부 255인 표면만 가림에 포함한다. dissolve와 dual 보조 패스는 제외한다. 텍스처 알파 분류는 시스루와 같은 캐시를 사용하며 공통 모듈 `model-texture-alpha.js`로 분리했다. 실제 HTTP 모듈 제공 목록에도 등록했다.
+
+바이크의 `bike_BLamb_01.png`는 알파가 모두 255이고, `bike_BLamb_02.png`는 183~255였다. 따라서 메시 전체를 불투명 처리하지 않고 재질 그룹별로 가림 대상을 고른다. 부분 알파·필터링된 cutout 경계·투명도 변화·가산 효과·알 수 없는 재질은 새 경로에 포함하지 않는다. 그룹의 표시 상태와 colorWrite는 성공·예외 모두에서 복원한다. 기본/MSAA의 혼합 재질 GPU 검사로 그룹별 가림과 원래 화면 복원을 확인했다.
