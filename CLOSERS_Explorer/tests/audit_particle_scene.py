@@ -30,6 +30,24 @@ EVIDENCE = (
     ('capture_name', 0x14250a580, '530043005200450045004e005f0043004100500054005500520045005f0055004e00490054000000'),
     ('selfie_reference', 0x140d71335, '488d05cc917901'),
     ('selfie_name', 0x14250a508, '430055006e0069007400530065006c00660069006500550049003a003a004f006e00530065006c0066006900650043006100700074007500720065000000'),
+    ('town_locator_pointer', 0x1424bc9d0, '70a0a24201000000'),
+    ('town_render_slot', 0x1424bca50, 'd024954001000000'),
+    ('town_locator', 0x142a2a070, '010000000000000000000000b8fbf60298a0a20270a0a202'),
+    ('town_name', 0x142f6fbc8, '2e3f4156434357435374617465546f776e404000'),
+    ('pvp_locator_pointer', 0x1424b85f0, 'f89ba24201000000'),
+    ('pvp_render_slot', 0x1424b8670, 'd024954001000000'),
+    ('pvp_locator', 0x142a29bf8, '01000000000000000000000020faf602209ca202f89ba202'),
+    ('pvp_name', 0x142f6fa30, '2e3f415643435743537461746547616d65505650404000'),
+    ('gameplay_target_selection', 0x140952702, 'e809c1c100488b18e84194c400448b45c8488bd3488bc8e8f284c400'),
+    ('gameplay_priority_gate', 0x1409528d1, '4584e47549bb40000000e830bfc1008b8890020000c1e907f6c101741be85d92c400488b8800040000b83b00000080b9d8000000010f44d8'),
+    ('gameplay_layer_draw', 0x140952909, 'e84292c400448bc333d2488b8800040000e891f9ffff'),
+    ('screen_target_getter', 0x14156e850, '488b3d392fa201'),
+    ('screen_target_getter_return', 0x14156e873, '488bc7'),
+    ('screen_init_call', 0x14159e1eb, 'e82006fdff488bc8e8d87ffdff'),
+    ('screen_init_thunk', 0x1415761d0, 'e9bbe0ffff'),
+    ('screen_init_receiver', 0x1415742d2, '4c8be1'),
+    ('screen_target_allocation', 0x14157442c, 'c785b401000003000000b920020000e828b2880048894424484885c07410488d9560010000488bc8e8576d09009049890424'),
+    ('target_count_copy', 0x14160b27f, '8b435489871c020000'),
 )
 
 
@@ -56,6 +74,13 @@ def resolve_links(snapshots):
         ('secondary_bind_explicit', 10, 0xe8, 0x141609030),
         ('bounded_layer_draw', 11, 0xe8, 0x141609030),
         ('bounded_layer_draw', 25, 0xe8, 0x1409522b0),
+        ('gameplay_target_selection', 0, 0xe8, 0x14156e810),
+        ('gameplay_target_selection', 23, 0xe8, 0x14159ac10),
+        ('gameplay_layer_draw', 17, 0xe8, 0x1409522b0),
+        ('screen_init_call', 0, 0xe8, 0x14156e810),
+        ('screen_init_call', 8, 0xe8, 0x1415761d0),
+        ('screen_init_thunk', 0, 0xe9, 0x141574290),
+        ('screen_target_allocation', 40, 0xe8, 0x14160b1b0),
     ):
         address, body = snapshots[name]
         if body[offset] != opcode:
@@ -67,10 +92,47 @@ def resolve_links(snapshots):
     return links
 
 
+def gameplay_evidence(snapshots):
+    states = []
+    for prefix in ('town', 'pvp'):
+        pointer_address, pointer = snapshots[prefix+'_locator_pointer']
+        locator_address, locator = snapshots[prefix+'_locator']
+        signature, _, _, type_rva, _, self_rva = struct.unpack('<6I', locator)
+        if struct.unpack('<Q', pointer)[0] != locator_address or signature != 1:
+            raise ValueError('Gameplay state RTTI locator mismatch.')
+        if locator_address-self_rva+type_rva+16 != snapshots[prefix+'_name'][0]:
+            raise ValueError('Gameplay state RTTI name mismatch.')
+        slot_address, slot = snapshots[prefix+'_render_slot']
+        if slot_address-pointer_address-8 != 0x78 or struct.unpack('<Q', slot)[0] != 0x1409524d0:
+            raise ValueError('Gameplay state common render slot mismatch.')
+        states.append(snapshots[prefix+'_name'][1].rstrip(b'\0').decode('ascii'))
+
+    allocation = snapshots['screen_target_allocation'][1]
+    descriptor_count_offset = struct.unpack_from('<i', allocation, 2)[0]-struct.unpack_from('<i', allocation, 33)[0]
+    count = struct.unpack_from('<I', allocation, 6)[0]
+    copy = snapshots['target_count_copy'][1]
+    destination = struct.unpack_from('<I', copy, 5)[0]
+    if descriptor_count_offset != copy[2] or destination != 0x21c or count != 3:
+        raise ValueError('Screen target slot count association mismatch.')
+    address, getter = snapshots['screen_target_getter']
+    global_pointer = address+7+struct.unpack_from('<i', getter, 3)[0]
+    if global_pointer != 0x142f91790:
+        raise ValueError('Screen target owner global mismatch.')
+    return dict(states=states, render='0x1409524d0', virtual_slot='0x78',
+        screen_owner_global=hex(global_pointer),
+        target='getter 0x14156e810 returns screen owner; owner[0] is selected for the checked gameplay branch',
+        construction=dict(function='0x141574290', target_store='owner[0]', requested_slots=count,
+                          descriptor_offset=hex(descriptor_count_offset), target_count_offset=hex(destination)),
+        draw='layer 1 (graphics +0x400) -> 0x1409522b0 -> per-object state -> particle virtual render',
+        priority='lower 0; upper 64 or 59 according to screen +0x290 bit 7 and layer +0xd8; conditional branch may skip this draw',
+        conclusion='Static normal gameplay path connects a requested three-slot target to the scene particle queue.',
+        limits='Requires successful target initialization and queue eligibility; not a live GPU/frame observation or all gameplay branches.')
+
+
 def audit(executable):
     cpu = cpu_evidence(executable, EVIDENCE)
     snapshots = {name: (address, bytes.fromhex(raw)) for name, address, raw in EVIDENCE}
-    return dict(cpu=cpu, links=resolve_links(snapshots),
+    return dict(cpu=cpu, links=resolve_links(snapshots), gameplay=gameplay_evidence(snapshots),
         registration=dict(update='0x1415c2750',
             guards='sequence +0x20b and +0xd8 nonzero; particle vector +0x490/+0x498 nonempty',
             special='sequence +0x52c == 1: layer 2 and sequence +0x10 = 1',
@@ -88,10 +150,9 @@ def audit(executable):
             secondary='0x14159ac10: nonnull input binds that target; null input binds one default RTV directly',
             warning='Initial scene bind alone does not prove the target active at particle draw.',
             bounded_wrapper='0x14156e890 binds caller target (R8 or receiver[0]), draws layer [0,64), then ends target scope',
-            unresolved='Identity/count of target selected at each scene call and all nested target changes remain unverified.'),
-        unresolved=['Main gameplay caller scope beyond the verified selfie capture caller',
-                    'Special +0x52c flag meaning and alternate vectors +0xb8/+0x98',
-                    'Live target identity/count after secondary selection; MRT2 availability',
+            unresolved='Live identity/count at each draw and nested target changes remain unverified; see gameplay for the separate static normal-path construction.'),
+        unresolved=['Special +0x52c flag meaning and alternate vectors +0xb8/+0x98',
+                    'Live GPU target identity/count and optional or later gameplay branches',
                     'Final viewer particle eligibility, depth integration and frame comparison'],
         game_executed=False, rendering_enabled=False)
 

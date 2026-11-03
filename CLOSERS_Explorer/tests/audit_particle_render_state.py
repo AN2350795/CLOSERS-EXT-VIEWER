@@ -119,7 +119,7 @@ def audit(executable):
         targets=dict(scene_bind='0x140d7108a -> 0x141609030',
                      arrays='single RTV +0xe0; MSAA RTV +0x120; count +0x21c',
                      dof_depth='slot 2 SRV +0x1b0',
-                     scope='Scene-level initial binding in a selfie capture caller only; secondary target selection occurs before queue draw (audit_particle_scene.py). Main gameplay and per-particle live targets remain unverified.'),
+                     scope='Scene-level initial binding here belongs to a selfie capture caller. Separate normal gameplay three-slot construction and queue links are checked in audit_particle_scene.py; live per-particle targets remain unverified.'),
         unresolved=['Masked, mesh, Spine/FBX and alternative particle draw paths',
                     'Shared alpha-mode overrides before a draw and alternate restoration paths',
                     'Live MRT bindings, draw order, depth state overrides and frame comparison',
