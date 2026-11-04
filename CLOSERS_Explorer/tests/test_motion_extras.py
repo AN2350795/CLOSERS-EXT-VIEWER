@@ -60,6 +60,15 @@ class MotionExtrasTests(unittest.TestCase):
             with self.subTest(extra=extra):
                 self.assertFalse(particle_rule(dict(base,**extra))['dof_plane'])
 
+    def test_additive_dof_requires_audited_single_plane_blend(self):
+        base=dict(m_TexName='WHITE.PNG',m_Layer='ROL_EFFECT_0',m_DestBlend='CON_D3DBLEND_ONE')
+        self.assertTrue(particle_rule(base)['dof_additive_plane'])
+        self.assertFalse(particle_rule(base)['dof_plane'])
+        for extra in [dict(m_SrcBlend='ONE'),dict(m_DestBlend='DESTALPHA'),dict(m_bZEnable='FALSE'),
+                      dict(m_bDualBlending='TRUE'),dict(m_Layer='ROL_EFFECT_59'),dict(m_bDownUI='TRUE'),
+                      dict(m_ParticleType='PCT_MESH',m_MeshName='PROP.X'),dict(m_MaskTexName='MASK.PNG')]:
+            with self.subTest(extra=extra):self.assertFalse(particle_rule(dict(base,**extra))['dof_additive_plane'])
+
     def test_land_trace_mask_requires_one_matching_sibling_emission(self):
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);catalog=Catalog(root/'work')

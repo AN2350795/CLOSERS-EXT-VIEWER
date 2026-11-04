@@ -79,7 +79,9 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
     // Old indexes lack the explicit opt-in and remain on the existing path.
     // Guard the actual construction too: a plane rule may be supplied a mesh
     // source or an extra coverage texture by its caller.
-    mesh.userData.dofParticle=rule.dof_plane===true&&rule.type==='PCT_3D_PLANE'&&!source&&!rule.dual&&!dissolveMap&&!traceMask&&!coverageMap;
+    const dofPlane=rule.type==='PCT_3D_PLANE'&&!source&&!rule.dual&&!dissolveMap&&!traceMask&&!coverageMap;
+    mesh.userData.dofParticleAdditive=dofPlane&&rule.dof_additive_plane===true&&rule.blend?.[0]==='SRCALPHA'&&rule.blend?.[1]==='ONE';
+    mesh.userData.dofParticle=dofPlane&&(rule.dof_plane===true||mesh.userData.dofParticleAdditive);
     mesh.renderOrder=effectRenderOrder(rule.layer);
     mesh.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(capacity*3),3);root.add(mesh);meshes.push(mesh);groups.push({mesh,alpha,uv,dissolveColor,dissolveParams,frame:fi,pass});
   }

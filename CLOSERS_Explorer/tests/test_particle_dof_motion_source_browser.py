@@ -13,6 +13,29 @@ from closers.model_library import Models
 
 class ParticleDofMotionSourceBrowserTests(test_picker_browser.PickerBrowserTests):
     checks_script = 'particle_dof_motion_source_checks.js'
+    animation_name='MOTION_STRIKER_CASH_ATTACK.XMD'
+    clip_name='CASH_RARE_7_ASTART'
+
+    def source_entries(self,raw):
+        self.assertTrue(raw, 'Rebuild the local postprocessing index for source motion conversions')
+        self.assertTrue(all(e['motion_conversion']['group'] == 210 for e in raw))
+        self.assertFalse(any('RARE_8' in e['label'] for e in raw))
+        selected = {e['key'] for e in raw if e.get('particle_name') == 'PE_RARE_7_BLAMB_BIKE_SKID_MARK' and e['state'] == 'USN_ASTART1'}
+        self.assertEqual(len(selected), 2)
+        entries=self.with_parents(raw,selected)
+        self.assertEqual(len(entries), 3)
+        self.assertTrue(all(e['particle']['dof_plane'] for e in entries if e['kind'] == 'particle'))
+        self.assertEqual(sorted(e['at'] for e in entries if e['kind'] == 'particle'), [.6,.7])
+        self.assertEqual({e['bone'] for e in entries if e['kind'] == 'particle'}, {'G_PIN_R','G_PIN_B'})
+        return entries
+
+    @staticmethod
+    def with_parents(raw,selected):
+        for _ in range(len(raw)):
+            old=len(selected)
+            selected.update(e['parent_key'] for e in raw if e['key'] in selected and e.get('parent_key'))
+            if len(selected)==old:break
+        return [e for e in raw if e['key'] in selected]
 
     def test_picker(self):
         workspace = Path(__file__).resolve().parents[2]/'results'
@@ -32,33 +55,17 @@ class ParticleDofMotionSourceBrowserTests(test_picker_browser.PickerBrowserTests
             self.assertEqual(len(matches), 1, name)
             return matches[0]['id']
 
-        skeleton, animation = unique('MOTION_STRIKER.X'), unique('MOTION_STRIKER_CASH_ATTACK.XMD')
+        skeleton, animation = unique('MOTION_STRIKER.X'), unique(self.animation_name)
         ids = [unique(item['model_name']) for item in parts.values()]
         data = models.scene(ids, skeleton_id=skeleton,
                             items={str(entry): item['key'] for entry, item in zip(ids, parts.values())})
         info = models.animations(skeleton, animation)
-        index = next(c['index'] for c in info['clips'] if c['name'] == 'CASH_RARE_7_ASTART')
+        index = next(c['index'] for c in info['clips'] if c['name'] == self.clip_name)
         clip = models.clip(skeleton, animation, index, info['animation_source']['sha256'])
-        raw = clip['extras']
-        self.assertTrue(raw, 'Rebuild the local postprocessing index for source motion conversions')
-        self.assertTrue(all(e['motion_conversion']['group'] == 210 for e in raw))
-        self.assertFalse(any('RARE_8' in e['label'] for e in raw))
-        # Assert the automatic conversion, then isolate the bike family for
-        # the independent particle-depth comparison below.
-        selected = {e['key'] for e in raw if e.get('particle_name') == 'PE_RARE_7_BLAMB_BIKE_SKID_MARK' and e['state'] == 'USN_ASTART1'}
-        self.assertEqual(len(selected), 2)
-        for _ in range(len(raw)):
-            old = len(selected)
-            selected.update(e['parent_key'] for e in raw if e['key'] in selected and e.get('parent_key'))
-            if len(selected) == old:break
-        entries = [e for e in raw if e['key'] in selected]
+        entries = self.source_entries(clip['extras'])
         self.assertTrue(all(not e['conditions'] for e in entries))
         clip.update(extras=entries, extras_index_available=True)
-        self.assertEqual(len(entries), 3)
         self.assertTrue(all(e['status'] == 'ready' for e in entries))
-        self.assertTrue(all(e['particle']['dof_plane'] for e in entries if e['kind'] == 'particle'))
-        self.assertEqual(sorted(e['at'] for e in entries if e['kind'] == 'particle'), [.6,.7])
-        self.assertEqual({e['bone'] for e in entries if e['kind'] == 'particle'}, {'G_PIN_R','G_PIN_B'})
         scenes, animations, clips, effects, images = {}, {}, {}, {}, {}
 
         def add_image(image):

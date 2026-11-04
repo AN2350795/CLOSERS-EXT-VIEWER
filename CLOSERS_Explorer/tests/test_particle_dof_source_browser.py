@@ -34,5 +34,6 @@ class ParticleDofSourceBrowserTests(test_picker_browser.PickerBrowserTests):
         self.assertEqual(len(texture), 1)
         path, _ = CompositionImages(catalog).prepare(texture[0]['id'])
         image = 'data:image/png;base64,'+base64.b64encode(path.read_bytes()).decode('ascii')
-        self.script_prefix = 'window.particleDofRule='+json.dumps(rule)+';window.particleDofTexture='+json.dumps(image)+';\n'
+        additive=particle_rule(dict(matches[0],source=filename,m_DestBlend='ONE'))
+        self.script_prefix = 'window.particleDofRule='+json.dumps(rule)+';window.particleDofAdditiveRule='+json.dumps(additive)+';window.particleDofTexture='+json.dumps(image)+';\n'
         super().test_picker()
