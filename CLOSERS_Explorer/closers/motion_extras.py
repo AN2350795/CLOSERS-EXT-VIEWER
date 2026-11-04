@@ -216,7 +216,7 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                         if rule and rule.get('error'):raise ValueError(rule['error'])
                         if not rule:raise ValueError('파티클 정의가 없거나 출처가 중복됩니다.')
                         entry.update(particle_name=name,models=rule['models'],life=100000,speed=1,animation=None,loop=False,color=[1,1,1,1],fades=[])
-                        entry['warnings']=rule.get('warnings',[])
+                        entry['warnings']=list(rule.get('warnings',[]))
                     else:
                         if name in trail or len(trail)>=16:raise ValueError('효과의 중첩 연결이 순환하거나 16단계를 초과했습니다.')
                         definition=damage.get(name)

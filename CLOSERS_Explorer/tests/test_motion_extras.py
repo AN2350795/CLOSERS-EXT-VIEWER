@@ -19,6 +19,19 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_condition_warnings_do_not_mutate_shared_particle_definitions(self):
+        rule=particle_rule(dict(m_TexName='WHITE.PNG'))
+        rule['warnings']=['source warning']
+        refs={'STRIKER':{'MOVE':[
+            dict(kind='particle',state='S1',row=dict(m_SeqName='DUST',m_ItemID=42)),
+            dict(kind='particle',state='S2',row=dict(m_SeqName='DUST'))]}}
+        result=compile_extras(refs,{},{},{'DUST':rule})['STRIKER','MOVE']
+        self.assertEqual(rule['warnings'],['source warning'])
+        self.assertEqual(result[1]['warnings'],['source warning'])
+        self.assertEqual(len(result[0]['warnings']),2)
+        result[0]['warnings'].append('changed preview')
+        self.assertEqual(result[1]['warnings'],['source warning'])
+
     def test_large_snapshot_is_compressed_and_restores_unicode_after_eviction(self):
         details=[dict(label='반복 보이스',source='SOUND_VOICE_TEMPLET.LUA',at=.25) for _ in range(500)]
         encoded=json.dumps(details,ensure_ascii=False)
