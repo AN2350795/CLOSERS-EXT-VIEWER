@@ -53,8 +53,22 @@ def matches(check,conversion):
 def resolve(index,conversions,character,clip):
     direct=index.get((character,clip),[])
     links=conversions.get((character,clip),[]) if not direct else []
-    # A clip shared by incompatible conversion contexts cannot select a group.
-    if len({(c['type'],c['group']) for c in links})>1:return []
+    contexts=sorted({(c['type'],c['group']) for c in links})
+    if len(contexts)>1:
+        # A shared clip does not identify its costume group or scene. Keep
+        # only events that resolve identically in every declared context.
+        alternatives=[resolve(index,{(character,clip):[c for c in links if (c['type'],c['group'])==context]},character,clip)
+                      for context in contexts]
+        lookups=[{e['key']:e for e in entries} for entries in alternatives]
+        def content(entry):return {k:v for k,v in entry.items() if k!='motion_conversion'}
+        common=[]
+        for item in alternatives[0]:
+            key=item['key']
+            if not all(key in lookup and content(lookup[key])==content(item) for lookup in lookups[1:]):continue
+            entry=copy.deepcopy(item);entry.pop('motion_conversion',None)
+            entry['motion_conversion_options']=[lookup[key]['motion_conversion'] for lookup in lookups]
+            common.append(entry)
+        return common
     batches=[(direct,None)] if direct else [
         ([e for e in index.get((character,c['base_clip']),[]) if e.get('state')==c['state']],c) for c in links]
     output=[];seen=set()

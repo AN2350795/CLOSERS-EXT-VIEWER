@@ -62,6 +62,30 @@ class MotionConversionTests(unittest.TestCase):
         self.assertEqual(resolve(index,links,'STRIKER','VARIANT')[0]['key'],'own')
         self.assertEqual(resolve({},links,'STRIKER','VARIANT'),[])
 
+    def test_shared_clip_keeps_only_identical_events_in_every_group(self):
+        links={('STRIKER','SHARED'):[LINK,dict(LINK,group=211)]}
+        entries=[dict(key='common',state=LINK['state']),
+                 dict(key='only210',state=LINK['state'],conditions={CHECK:check()}),
+                 dict(key='child210',state=LINK['state'],parent_key='only210'),
+                 dict(key='only211',state=LINK['state'],conditions={CHECK:check(211)}),
+                 dict(key='equipment',state=LINK['state'],conditions={'m_ItemID':42}),
+                 dict(key='both',state=LINK['state'],conditions={CHECK:{1:dict(m_eSkinConvertType=LINK['type'],m_setStopGroupID={1:212})}})]
+        index={('STRIKER','ASTART'):entries};snapshot=copy.deepcopy(index)
+        result=resolve(index,links,'STRIKER','SHARED')
+        self.assertEqual([e['key'] for e in result],['common','equipment','both'])
+        self.assertTrue(all('motion_conversion' not in e for e in result))
+        self.assertEqual({c['group'] for c in result[0]['motion_conversion_options']},{210,211})
+        self.assertEqual(result[1]['conditions'],{'m_ItemID':42})
+        self.assertEqual(index,snapshot)
+
+    def test_shared_clip_does_not_mix_states_scenes_or_partly_resolved_checks(self):
+        entries=[dict(key='plain',state=LINK['state']),dict(key='conditional',state=LINK['state'],conditions={CHECK:check()})]
+        index={('STRIKER','ASTART'):entries}
+        links={('STRIKER','SHARED'):[LINK,dict(LINK,type='SCT_TOWN_MOTION')]}
+        self.assertEqual([e['key'] for e in resolve(index,links,'STRIKER','SHARED')],['plain'])
+        links['STRIKER','SHARED'][1]=dict(LINK,state='OTHER_STATE',group=211)
+        self.assertEqual(resolve(index,links,'STRIKER','SHARED'),[])
+
     def test_compiler_preserves_source_checks_for_effect_and_equipment(self):
         events=dict(m_StateName=LINK['state'],m_AnimName='ASTART',
             m_EventColor={1:dict(m_mapEventConvertCheckData=check())},
