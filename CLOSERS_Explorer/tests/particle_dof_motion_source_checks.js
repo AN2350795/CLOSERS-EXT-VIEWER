@@ -46,6 +46,7 @@ try{
  };
  localStorage.setItem('closers-motion-extras',JSON.stringify({models:true,effects:true,sounds:false,voices:false,colors:false}));
  extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,element});await extras.select([state.clip],[{state:'USN_ASTART1',speed:1}]);
+ check($('motion-extras-status').textContent.includes('원본 변형표 연결'),'source conversion status missing');
  check(extras.assets.size===3,'real parent/child effects failed to load: '+$('motion-extra-items').textContent);
  const assets=[...extras.assets.values()].flat(),particles=assets.filter(a=>a.particle).flatMap(a=>a.model.meshes),parent=assets.find(a=>!a.particle);
  check(particles.length===2&&particles.every(m=>m.userData.dofParticle)&&(parent.clip||parent.embedded),'source particles or own bike animation not connected');

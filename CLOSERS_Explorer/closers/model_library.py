@@ -484,7 +484,9 @@ class Models:
 
     def extra_sources(self,character,clip,bones):
         import copy
-        result=copy.deepcopy(self.catalog.game_names.motion_extras.get((character,clip),[]))
+        from .motion_converts import resolve
+        result=resolve(self.catalog.game_names.motion_extras,
+                       getattr(self.catalog.game_names,'motion_conversions',{}),character,clip)
         audio_names={Path(name.replace('\\','/')).name.upper() for item in result if item['kind']=='sound' for name in item.get('sound_names',[])}
         audio_candidates={name:[] for name in audio_names}
         if audio_names:

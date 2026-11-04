@@ -160,7 +160,9 @@ class NtfTests(unittest.TestCase):
             root=Path(temp);catalog=Catalog(root/'work');exe=root/'test.exe';exe.write_bytes(b'test')
             source=fixture(root/'source.cmf',[(n,b,1,packed(b)) for n,b in [
                 ('STRING_TABLE_ITEM_KOREA.NTF',strings),('ITEM_MODEL_TEMPLET.NTF',models),('ITEM_TEMPLET.NTF',items),('FRAME_UNIQUE_ID.LUA',frame_data),
-                ('GUST_USER_CASTER.LUA',rig_data),('SOUND_TEMPLET_FUTURE.LUA',sound_data('NEW_SOUND.OGG')),('SOUND_VOICE_TEMPLET3.LUA',sound_data('VOICE_NEW.OGG'))]]+[(name,binary_model(),1)])
+                ('GUST_USER_CASTER.LUA',rig_data),('SOUND_TEMPLET_FUTURE.LUA',sound_data('NEW_SOUND.OGG')),('SOUND_VOICE_TEMPLET3.LUA',sound_data('VOICE_NEW.OGG')),
+                ('DUNGEON_MOTION_CONVERT_DATA.NTF',table((5,8,8,8),[(210,'GUST_INVALID','USN_TEST','CONVERTED')])),
+                ('TOWN_MOTION_CONVERT_DATA.NTF',table((4,8,8,8),[(211,'GUST_USER_CASTER','USN_TEST','TOWN_CONVERTED')]))]]+[(name,binary_model(),1)])
             catalog.scan([source]);before=hashlib.sha256(source.read_bytes()).digest()
             with patch.object(ntf,'script_keys',return_value=(key,iv)):
                 result=build_index(catalog.workspace,exe)
@@ -177,6 +179,8 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(len(sounds),2);self.assertEqual({s['kind'] for s in sounds},{'sound'})
             self.assertEqual({s['source'] for s in sounds},{'SOUND_TEMPLET_FUTURE.LUA','SOUND_VOICE_TEMPLET3.LUA'})
             self.assertTrue(any(s['voice'] for s in sounds))
+            self.assertEqual(catalog.game_names.motion_conversions['CASTER','CONVERTED'][0]['group'],210)
+            self.assertEqual(catalog.game_names.motion_conversions['CASTER','TOWN_CONVERTED'][0]['type'],'SCT_TOWN_MOTION')
             # The web job uses the same source-based builder without a CLI step.
             from closers.server import Jobs
             jobs=Jobs(catalog)
@@ -206,6 +210,7 @@ class NtfTests(unittest.TestCase):
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],0)
             self.assertFalse(catalog.game_names.model_rules)
             self.assertFalse(catalog.game_names.part_overrides)
+            self.assertFalse(catalog.game_names.motion_conversions)
             source.unlink()
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],1)
             with self.assertRaises(ValueError):ntf.restore(packed(b'abc'),2,key,iv)

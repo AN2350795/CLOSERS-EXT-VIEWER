@@ -13,6 +13,7 @@ import threading
 import uuid
 
 from . import ntf
+from .motion_converts import SOURCES as CONVERSION_SOURCES
 
 INDEX_VERSION=1
 
@@ -32,7 +33,7 @@ class GameNames:
         self.motion_names={}
         self.motion_sequences={}
         self.motion_extras={};self.motion_particles={}
-        self.texture_animations={}
+        self.texture_animations={};self.motion_conversions={}
         self.sequence_index_available=False
         self.local=threading.local()
 
@@ -67,11 +68,11 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.texture_animations={}
+                    self.texture_animations={};self.motion_conversions={}
                     self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
             labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False
-            texture_animations={}
+            texture_animations={};self.motion_conversions={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -98,6 +99,8 @@ class GameNames:
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_extras'").fetchone():
                             from .motion_extras import ExtraIndex
                             motion_extras=ExtraIndex(db.execute('SELECT character,clip,details_json FROM motion_extras'))
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_conversions'").fetchone():
+                            self.motion_conversions={(c,clip):json.loads(details) for c,clip,details in db.execute('SELECT character,clip,details_json FROM motion_conversions')}
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_particles'").fetchone():
                             from .motion_extras import ExtraIndex
                             motion_particles=ExtraIndex(db.execute("SELECT name,'' AS clip,details_json FROM motion_particles"))
@@ -121,6 +124,7 @@ class GameNames:
             self.motion_sequences=motion_sequences;self.sequence_index_available=sequence_index_available
             self.motion_extras=motion_extras;self.motion_particles=motion_particles
             self.texture_animations=texture_animations
+            if not motion_extras:self.motion_conversions={}
             # A newly loaded index must also be checked against current sources.
             if version:self._check_sources()
 
@@ -131,7 +135,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
-            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.texture_animations={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
+            self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.motion_conversions={};self.texture_animations={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
         with self.lock:
@@ -183,12 +187,12 @@ def _build(workspace,executable,progress,cancel=None):
         candidates=db.execute('''SELECT e.*,a.path archive,a.size archive_size,a.mtime archive_mtime
             FROM entries e JOIN archives a ON a.id=e.archive_id
             WHERE e.name LIKE 'ITEM_MODEL_TEMPLET%.NTF' OR e.name LIKE 'ITEM_TEMPLET%.NTF'
-               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name IN ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA')
+               OR e.name LIKE 'STRING_TABLE_ITEM%KOREA.NTF' OR e.name IN ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','DUNGEON_MOTION_CONVERT_DATA.NTF','TOWN_MOTION_CONVERT_DATA.NTF')
                OR e.name LIKE 'GUST_USER_%.LUA' OR e.name LIKE 'SOUND%TEMPLET%.LUA' OR e.name LIKE 'DAMAGE_EFFECT_DATA%.LUA' OR e.name LIKE 'X_MESH_PLAYER_GAME%.LUA' OR e.name LIKE 'PARTICLE_SYSTEM_MAIN%.LUA' OR e.name LIKE 'TEX_ANIM_DATA%.LUA' ORDER BY e.id''').fetchall()
     selected={};source_hashes={};sources=[];entry_tables={}
     for row in candidates:
         check_cancel()
-        if row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|SOUND_(?:VOICE_)?TEMPLET[A-Z0-9_]*\.LUA|(?:(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME|PARTICLE_SYSTEM_MAIN)(?:[A-Z0-9_])*|TEX_ANIM_DATA[A-Z0-9_]*)\.LUA)',row['name']):continue
+        if row['name'] not in CONVERSION_SOURCES and row['name'] not in ('FRAME_UNIQUE_ID.LUA','STRING_TABLE_KOREA.NTF','STRING_TABLE_CHAR_KOREA.NTF','SKILL_TEMPLET.LUA','GUST_USER_CHARACTER_BASE.LUA','GUST_USER_CHARACTER_BASE_TOWN.LUA') and not re.fullmatch(r'(?:(?:ITEM_(?:MODEL_)?TEMPLET[\d_]*|STRING_TABLE_ITEM\d*_KOREA)\.NTF|GUST_USER_(?:BASE_)?[A-Z]+\.LUA|SOUND_(?:VOICE_)?TEMPLET[A-Z0-9_]*\.LUA|(?:(?:DAMAGE_EFFECT_DATA|X_MESH_PLAYER_GAME|PARTICLE_SYSTEM_MAIN)(?:[A-Z0-9_])*|TEX_ANIM_DATA[A-Z0-9_]*)\.LUA)',row['name']):continue
         source=Path(row['archive']);before=source.stat()
         if (before.st_size,before.st_mtime_ns)!=(row['archive_size'],row['archive_mtime']):
             raise ValueError('원본 CMF가 목록과 다릅니다. 먼저 재분석하세요: '+str(source))
@@ -209,12 +213,15 @@ def _build(workspace,executable,progress,cancel=None):
         sources.append(dict(name=row['name'],archive=str(source),ordinal=row['ordinal'],sha256=digest,size=before.st_size,mtime=before.st_mtime_ns))
         selected.setdefault(row['name'],(dict(row),stored))
     strings={};items={};models=[];counts={};visibility=defaultdict(set);part_visibility=defaultdict(set);patterns=[]
-    emotion_strings={};emotion_skills={};emotion_rigs={};sound_definitions={}
+    emotion_strings={};emotion_skills={};emotion_rigs={};sound_definitions={};conversion_tables={}
     extra_damage={};extra_meshes={};extra_particle_tables={};extra_tex_tables={};wanted_particles=set();wanted_tex=set();extra_refs=None;extra_errors={};wanted_damage=set();wanted_meshes=set();dependencies_ready=False
     # Strings first to keep only the item columns used by the join.
     for name,(row,stored) in sorted(selected.items(),key=lambda kv:(not kv[0].startswith('STRING_TABLE'),4 if kv[0].startswith('TEX_ANIM_DATA') else 3 if kv[0].startswith('PARTICLE_SYSTEM_MAIN') else 2 if kv[0].startswith('X_MESH_PLAYER_GAME') else 1 if kv[0].startswith('DAMAGE_EFFECT_DATA') else 0,kv[0])):
         check_cancel()
         body=ntf.restore(stored,row['size'],key,iv)
+        if name in CONVERSION_SOURCES:
+            if ntf.header(body)[0] not in ((5,8,8,8),(4,8,8,8)):raise ValueError('지원하지 않는 모션 변환 NTF 구조입니다: '+name)
+            conversion_tables[name]=list(ntf.rows(body));counts[name]=len(conversion_tables[name]);continue
         if name.startswith('SOUND_'):
             from .lua_literals import tables
             sound_definitions[name]=tables(body);counts[name]=len(sound_definitions[name]);continue
@@ -313,6 +320,10 @@ def _build(workspace,executable,progress,cancel=None):
             from .motion_names import join,character_layers
             from .model_groups import CHARACTERS
             layers={character:character_layers(character,emotion_rigs) for character in CHARACTERS}
+            from .motion_converts import build as build_conversions
+            conversions=build_conversions(conversion_tables,layers)
+            db.execute('CREATE TABLE motion_conversions(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
+            db.executemany('INSERT INTO motion_conversions VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in conversions.items()])
             motion_names=join(emotion_skills,layers,emotion_strings)
             from .motion_extras import references,unique_rows,compile_extras,effect_dependencies
             from .motion_sound import sound_tables

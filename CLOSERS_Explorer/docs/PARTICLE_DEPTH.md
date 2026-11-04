@@ -261,3 +261,15 @@ python -m unittest discover -s tests -p test_particle_dof_source_browser.py -v
 python -m unittest discover -s tests -p test_effect_occlusion_browser.py -v
 python -m unittest discover -s tests -p test_particle_dof_motion_source_browser.py -v
 ```
+
+### 원본 변형 모션의 연출 연결 (2026-11-04)
+
+후처리에 `DUNGEON_MOTION_CONVERT_DATA.NTF`와 `TOWN_MOTION_CONVERT_DATA.NTF`를 추가했다. 원본의 캐릭터·변환 그룹·상태·변형 클립을 상속된 캐릭터 상태의 기본 클립과 연결한다. 캐릭터별 행이 공통 행보다 우선하며, 같은 조건의 충돌과 서로 다른 그룹이 공유하는 클립은 자동 연결하지 않는다. 파일명에서 레어 번호를 추측하지 않는다. 기존 인덱스는 계속 열 수 있지만 이 기능에는 후처리를 다시 실행해야 한다.
+
+`m_mapEventConvertCheckData`를 연출 인덱스에 보존하고 선택한 변환 그룹의 지정·중지 조건을 확인한다. 다른 그룹의 효과와 그 자식은 제외한다. 장비 조건·다른 변환 종류·해석하지 못한 복합 조건은 조건부 표시로 남긴다. 기본 동작에서도 부모의 미확인 조건을 자식에게 전달하므로, 조건부 표시를 껐는데 자식 입자만 나타나는 문제를 방지한다. 부모 모델 파일의 누락과 조건 불일치는 구분한다.
+
+통합 검사를 기존 기본 ASTART 대신 `MOTION_STRIKER_CASH_ATTACK.XMD`의 `CASH_RARE_7_ASTART`로 변경했다. API의 자동 연결 결과가 그룹 210이고 레어 8 연출이 포함되지 않음을 검사한 뒤, `USN_ASTART1`의 바이크와 두 스키드 자국을 선택해 기존 12개 GPU 비교를 통과했다. 같은 변형 클립을 사용하는 AStart1·AStart2는 기존 상태 선택으로 구분한다. 연출 상태에는 **원본 변형표 연결**을 표시하며 메뉴 옵션은 추가하지 않았다.
+
+이 검사는 레어 7의 원본 연출 연결과 뷰어 재생을 검증한다. 모든 의상의 외관·음원·게임 전용 이벤트나 인게임 프레임 일치를 보장하지 않는다. 다음 작업은 다른 변형 모션의 연결 누락 확인과 가산·마스크·메시 파티클의 심도 지원 확대이며, 시스루 아바타의 심도는 별도 남아 있다.
+
+실제 앱에서도 세하 6부위와 변형 클립의 전체 연출 응답을 연결해 확인했다. 두 평면 파티클의 심도 훅이 활성화되고 JS 오류·모듈 로딩 실패가 없었다. 해당 850×715 프레임에서 심도 전후 RGB 오차 1을 넘는 픽셀은 7,055개, 파티클 심도만 제외한 대조군과의 차이는 3,945개였다. 기록과 캡처는 `diagnostics/motion-conversion-actual-state.json`, `diagnostics/motion-conversion-actual-off.png`, `diagnostics/motion-conversion-actual-on.png`이며 일반적인 화질 지표는 아니다.

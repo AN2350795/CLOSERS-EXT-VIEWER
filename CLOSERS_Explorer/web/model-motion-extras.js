@@ -217,7 +217,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     }
     if(current!==version)return;
     const requested=preferences.some(([id])=>$(id).checked);
-    $('motion-extras-status').textContent=count||soundCount||colorCount?`${count}개 모델 · ${soundCount}개 사운드 · ${colorCount}개 색상 연출 준비됨`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.';render();
+    const converted=entries.some(e=>e.motion_conversion)?'원본 변형표 연결 · ':'';
+    $('motion-extras-status').textContent=converted+(count||soundCount||colorCount?`${count}개 모델 · ${soundCount}개 사운드 · ${colorCount}개 색상 연출 준비됨`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.');render();
     }finally{if(current===version)setLoading(false);}
   }
   function select(clips,steps=[]){

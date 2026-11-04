@@ -1,9 +1,7 @@
 """Exercise real costume, character XMD, bike animation and source child effects."""
 import base64
-import copy
 import json
 from pathlib import Path
-from unittest.mock import patch
 
 import test_picker_browser
 from closers.catalog import Catalog
@@ -34,27 +32,27 @@ class ParticleDofMotionSourceBrowserTests(test_picker_browser.PickerBrowserTests
             self.assertEqual(len(matches), 1, name)
             return matches[0]['id']
 
-        skeleton, animation = unique('MOTION_STRIKER.X'), unique('MOTION_STRIKER_ATTACK.XMD')
+        skeleton, animation = unique('MOTION_STRIKER.X'), unique('MOTION_STRIKER_CASH_ATTACK.XMD')
         ids = [unique(item['model_name']) for item in parts.values()]
         data = models.scene(ids, skeleton_id=skeleton,
                             items={str(entry): item['key'] for entry, item in zip(ids, parts.values())})
         info = models.animations(skeleton, animation)
-        index = next(c['index'] for c in info['clips'] if c['name'] == 'ASTART')
-        # Select the source bike family exactly, as individual extra selection
-        # does. Avoid loading unrelated costume variants referenced by ASTART.
-        with models.operation():
-            raw = copy.deepcopy(catalog.game_names.motion_extras['STRIKER','ASTART'])
-            selected = {e['key'] for e in raw if e.get('particle_name') == 'PE_RARE_7_BLAMB_BIKE_SKID_MARK'}
-            self.assertEqual(len(selected), 2)
-            for _ in range(len(raw)):
-                old = len(selected)
-                selected.update(e['parent_key'] for e in raw if e['key'] in selected and e.get('parent_key'))
-                if len(selected) == old:
-                    break
-            with patch.object(catalog.game_names, 'motion_extras', {('STRIKER','ASTART'): [e for e in raw if e['key'] in selected]}):
-                entries = models.extra_sources('STRIKER', 'ASTART', {f['name'] for f in data['frames']})
-        with patch.object(models, 'extra_sources', return_value=[]):
-            clip = models.clip(skeleton, animation, index, info['animation_source']['sha256'])
+        index = next(c['index'] for c in info['clips'] if c['name'] == 'CASH_RARE_7_ASTART')
+        clip = models.clip(skeleton, animation, index, info['animation_source']['sha256'])
+        raw = clip['extras']
+        self.assertTrue(raw, 'Rebuild the local postprocessing index for source motion conversions')
+        self.assertTrue(all(e['motion_conversion']['group'] == 210 for e in raw))
+        self.assertFalse(any('RARE_8' in e['label'] for e in raw))
+        # Assert the automatic conversion, then isolate the bike family for
+        # the independent particle-depth comparison below.
+        selected = {e['key'] for e in raw if e.get('particle_name') == 'PE_RARE_7_BLAMB_BIKE_SKID_MARK' and e['state'] == 'USN_ASTART1'}
+        self.assertEqual(len(selected), 2)
+        for _ in range(len(raw)):
+            old = len(selected)
+            selected.update(e['parent_key'] for e in raw if e['key'] in selected and e.get('parent_key'))
+            if len(selected) == old:break
+        entries = [e for e in raw if e['key'] in selected]
+        self.assertTrue(all(not e['conditions'] for e in entries))
         clip.update(extras=entries, extras_index_available=True)
         self.assertEqual(len(entries), 3)
         self.assertTrue(all(e['status'] == 'ready' for e in entries))
