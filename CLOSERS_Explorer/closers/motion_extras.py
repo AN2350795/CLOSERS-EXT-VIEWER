@@ -7,6 +7,12 @@ from collections import defaultdict,OrderedDict
 from collections.abc import Mapping
 from .motion_converts import CONDITION_WARNING
 
+CUSTOM_EFFECT_FIELDS=('m_vecShowEffectCustomID','m_vecHideEffectCustomID')
+
+
+def event_conditions(row):
+    return {k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID','m_mapEventConvertCheckData',*CUSTOM_EFFECT_FIELDS) if k in row}
+
 
 class ExtraIndex(Mapping):
     """Keep the immutable index snapshot compact; decode only requested motions."""
@@ -182,7 +188,7 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                     try:start=float(row.get('m_fEventTimeMin',0));end=float(row.get('m_fEventTimeMax',100000))
                     except (TypeError,ValueError):return
                     if not math.isfinite(start) or not math.isfinite(end) or start<0 or end<start:return
-                    out.append(dict(key=key,kind='equipment',label='무기 숨김',state=state,source=row.get('source',''),status='ready',error='',models=[],at=start,until=end,anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),part='WEAPON',conditions={k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID','m_mapEventConvertCheckData') if k in row}))
+                    out.append(dict(key=key,kind='equipment',label='무기 숨김',state=state,source=row.get('source',''),status='ready',error='',models=[],at=start,until=end,anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),part='WEAPON',conditions=event_conditions(row)))
                     return
                 name=(row.get('m_ParticleName') if kind=='model' else None) or row.get('m_XFileName') or row.get('m_DamageEffectName') or row.get('m_ParticleName') or row.get('m_SeqName') or '연출'
                 if row.get('m_ParticleName'):kind='particle'
@@ -192,7 +198,7 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                                  scale=span(row.get('m_fScale',1)),
                                  at=float(row.get('m_fEventTime',0)),anim_time=row.get('m_bAnimTime','TRUE') in (True,'TRUE'),
                                  follow=kind=='model' or row.get('m_bHold','FALSE') in (True,'TRUE'),state_end=row.get('m_bStateEndDie','TRUE') in (True,'TRUE'),
-                                 conditions={k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID','m_mapEventConvertCheckData') if k in row})
+                                 conditions=event_conditions(row))
                     if not math.isfinite(entry['at']) or entry['at']<0:raise ValueError('효과 생성 시간이 올바르지 않습니다.')
                     if parent:entry['parent_key']=parent
                     if kind=='sound':
@@ -231,7 +237,7 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                             entry.update(kind='particle',particle_name=seq,warnings=list(particles[seq].get('warnings',[])),models=particles[seq]['models'],life=100000,speed=1,animation=None,loop=False,color=[1,1,1,1],fades=[])
                         else:raise ValueError('효과의 메시 또는 파티클 정의를 찾을 수 없습니다.')
                         entry['effect_source']=definition['source']
-                    if entry['conditions']:entry['warnings'].append(CONDITION_WARNING)
+                    if any(k not in CUSTOM_EFFECT_FIELDS for k in entry['conditions']):entry['warnings'].append(CONDITION_WARNING)
                 except (ValueError,KeyError,TypeError) as exc:entry.update(status='unavailable',error=str(exc))
                 out.append(entry)
                 if kind=='effect' and name in damage and name not in trail and len(trail)<16:
@@ -246,6 +252,7 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                         if not isinstance(particle,dict):continue
                         add(dict(particle,source=damage[name]['source']),'particle',state,key+f':particle:{pi}',key)
             for index,item in enumerate(items):add(item['row'],item['kind'],item['state'],f'{character}|{clip}|{index}')
+            for entry in out:entry['condition_schema']=2
             result[character,clip]=out
     return result
 

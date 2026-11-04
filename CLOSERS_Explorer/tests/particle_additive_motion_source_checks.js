@@ -38,6 +38,9 @@ try{
  };
  localStorage.setItem('closers-motion-extras',JSON.stringify({models:true,effects:true,sounds:false,voices:false,colors:false}));
  extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camera,element});await extras.select([state.clip],[{state:'USN_EMOTION_DANCE',speed:1}]);
+ check(![...extras.assets.values()].flat().some(a=>a.particle),'optional dance lighting activated by default');
+ const light=$('motion-dance-light');light.value='spotlight';light.dispatchEvent(new Event('change'));
+ for(let i=0;i<500&&extras.loading;i++)await new Promise(r=>setTimeout(r,10));check(!extras.loading,'dance lighting did not finish loading');
  const particles=[...extras.assets.values()].flat().filter(a=>a.particle).flatMap(a=>a.model.meshes).filter(m=>m.userData.dofParticleAdditive);
  check(particles.length===3,'three source additive spot/note particles must load: '+$('motion-extra-items').textContent);
  let positive=0;

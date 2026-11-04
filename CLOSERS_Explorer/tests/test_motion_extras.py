@@ -19,6 +19,24 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_custom_effect_conditions_survive_compilation_and_parent_resolution(self):
+        from closers.motion_converts import resolve
+        custom={1:13.0}
+        refs={'STRIKER':{'EMOTION_DANCE':[
+            dict(kind='effect',state='USN_EMOTION_DANCE',row=dict(m_DamageEffectName='ROOT',m_vecShowEffectCustomID=custom)),
+            dict(kind='equipment',state='USN_EMOTION_DANCE',row=dict(m_vecShowEffectCustomID=custom))]}}
+        damage={'ROOT':dict(source='effect.LUA',m_MainEffectName='DUST',m_EventParticle={1:dict(m_SeqName='DUST')})}
+        rule=particle_rule(dict(m_TexName='WHITE.PNG'))
+        items=compile_extras(refs,damage,{},{'DUST':rule})['STRIKER','EMOTION_DANCE']
+        self.assertEqual(len(items),3)
+        self.assertTrue(all(e['condition_schema']==2 for e in items))
+        self.assertEqual(items[0]['conditions']['m_vecShowEffectCustomID'],custom)
+        self.assertEqual(items[2]['conditions']['m_vecShowEffectCustomID'],custom)
+        result=resolve({('STRIKER','EMOTION_DANCE'):items},{},'STRIKER','EMOTION_DANCE')
+        self.assertEqual(result[1]['conditions']['parent']['m_vecShowEffectCustomID'],custom)
+        self.assertFalse(items[1]['conditions'])
+        self.assertFalse(items[0]['warnings'])
+
     def test_condition_warnings_do_not_mutate_shared_particle_definitions(self):
         rule=particle_rule(dict(m_TexName='WHITE.PNG'))
         rule['warnings']=['source warning']

@@ -6,6 +6,9 @@ class ParticleAdditiveMotionSourceBrowserTests(source_browser.ParticleDofMotionS
     animation_name='MOTION_STRIKER_EMOTION_DANCE.XMD'
     clip_name='EMOTION_DANCE'
 
+    def check_source_conditions(self,entries):
+        self.assertTrue(any(e['conditions'].get('m_vecShowEffectCustomID')=={'1':13} for e in entries))
+
     def source_entries(self,raw):
         names={'PE_SPOT_LIGHT_MAIN','PE_SPOT_LIGHT_MUSIC_NOTE_01','PE_SPOT_LIGHT_MUSIC_NOTE_02'}
         particles=[e for e in raw if e.get('particle_name') in names and e['state']=='USN_EMOTION_DANCE']

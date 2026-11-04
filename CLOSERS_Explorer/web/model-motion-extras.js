@@ -9,6 +9,22 @@ import {applyEmbeddedPose} from './model-x-animation.js';
 import {chooseTextureSequence} from './model-texture-animation.js';
 import {MotionAudio} from './model-motion-audio.js';
 
+// Explicit states declared by the source dance skills. Snowman/pet states
+// reuse the same XMD clip and must not become the default dance presentation.
+const DANCE_STATES={EMOTION_DANCE:'USN_EMOTION_DANCE',EMOTION_DANCE_2:'USN_EMOTION_DANCE2'};
+const CUSTOM_FIELDS=['m_vecShowEffectCustomID','m_vecHideEffectCustomID'];
+const DANCE_LIGHT_EFFECT='DE_HYPER_MODE_2026_BOSS_HOD_BUFF_SPOT_LIGHT';
+
+function danceLightKeys(entries,state){
+  const rows=new Map(entries.map(e=>[e.key,e])),roots=new Set(entries.filter(e=>e.state===state&&e.label===DANCE_LIGHT_EFFECT).map(e=>e.key)),selected=new Set();
+  for(const entry of entries){
+    const path=[];let current=entry;
+    while(current&&!path.includes(current.key)){path.push(current.key);if(roots.has(current.key)){selected.add(entry.key);break;}current=rows.get(current.parent_key);}
+  }
+  for(const key of roots){let current=rows.get(key);const seen=new Set();while(current&&!seen.has(current.key)){seen.add(current.key);selected.add(current.key);current=rows.get(current.parent_key);}}
+  return selected;
+}
+
 export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEquipmentVisibility,onLoadingChange,element}){
   const button=element('button','연출 설정');button.id='motion-extras-settings';button.type='button';button.className='secondary';button.disabled=true;
   button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','motion-extras-dialog');
@@ -17,6 +33,9 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   const dialog=element('dialog');dialog.id='motion-extras-dialog';dialog.setAttribute('aria-labelledby','motion-extras-title');
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="motion-extras-title">모션 연출</h2><button type="button" class="secondary">닫기</button></div><div class="motion-extra-switches"><label><input id="show-motion-props" type="checkbox"> 보조 모델 표시</label><label><input id="show-motion-effects" type="checkbox"> 모션 효과 표시</label></div><p class="muted">모델과 파티클을 모션에 맞춰 표시합니다. 게임 전용 물리·셰이더는 근사하며 항목별 안내를 확인할 수 있습니다.</p><p id="motion-extras-status" role="status"></p><div id="motion-extra-items"></div>';
   document.body.append(dialog);
+  const danceControls=element('label','춤 조명 '),danceLight=element('select');danceControls.id='motion-dance-controls';danceControls.hidden=true;danceLight.id='motion-dance-light';danceLight.setAttribute('aria-label','춤 조명');
+  for(const [value,label] of [['none','없음 · 기본 춤'],['spotlight','스포트라이트·음표']]){const option=element('option',label);option.value=value;danceLight.append(option);}danceControls.append(danceLight);dialog.querySelector('.motion-extra-switches').before(danceControls);
+  const advanced=element('details');advanced.append(element('summary','개별 연출·출처'),dialog.querySelector('#motion-extra-items'));dialog.append(advanced);
   const audio=new MotionAudio();
   const volumeControls=element('div');volumeControls.className='motion-audio-controls';volumeControls.hidden=true;volumeControls.setAttribute('role','group');volumeControls.setAttribute('aria-label','모션 소리 조절');
   const muteButton=element('button'),volumeLabel=element('label','소리'),volumeInput=element('input'),volumeOutput=element('output');
@@ -38,7 +57,31 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   const preferences=[['show-motion-props','models'],['show-motion-effects','effects'],['show-motion-sounds','sounds'],['show-motion-voices','voices'],['show-motion-colors','colors']];
   let saved={};try{saved=JSON.parse(localStorage.getItem('closers-motion-extras')||'{}')||{};}catch{}
   for(const [id,key] of preferences)$(id).checked=saved[key]!==false;
-  const enabled=entry=>!excluded.has(entry.id)&&(!Object.keys(entry.conditions||{}).length||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='sound'?$(entry.voice?'show-motion-voices':'show-motion-sounds').checked&&(entry.sound_group==null||String(entry.sound_group)===soundGroup.value):entry.kind==='color'?$('show-motion-colors').checked:entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
+  const danceEntry=entry=>Boolean(DANCE_STATES[entry.packet?.clip?.name]&&DANCE_STATES[entry.packet.clip.name]===entry.state);
+  const customCondition=value=>Object.entries(value||{}).some(([k,v])=>CUSTOM_FIELDS.includes(k)||(k==='parent'&&customCondition(v)));
+  const spotlightCondition=value=>Object.entries(value||{}).some(([k,v])=>k==='m_vecShowEffectCustomID'&&v&&typeof v==='object'&&Object.values(v).includes(13)||k==='parent'&&spotlightCondition(v));
+  function conditions(entry,value=entry.conditions||{}){
+    let unresolved=false;
+    for(const [key,v] of Object.entries(value)){
+      if(key==='parent'){const parent=conditions(entry,v);if(!parent.allowed)return parent;unresolved||=parent.unresolved;continue;}
+      if(!CUSTOM_FIELDS.includes(key)){unresolved=true;continue;}
+      const ids=v&&typeof v==='object'&&!Array.isArray(v)?Object.values(v):[];
+      if(!ids.length||!ids.every(id=>Number.isSafeInteger(id)&&id>0))return {allowed:false,unresolved};
+      const selected=danceEntry(entry)&&entry.danceLightPart&&danceLight.value==='spotlight'?13:null;
+      if(key==='m_vecShowEffectCustomID'&&!ids.includes(selected)||key==='m_vecHideEffectCustomID'&&ids.includes(selected))return {allowed:false,unresolved};
+    }
+    return {allowed:true,unresolved};
+  }
+  const enabled=entry=>{
+    if(DANCE_STATES[entry.packet?.clip?.name]&&entry.condition_schema!==2)return false;
+    const check=conditions(entry);
+    return check.allowed&&!excluded.has(entry.id)&&(!check.unresolved||conditionCheck.checked)&&(!entry.ambiguous||entry.state===stateChoice.value)&&(entry.kind==='equipment'||(entry.kind==='sound'?$(entry.voice?'show-motion-voices':'show-motion-sounds').checked&&(entry.sound_group==null||String(entry.sound_group)===soundGroup.value):entry.kind==='color'?$('show-motion-colors').checked:entry.kind==='model'?$('show-motion-props').checked:$('show-motion-effects').checked));
+  };
+  function updateDanceControls(){
+    const available=entries.some(e=>e.packet===state.clip&&danceEntry(e)&&e.danceLightPart&&e.condition_schema===2&&e.status==='ready'&&spotlightCondition(e.conditions));
+    danceControls.hidden=!available;
+    if(!available)danceLight.value='none';
+  }
   const colors=new Map();
   function restoreColors(){for(const [m,base] of colors){m.color.copy(base.color);m.opacity=base.opacity;if(m.transparent!==base.transparent){m.transparent=base.transparent;m.needsUpdate=true;}}colors.clear();}
   function equipment(parts=new Set()){
@@ -49,11 +92,13 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
   }
   function disposeAsset(asset){asset.anchor.removeFromParent();asset.model?.dispose();asset.owned?.forEach(v=>v.dispose());asset.extraMeshes?.forEach(v=>v.removeFromParent());for(const key of asset.textureKeys)cache.release(key);}
   function release(){audio.reset();restoreColors();equipment();for(const group of assets.values())for(const asset of group)disposeAsset(asset);assets.clear();cache.clear();}
-  function reset(){version++;controller?.abort();setLoading(false);release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
+  function reset(){version++;controller?.abort();setLoading(false);release();entries=[];packets=[];lastPacket=null;total=0;stageClock=0;danceLight.value='none';danceControls.hidden=true;stateChoice.hidden=true;stateChoice.replaceChildren();excluded.clear();button.disabled=true;if(dialog.open)dialog.close();render();}
   function render(){
+    dialog.querySelector('p.muted').textContent=danceControls.hidden?'모델과 파티클을 모션에 맞춰 표시합니다. 게임 전용 물리·셰이더는 근사하며 항목별 안내를 확인할 수 있습니다.':'춤 조명은 직접 선택할 때만 적용됩니다. 동작을 바꾸면 해제됩니다.';
     volumeControls.hidden=!entries.some(entry=>entry.kind==='sound'&&entry.status==='ready'&&enabled(entry)&&entry.sounds?.some(sound=>sound.selected));
     const container=$('motion-extra-items');container.replaceChildren();
     for(const entry of entries){
+      if(customCondition(entry.conditions))continue;
       const row=element('div');row.className='motion-extra-row';
       const label=element('label'),check=element('input');check.type='checkbox';check.checked=entry.status==='ready'&&!excluded.has(entry.id);check.disabled=entry.status!=='ready';
       check.onchange=()=>{if(check.checked)excluded.delete(entry.id);else excluded.add(entry.id);void refresh();};
@@ -99,7 +144,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     const data=resource&&!fbx?await api('/api/model-scene?entries='+resource.selected,signal):null;
     if(current!==version||disposed)throw Error('연출 선택이 변경되었습니다.');
     let model=data?buildModel(data):null;
-    const anchor=new THREE.Group(),asset={model,anchor,textureKeys:[],textureAnimations:[],owned:[],extraMeshes:[],begun:false,born:0,packet:entry.packet};
+    const anchor=new THREE.Group(),asset={model,anchor,textureKeys:[],textureAnimations:[],owned:[],extraMeshes:[],begun:false,born:0,packet:entry.packet,customDecoration:customCondition(entry.conditions)};
     anchor.visible=false;anchor.matrixAutoUpdate=false;
     try{
       if(fbx){model=await createFBXModel(await api('/api/model-effect-resource?entry='+resource.selected,signal));asset.model=model;}
@@ -218,28 +263,31 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     if(current!==version)return;
     const requested=preferences.some(([id])=>$(id).checked);
     const converted=entries.some(e=>e.motion_conversion)?'원본 변형표 연결 · ':entries.some(e=>e.motion_conversion_options)?'원본 변형표 공통 연출 · ':'';
-    $('motion-extras-status').textContent=converted+(count||soundCount||colorCount?`${count}개 모델 · ${soundCount}개 사운드 · ${colorCount}개 색상 연출 준비됨`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.');render();
+    const staleDance=entries.some(e=>DANCE_STATES[e.packet?.clip?.name]&&e.condition_schema!==2);
+    $('motion-extras-status').textContent=staleDance?'춤 연출 정보를 갱신하려면 라이브러리에서 후처리를 실행하세요.':!danceControls.hidden&&danceLight.value==='none'?'기본 춤 · 선택 조명 없음':converted+(count||soundCount||colorCount?`${count}개 모델 · ${soundCount}개 사운드 · ${colorCount}개 색상 연출 준비됨`:requested?'표시할 수 있는 연출이 없습니다. 항목별 사유를 확인하세요.':'표시 옵션을 켜면 연결된 연출을 함께 볼 수 있습니다.');render();
     }finally{if(current===version)setLoading(false);}
   }
   function select(clips,steps=[]){
     if(disposed)return Promise.resolve();
     reset();packets=clips;button.disabled=!clips.length;
     clips.forEach((packet,index)=>{
-      const all=packet.extras||[],known=steps[index]?.state,states=new Set(all.filter(e=>e.kind!=='model'&&e.state).map(e=>e.state));
+      const all=packet.extras||[],known=steps[index]?.state||DANCE_STATES[packet.clip?.name],states=new Set(all.filter(e=>e.kind!=='model'&&e.state).map(e=>e.state));
+      const lightKeys=DANCE_STATES[packet.clip?.name]===known?danceLightKeys(all,known):new Set();
       if(!known&&states.size>1){stateChoice.hidden=false;stateChoice.replaceChildren();for(const name of states){const option=element('option',name);option.value=name;stateChoice.append(option);}}
       for(const original of all){
         if(known&&original.state&&original.state!==known)continue;
-        const entry={...original,id:index+':'+original.key,packet,stateSpeed:steps[index]?.speed||original.state_speed||1};
+        const entry={...original,id:index+':'+original.key,packet,stateSpeed:steps[index]?.speed||original.state_speed||1,danceLightPart:lightKeys.has(original.key)};
         entry.ambiguous=!known&&states.size>1&&entry.kind!=='model';
         entries.push(entry);
       }
     });
     soundGroup.replaceChildren();const base=element('option','기본 음원');base.value='';soundGroup.append(base);for(const group of new Set(entries.filter(e=>e.kind==='sound'&&e.sound_group!=null).map(e=>e.sound_group))){const option=element('option','변형 음원 '+group);option.value=group;soundGroup.append(option);}soundGroup.hidden=soundGroup.options.length===1;
-    render();return refresh();
+    updateDanceControls();render();return refresh();
   }
   function seek(){if(disposed)return;audio.seek();lastPacket=null;total=0;for(const group of assets.values())for(const asset of group)asset.begun=false;}
   function update(delta=0){
     if(disposed||loading)return;
+    updateDanceControls();
     restoreColors();
     if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
@@ -247,9 +295,10 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     if(state.playing){const elapsed=delta*Number($('animation-speed').value);total+=elapsed;if(!changed)stageClock+=elapsed;}
     const wrapped=!changed&&state.time<lastTime-1e-6&&state.playing;lastTime=state.time;
     const births=new Map(),restarts=new Map(),hiddenParts=new Set();let frameNeeded=false;
-    const frame=asset=>{if(!asset.framed){asset.framed=true;frameNeeded=true;}};
+    const frame=asset=>{if(!asset.framed){asset.framed=true;if(!asset.customDecoration)frameNeeded=true;}};
     for(const entry of entries){
       if(entry.kind==='event_info')continue;
+      if(customCondition(entry.conditions)&&entry.packet!==state.clip){for(const asset of assets.get(entry.id)||[])asset.anchor.visible=false;continue;}
       const active=entry.packet===state.clip,group=assets.get(entry.id)||[];
       const parentId=entry.parent_key?entry.id.split(':')[0]+':'+entry.parent_key:null,parent=parentId?births.get(parentId):null;
       // Child event clocks are relative to their damage effect, even if its mesh is unavailable.
@@ -316,7 +365,8 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
 
   button.onclick=()=>{render();dialog.showModal();};dialog.querySelector('button').onclick=()=>dialog.close();
   conditionCheck.onchange=()=>void refresh();stateChoice.onchange=()=>void refresh();
+  danceLight.onchange=()=>{if(danceLight.value==='spotlight')$('show-motion-effects').checked=true;void refresh();};
   soundGroup.onchange=()=>void refresh();
   for(const [id] of preferences)$(id).onchange=()=>{try{localStorage.setItem('closers-motion-extras',JSON.stringify(Object.fromEntries(preferences.map(([id,key])=>[key,$(id).checked]))));}catch{}void refresh();};
-  reset();return {select,reset,seek,update,unlockAudio:()=>{if(!disposed)return audio.unlock();},pauseAudio:()=>{if(!disposed)audio.pause();},setBusy(value){button.disabled=disposed||value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},dispose(){if(disposed)return;disposed=true;reset();void audio.dispose();}};
+  reset();return {select,reset,seek,update,unlockAudio:()=>{if(!disposed)return audio.unlock();},pauseAudio:()=>{if(!disposed)audio.pause();},setBusy(value){button.disabled=disposed||value||!packets.length;},get loading(){return loading;},get assets(){return assets;},get meshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible).flatMap(a=>a.model.meshes);},get framingMeshes(){return [...assets.values()].flat().filter(a=>a.anchor.visible&&!a.customDecoration).flatMap(a=>a.model.meshes);},dispose(){if(disposed)return;disposed=true;reset();void audio.dispose();}};
 }

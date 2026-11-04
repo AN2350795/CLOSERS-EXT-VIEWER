@@ -37,6 +37,9 @@ class ParticleDofMotionSourceBrowserTests(test_picker_browser.PickerBrowserTests
             if len(selected)==old:break
         return [e for e in raw if e['key'] in selected]
 
+    def check_source_conditions(self,entries):
+        self.assertTrue(all(not e['conditions'] for e in entries))
+
     def test_picker(self):
         workspace = Path(__file__).resolve().parents[2]/'results'
         if not (workspace/'catalog.sqlite3').exists():
@@ -63,7 +66,7 @@ class ParticleDofMotionSourceBrowserTests(test_picker_browser.PickerBrowserTests
         index = next(c['index'] for c in info['clips'] if c['name'] == self.clip_name)
         clip = models.clip(skeleton, animation, index, info['animation_source']['sha256'])
         entries = self.source_entries(clip['extras'])
-        self.assertTrue(all(not e['conditions'] for e in entries))
+        self.check_source_conditions(entries)
         clip.update(extras=entries, extras_index_available=True)
         self.assertTrue(all(e['status'] == 'ready' for e in entries))
         scenes, animations, clips, effects, images = {}, {}, {}, {}, {}
