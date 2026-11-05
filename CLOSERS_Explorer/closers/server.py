@@ -6,6 +6,7 @@ import mimetypes
 import os
 from pathlib import Path
 import secrets
+import socket
 import subprocess
 import sys
 import threading
@@ -22,6 +23,17 @@ from .issues import issue
 STATIC = Path(__file__).resolve().parent.parent / 'web'
 EFFECT_MODULES={'/'+p.relative_to(STATIC).as_posix() for root in (STATIC/'vendor/spine',STATIC/'vendor/three/addons') for p in root.rglob('*.js')}
 MEDIA_LIMIT = 64 * 1024 * 1024
+
+
+class ExplorerHTTPServer(ThreadingHTTPServer):
+    # Windows SO_REUSEADDR permits multiple listeners on the same address.
+    # Requests can then reach an older process with a different asset allowlist.
+    allow_reuse_address = os.name != 'nt'
+
+    def server_bind(self):
+        if os.name == 'nt':
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def open_output_folder(value):
@@ -700,7 +712,7 @@ def create_server(catalog, port=0):
             except Exception as exc:
                 self.respond({'error': str(exc)}, status=400)
 
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    server = ExplorerHTTPServer(('127.0.0.1', port), Handler)
     server.jobs = jobs
     return server
 
