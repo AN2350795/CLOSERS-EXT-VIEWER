@@ -18,5 +18,10 @@
     "file": "NURBSUtils.js",
     "upstream_sha256": "c6bd7c4137d585098923f189687898ea3e8762ea3ecbe255d749a56353894379",
     "sha256": "4c0ab9cd49629c4651884891d4447d3db34117f420c5961e35ff0f7299db09dc"
+  },
+  {
+    "file": "TransformControls.js",
+    "upstream_sha256": "621fb8894c0f748c2be2a6ff8a6bdd72c18a22b24ddfe21d506514544df5c84e",
+    "sha256": "424319bc51847a1d34cabf2f3ff3359bcf273c3697ab0d6b7525d06d9c9f8039"
   }
 ]

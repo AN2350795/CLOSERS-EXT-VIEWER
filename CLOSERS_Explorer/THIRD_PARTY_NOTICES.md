@@ -1,3 +1,11 @@
+# Three.js
+
+The viewer bundles Three.js r180 and its TransformControls addon from
+[mrdoob/three.js](https://github.com/mrdoob/three.js/tree/r180). They are used
+under the MIT license included at `web/vendor/three/LICENSE`. Source locations,
+local import changes and SHA-256 hashes are recorded in the vendor `SOURCE.json`
+and `FILES.json` files.
+
 # CMF-Sharp
 
 The CMF header layout and legacy decoding algorithm in `closers/cmf.py` are

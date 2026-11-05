@@ -1,69 +1,56 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import {TransformControls} from './vendor/three/addons/TransformControls.js';
 
-// World-space translation with screen-sized handles. This scene is rendered
-// after postprocessing and never enters model bounds or auxiliary depth passes.
+// Upstream controls own picking, drag planes, axis constraints and snapping.
+// This adapter bridges viewer state, orbit arbitration and edit transactions.
 export function createLightGizmo({camera,canvas,onChange,onCommit}){
-  const scene=new THREE.Scene(),root=new THREE.Group();scene.add(root);
-  const raycaster=new THREE.Raycaster(),plane=new THREE.Plane(),hit=new THREE.Vector3(),axes=[new THREE.Vector3(1,0,0),new THREE.Vector3(0,1,0),new THREE.Vector3(0,0,1)];
-  const pickers=[],handles=[],resources=new Set();let active=false,disposed=false,drag=null,owner=null,key='',hover=null;
-  function mesh(geometry,color,parent){
-    const material=new THREE.MeshBasicMaterial({color,depthTest:false,depthWrite:false,toneMapped:false,transparent:true});
-    const object=new THREE.Mesh(geometry,material);parent.add(object);resources.add(geometry);resources.add(material);return object;
+  const scene=new THREE.Scene(),anchor=new THREE.Object3D();scene.add(anchor);
+  const controls=new TransformControls(camera),helper=controls.getHelper();scene.add(helper);
+  // Use capture-phase events instead of the default bubble listeners: orbit
+  // shares this canvas. Assign domElement for the upstream dispose lifecycle.
+  controls.domElement=canvas;controls.setMode('translate');controls.setSpace('world');
+  for(const axis of ['X','Y','Z']){controls['min'+axis]=-100000;controls['max'+axis]=100000;}
+  controls.attach(anchor);
+  const touchAction=canvas.style.touchAction;canvas.style.touchAction='none';
+  let active=false,disposed=false,drag=null,owner=null,key='',handleSize=1;
+  controls.addEventListener('objectChange',()=>onChange(anchor.position.toArray()));
+  function pointer(event,button=event.button){
+    const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
+    return {x:(event.clientX-rect.left)/rect.width*2-1,y:-(event.clientY-rect.top)/rect.height*2+1,button};
   }
-  for(const [index,color] of [0xef5350,0x66bb6a,0x42a5f5].entries()){
-    const group=new THREE.Group();root.add(group);handles.push(group);
-    const shaft=mesh(new THREE.CylinderGeometry(.018,.018,.72,8),color,group);shaft.position.y=.46;
-    const arrow=mesh(new THREE.ConeGeometry(.075,.2,12),color,group);arrow.position.y=.92;
-    group.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),axes[index]);
-    const picker=mesh(new THREE.CylinderGeometry(.09,.09,1,8),color,group);picker.position.y=.52;picker.material.visible=false;picker.userData.axis=index;pickers.push(picker);
-  }
-  const center=mesh(new THREE.BoxGeometry(.13,.13,.13),0xffffff,root);center.userData.axis=3;pickers.push(center);
-  function ray(event){const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return false;camera.updateMatrixWorld(true);raycaster.setFromCamera(new THREE.Vector2((event.clientX-rect.left)/rect.width*2-1,-(event.clientY-rect.top)/rect.height*2+1),camera);return true;}
   function layout(){
-    if(!active||disposed)return;
+    if(!active||disposed)return false;
     camera.updateMatrixWorld(true);
-    const height=canvas.getBoundingClientRect().height;if(height<=0)return;
-    const view=root.position.clone().applyMatrix4(camera.matrixWorldInverse),inFront=-view.z>camera.near&&-view.z<camera.far;
-    root.visible=inFront;if(!inFront)return;
+    const height=canvas.getBoundingClientRect().height,view=anchor.position.clone().applyMatrix4(camera.matrixWorldInverse);
+    helper.visible=height>0&&-view.z>camera.near&&-view.z<camera.far;
+    if(!helper.visible)return false;
     const worldHeight=camera.isPerspectiveCamera?2*(-view.z)*Math.tan(camera.fov*Math.PI/360)/camera.zoom:(camera.top-camera.bottom)/camera.zoom;
-    root.scale.setScalar(drag?drag.scale:worldHeight*85/height);
-    const eye=camera.isPerspectiveCamera?camera.getWorldPosition(new THREE.Vector3()).sub(root.position).normalize():camera.getWorldDirection(new THREE.Vector3()).negate();
-    handles.forEach((group,i)=>{if(!drag)group.visible=Math.abs(eye.dot(axes[i]))<.98;group.children.forEach(o=>{o.material.opacity=hover===i?1:.85;});});
-    root.updateMatrixWorld(true);
-  }
-  function pick(event){
-    layout();if(!active||!root.visible||!ray(event))return null;
-    if(raycaster.intersectObject(center,false).length)return 3;
-    const visible=pickers.filter((picker,i)=>i===3||handles[i].visible);
-    return raycaster.intersectObjects(visible,false)[0]?.object.userData.axis??null;
+    handleSize=drag?drag.size:worldHeight*85/height;
+    const factor=camera.isOrthographicCamera?worldHeight:anchor.position.distanceTo(camera.getWorldPosition(new THREE.Vector3()))*Math.min(1.9*Math.tan(camera.fov*Math.PI/360)/camera.zoom,7);
+    // Upstream arrow tips sit at +/-0.5, keeping their length near 85 CSS px.
+    controls.setSize(8*handleSize/Math.max(factor,1e-10));scene.updateMatrixWorld(true);return true;
   }
   function consume(event){event.preventDefault();event.stopImmediatePropagation();}
   function finish(cancel=false){
     if(!drag)return;const previous=drag;drag=null;
-    if(cancel){root.position.copy(previous.origin);onChange(previous.origin.toArray());}else onCommit();
+    controls.pointerUp({button:0});
+    if(cancel){anchor.position.copy(previous.origin);onChange(previous.origin.toArray());}else onCommit();
     if(canvas.hasPointerCapture?.(previous.id))canvas.releasePointerCapture(previous.id);
-    canvas.style.cursor='';hover=null;
+    canvas.style.cursor='';
   }
   function down(event){
     if(drag){consume(event);return;}
-    if(event.button!==0||!active)return;const axis=pick(event);if(axis===null)return;
-    // Use the same eye vector as handle visibility. Camera-forward can be
-    // parallel to an axis even when an off-center handle is clearly visible.
-    const normal=axis<3&&camera.isPerspectiveCamera?camera.getWorldPosition(new THREE.Vector3()).sub(root.position).normalize():camera.getWorldDirection(new THREE.Vector3());
-    if(axis<3)normal.addScaledVector(axes[axis],-normal.dot(axes[axis]));
-    if(normal.lengthSq()<1e-8)return;normal.normalize();plane.setFromNormalAndCoplanarPoint(normal,root.position);
-    if(!raycaster.ray.intersectPlane(plane,hit))return;
-    consume(event);drag={id:event.pointerId,axis,origin:root.position.clone(),start:hit.clone(),scale:root.scale.x};hover=axis;canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
+    if(event.button!==0||!layout())return;const p=pointer(event);if(!p)return;
+    controls.pointerHover(p);if(!controls.axis)return;
+    scene.updateMatrixWorld(true);const origin=anchor.position.clone();controls.pointerDown(p);
+    if(!controls.dragging)return;
+    consume(event);drag={id:event.pointerId,origin,size:handleSize};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
   }
   function move(event){
     if(drag){
-      if(event.pointerId!==drag.id){consume(event);return;}consume(event);
-      if(!ray(event)||!raycaster.ray.intersectPlane(plane,hit))return;
-      const delta=hit.clone().sub(drag.start);
-      if(drag.axis<3){const distance=delta.dot(axes[drag.axis]);delta.copy(axes[drag.axis]).multiplyScalar(distance);}
-      const value=drag.origin.clone().add(delta);value.clampScalar(-100000,100000);root.position.copy(value);onChange(value.toArray());
-    }else{
-      const axis=pick(event);if(axis!==null||hover!==null){hover=axis;canvas.style.cursor=axis===null?'':'grab';}
+      consume(event);if(event.pointerId!==drag.id)return;const p=pointer(event,-1);if(p)controls.pointerMove(p);
+    }else if(active&&layout()){
+      const p=pointer(event);if(p)controls.pointerHover(p);canvas.style.cursor=controls.axis?'grab':'';
     }
   }
   function up(event){if(drag?.id===event.pointerId){move(event);finish(false);}}
@@ -73,30 +60,30 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
   function keyboard(event){if(drag&&event.key==='Escape'){consume(event);finish(true);}}
   function blur(){finish(true);}
   function visibility(){if(canvas.ownerDocument.hidden)finish(true);}
-  // Continue a drag across viewport overlays and outside the canvas even if
-  // the browser does not deliver subsequent events to the capture element.
   function documentMove(event){if(drag)move(event);}
   const listeners=[['pointerdown',down],['pointermove',move],['pointerup',up],['pointercancel',cancel],['lostpointercapture',lost],['wheel',wheel]];
   for(const [name,fn] of listeners)canvas.addEventListener(name,fn,{capture:true,passive:false});
-  canvas.ownerDocument.addEventListener('keydown',keyboard,true);
-  canvas.ownerDocument.addEventListener('pointermove',documentMove,{capture:true,passive:false});
-  canvas.ownerDocument.addEventListener('pointerup',up,true);
-  canvas.ownerDocument.addEventListener('pointercancel',cancel,true);
-  canvas.ownerDocument.addEventListener('visibilitychange',visibility);
-  canvas.ownerDocument.defaultView.addEventListener('blur',blur);
+  const doc=canvas.ownerDocument;
+  doc.addEventListener('keydown',keyboard,true);doc.addEventListener('pointermove',documentMove,{capture:true,passive:false});doc.addEventListener('pointerup',up,true);doc.addEventListener('pointercancel',cancel,true);doc.addEventListener('visibilitychange',visibility);doc.defaultView.addEventListener('blur',blur);
   return {
-    scene,
-    update({enabled,position,model,selection}){
+    scene,controls,get handleSize(){return handleSize;},
+    update({enabled,position,model,selection,snap=0}){
       if(disposed)return;
-      if(drag&&(!enabled||owner!==model||key!==selection))finish(true);
-      owner=model;key=selection;active=enabled;root.visible=enabled;
-      if(!drag)root.position.fromArray(position);if(!active){hover=null;canvas.style.cursor='';}
+      if(drag&&(!enabled||owner!==model||key!==selection||controls.translationSnap!==(snap||null)))finish(true);
+      owner=model;key=selection;active=enabled;helper.visible=enabled;controls.enabled=enabled;controls.setTranslationSnap(snap>0?snap:null);
+      if(!drag)anchor.position.fromArray(position);
+      if(!active){controls.axis=null;canvas.style.cursor='';}
     },
     render(renderer){
-      if(!active||disposed)return;layout();if(!root.visible)return;
-      const autoClear=renderer.autoClear;try{renderer.autoClear=false;renderer.render(scene,camera);}finally{renderer.autoClear=autoClear;}
+      if(!layout())return;const autoClear=renderer.autoClear;
+      try{renderer.autoClear=false;renderer.render(scene,camera);}finally{renderer.autoClear=autoClear;}
     },
     cancel:()=>finish(true),
-    dispose(){if(disposed)return;finish(true);disposed=true;for(const [name,fn] of listeners)canvas.removeEventListener(name,fn,true);canvas.ownerDocument.removeEventListener('keydown',keyboard,true);canvas.ownerDocument.removeEventListener('pointermove',documentMove,true);canvas.ownerDocument.removeEventListener('pointerup',up,true);canvas.ownerDocument.removeEventListener('pointercancel',cancel,true);canvas.ownerDocument.removeEventListener('visibilitychange',visibility);canvas.ownerDocument.defaultView.removeEventListener('blur',blur);for(const resource of resources)resource.dispose();scene.clear();canvas.style.cursor='';},
+    dispose(){
+      if(disposed)return;finish(true);disposed=true;
+      for(const [name,fn] of listeners)canvas.removeEventListener(name,fn,true);
+      doc.removeEventListener('keydown',keyboard,true);doc.removeEventListener('pointermove',documentMove,true);doc.removeEventListener('pointerup',up,true);doc.removeEventListener('pointercancel',cancel,true);doc.removeEventListener('visibilitychange',visibility);doc.defaultView.removeEventListener('blur',blur);
+      controls.detach();controls.dispose();scene.clear();canvas.style.touchAction=touchAction;canvas.style.cursor='';
+    },
   };
 }
