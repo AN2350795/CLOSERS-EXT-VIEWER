@@ -34,6 +34,17 @@ try{
   const gl=renderer.getContext(),pixels=new Uint8Array(64*64*4);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
   check(pixels.some((v,i)=>i%4!==3&&v>0),'particles produce visible pixels');
   scene.remove(model.root);
+  // Decoded source images use top-left UVs with flipY=false. A generated
+  // particle plane must keep the image's top at positive local Y.
+  const plane=model.meshes[0].geometry,positions=plane.getAttribute('position'),uvs=plane.getAttribute('uv');
+  for(let i=0;i<positions.count;i++)check(positions.getY(i)>0?uvs.getY(i)===0:uvs.getY(i)===1,'generated particle vertically inverted source texture');
+  const directional=new THREE.DataTexture(new Uint8Array([255,0,0,255,0,0,255,255]),1,2);directional.needsUpdate=true;directional.flipY=false;
+  const oriented=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,gravity:[0,0,0],billboard:'BBT_NONE',frames:[],tracks:[{property:'size',mode:'initial',value:[4,4,1]}]},null,[directional]);
+  scene.add(oriented.root);scene.updateMatrixWorld(true);oriented.update(.1,camera,anchor);renderer.render(scene,camera);
+  const directionalPixels=new Uint8Array(64*64*4);gl.readPixels(0,0,64,64,gl.RGBA,gl.UNSIGNED_BYTE,directionalPixels);
+  const top=(40*64+32)*4,bottom=(24*64+32)*4;
+  check(directionalPixels[top]>200&&directionalPixels[top+2]<10&&directionalPixels[bottom+2]>200&&directionalPixels[bottom]<10,'source image top/bottom did not survive GPU rendering');
+  scene.remove(oriented.root);oriented.dispose();directional.dispose();
   for(const yaw of [-170,-45,0,45,120]){
     const upright=createParticleModel({...rule,dual:false,rate:0,instant:1,max_particles:1,life:2,billboard:'BBT_NONE',frames:[],tracks:[{property:'rotation',mode:'initial',value:[-90,yaw,0]}]},null,[white]);
     upright.update(.1,camera,anchor);const transform=new THREE.Matrix4();upright.meshes[0].getMatrixAt(0,transform);

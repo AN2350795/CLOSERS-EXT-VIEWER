@@ -315,3 +315,13 @@ python -m unittest discover -s tests -p test_particle_dof_motion_source_browser.
 조명 선택은 원본 ID 13의 `DE_HYPER_MODE_2026_BOSS_HOD_BUFF_SPOT_LIGHT` 하위 트리와 위치·동작 연결에 필요한 조상에 한정한다. 같은 ID에 포함된 별도 바닥·무대 효과까지 함께 켜지 않는다. 즉 이 메뉴는 명시한 조명 계열의 뷰어 선택 기능이며 게임의 전체 커스텀 장식 세트를 자동 재현하는 기능이 아니다.
 
 실제 페이지의 기본 `chooseClip` 경로에서도 선택 전 장식 0개, 조명 선택 후 필요한 6개 항목, 해제 후 0개와 춤 종료 후 메뉴 숨김을 확인했다. 카메라 중심·방향·거리는 전환 전후 동일했고 JS 오류·모듈 실패는 없었다. 기록은 `diagnostics/dance-fix-actual-state.json`, 비교 화면은 `diagnostics/dance-fix-plain.png`, `diagnostics/dance-fix-spotlight.png`, 메뉴는 `diagnostics/dance-fix-menu.png`다. 관련 검사 36개를 통과했다.
+
+### 춤 원본 속도와 광선 텍스처 방향 (2026-11-05)
+
+원본 `GUST_USER_STRIKER.LUA`는 `USN_EMOTION_DANCE`·`USN_EMOTION_DANCE2`의 `m_fAnimSpeed`를 0.5로 지정한다. 개별 XMD 재생이 이를 반영하지 않아 약 2배 빠르던 문제를 수정했다. 상속·캐릭터 재정의로 확인한 속도와 출처를 연출 인덱스에 보존하고, 해당 춤의 상태가 하나의 속도로 확인될 때 API `playback`에 전달한다. 개별 춤과 보조 효과의 키 시간/초 시계를 맞추며, 묶음 모션은 기존 단계 속도를 중복 적용하지 않는다. 다른 개별 모션의 속도를 이름으로 추측하지 않는다. 로컬 인덱스도 갱신했다.
+
+원본 ID 13의 조명 효과는 `PE_SPOT_LIGHT_MAIN`, `PE_SPOT_LIGHT_SUB_01`, `PE_SPOT_LIGHT_MUSIC_NOTE_01/02`를 함께 참조한다. 따라서 음표는 선택한 조명 장식의 구성 요소다. 기본 춤의 필수 구성으로 표시하거나 서로 무관한 효과를 임의로 결합한 것으로 안내하지 않는다.
+
+원본 `TT_MASK_SPOT_LIGHT_CENTER.PNG`는 위의 좁은 광원에서 아래로 퍼지는 모양이다. `flipY=false`로 읽는 이미지에 Three의 기본 생성 평면 UV를 적용해 화면에서 상하가 반전되던 오류를 수정했다. 생성 평면만 원본의 상단 V=0 기준으로 맞추며, 원본 모델의 UV·카메라 정렬 방식은 변경하지 않는다. 이는 투영된 광선 텍스처의 방향 수정이며 게임의 전체 조명·HDR·볼륨 광선을 재현했다는 뜻은 아니다.
+
+재생 검사는 실제 뷰어 콜백에 일정한 프레임 시간을 공급해 기본 1배·사용자 0.5/2배, 묶음 속도 중복 방지와 일반 클립의 기존 동작을 확인했다. 생성 평면은 비대칭 상하 색상 텍스처를 GPU로 그려 방향을 대조했다. 실제 세하 의상·춤·조명과 기존 바이크/심도 검사도 재실행했다. 실제 페이지 기록 `diagnostics/dance-rate-actual-state.json`에는 속도 0.5와 출처, 올바른 UV, 기본/해제 후 장식 0개, 카메라 유지와 JS 오류 없음이 남아 있다. 방향 비교는 `diagnostics/dance-rate-spotlight.png`에서 확인한다.

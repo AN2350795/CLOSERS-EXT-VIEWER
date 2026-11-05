@@ -58,6 +58,9 @@ export function createParticleModel(rule,source,maps=[],{dissolveMap=null,traceM
     }
   }else{
     const geometry=new THREE.PlaneGeometry(1,1),material=new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide});
+    // Source textures and decoded X/FBX UVs use a top-left origin with
+    // flipY=false. Three's generated plane starts at bottom-left instead.
+    const uv=geometry.getAttribute('uv');for(let i=0;i<uv.count;i++)uv.setY(i,1-uv.getY(i));
     geometry.addGroup(0,geometry.index.count,0);templates.push({geometry,materials:[material]});ownedGeometry.push(geometry);ownedMaterials.push(material);
   }
   const capacity=rule.max_particles,frames=maps.length?maps:[null];
