@@ -1,6 +1,6 @@
 // Presentation only: move the existing controls so their bindings and saved
 // values stay intact. Diagnostics and manual experiments are kept out of basics.
-export function setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails}){
+export function setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails,viewerLightPanel}){
   const controls=new Map([...dialog.querySelectorAll('[id]')].map(e=>[e.id,e]));
   const $=id=>controls.get(id)||dialog.querySelector('#'+id),label=id=>$(id).closest('label');
   const details=(title,...nodes)=>{const e=element('details');e.append(element('summary',title),...nodes);return e;};
@@ -69,6 +69,7 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
   // All functional controls should now live in a section; retain any future
   // additions visibly in advanced instead of dropping them during a UI update.
   advanced.append(...unmoved);
+  if(viewerLightPanel)panels.get('light').prepend(viewerLightPanel);
   dialog.append(heading,nav,scroll);for(const section of dialog.querySelectorAll('details'))section.open=false;activate(current);
   function sync(){
     const active=experimentEntries.filter(selected);notice.hidden=!active.length;noticeText.textContent=`추가 설정 ${active.length}개 선택됨`;activeCard.hidden=!active.length;off.disabled=!active.length;activeList.replaceChildren();

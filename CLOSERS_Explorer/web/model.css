@@ -302,6 +302,10 @@
 #motion-dance-controls:not([hidden]){display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--line);border-radius:8px}
 #motion-dance-light{flex:1;min-width:0;max-width:100%}
 #finish-motion{font-size:11px;padding:5px 10px;border-color:#63748a;color:var(--accent)}
+#viewer-light-controls{padding:12px;border:1px solid var(--line);border-radius:8px}
+#viewer-light-controls h3{margin:0 0 8px;font-size:14px}
+.viewer-light-vector{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
+.viewer-light-vector strong{grid-column:1/-1}.viewer-light-vector label{min-width:0}.viewer-light-vector input{width:100%;min-width:0}
 #sequence-finish-mode{width:auto;padding:3px;font-size:10px}#sequence-phase{font-size:10px;color:var(--accent)}
 .animation-options:has(.sequence-controls:not([hidden])){flex-wrap:wrap;row-gap:6px}
 @media(max-width:600px){.animation-options:has(.sequence-controls:not([hidden])){margin-top:0}.sequence-controls{width:100%}}

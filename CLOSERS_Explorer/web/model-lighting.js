@@ -3,6 +3,7 @@ import {normalizeColorGrading} from './model-color-grading.js';
 import {normalizeSharpen} from './model-sharpen.js';
 import {normalizeDof,dofFocal,supportsDofModel,measureDofFocus} from './model-dof.js';
 import {setupLightingMenu} from './model-lighting-menu.js';
+import {setupViewerLight} from './model-viewer-light.js';
 import {setMaterialPreview,setMatcapPreview,setSpecularPreview,setMatcapMaskPreview,setSpecularLight} from './model-materials.js';
 
 function setupMatcapControls({state,element,dialog}){
@@ -140,7 +141,8 @@ if (avatarEmissionPass > 0.5) {
     shader.fragmentShader='uniform float avatarRimEnabled;\nuniform vec3 avatarRimDirection;\nuniform float avatarRimWidth;\nuniform float avatarRimPower;\n'+shader.fragmentShader;
     shader.vertexShader='varying vec2 avatarGlowUv;\n'+shader.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\navatarGlowUv = uv;');
     const marker=material.userData.materialPreview?'/* avatar_surface_end */':'#include <opaque_fragment>';
-    shader.fragmentShader=shader.fragmentShader.replace(marker,`float rimWeight = 0.0;
+    shader.fragmentShader=shader.fragmentShader.replace(marker,`/* viewer_light_surface */
+float rimWeight = 0.0;
 if (avatarRimEnabled > 0.5 && avatarEmissionPass < 0.5) {
   // PS cb1[9] and cb2[13]: source camera forward, not per-fragment eye rays.
   vec3 rimView = inverseTransformDirection(vec3(0.0,0.0,-1.0),viewMatrix);
@@ -353,6 +355,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const excluded=new Set(settings.excluded);let profiles=[],groups=[],pending=null,gradePresets=[],conditionBusy=false;
   const button=element('button','조명 · 재질');button.id='open-avatar-lighting';button.type='button';button.className='secondary';button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','avatar-lighting-dialog');document.querySelector('.viewport-actions').prepend(button);
   const dialog=element('dialog');dialog.id='avatar-lighting-dialog';dialog.setAttribute('aria-labelledby','avatar-lighting-title');
+  const viewerLight=setupViewerLight({state,element});
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="avatar-lighting-title">조명 · 재질</h2><button id="close-avatar-lighting" type="button" class="secondary" autofocus>닫기 ×</button></div><p id="avatar-lighting-summary" role="status"></p><fieldset><legend>발광</legend><div id="avatar-emission-master"></div><label><input id="avatar-emission-solo" type="checkbox"> 발광만 보기 · 검은 배경에서 발광 부위 확인</label><label><input id="avatar-emission-bloom" type="checkbox"> 빛 번짐</label><label>번짐 강도<input id="avatar-emission-strength" type="range" min="0" max="2" step="0.05"><output id="avatar-emission-strength-value"></output></label><p class="muted">번짐은 발광 텍스처가 지정된 부위에만 적용하는 뷰어 미리보기입니다.</p><div id="avatar-emission-items"></div></fieldset><div id="avatar-lighting-profile-source"><label>조명 선택<select id="avatar-lighting-profile" aria-label="의상 조명 선택"><option value="">조명 목록 불러오기</option></select></label><p id="avatar-lighting-status" class="muted" role="status"></p><details><summary>선택한 조명 출처</summary><pre id="avatar-lighting-source"></pre></details></div>';
   document.body.append(dialog);let menu=null;
   const bloomModeLabel=element('label');bloomModeLabel.innerHTML='번짐 방식<select id="avatar-emission-mode"><option value="viewer">기본 · 가벼운 번짐</option><option value="source">5단계 · 원본 흐림 비교</option></select>';
@@ -608,7 +611,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     if(state.model){const visible=groups.filter(g=>g.visible&&getEmissionEnabled()&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)).length;$('avatar-lighting-summary').textContent=`발광 연결 ${groups.length}개 · 현재 표시 ${visible}개${getEmissionEnabled()?'':' · 전체 발광 꺼짐'}${settings.solo?' · 발광만 보기':''}`;}
     const profileInfo=settings.baseRegion?effectiveProfile:settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
     if(profiles.length)$('avatar-lighting-status').textContent=effectiveProfile?`선택 조명: ${effectiveProfile.label}`:'현재 캐릭터에 적용할 조명을 선택하세요.';
-    menu?.sync();
+    viewerLight.refresh();menu?.sync();
   }
   function refresh(){
     matcap.refresh();
@@ -654,7 +657,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   sourceColorToggle.onchange=()=>{settings.sourceColor=sourceColorToggle.checked;save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
-  menu=setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails});
+  menu=setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails,viewerLightPanel:viewerLight.panel});
   button.onclick=()=>{refresh();dialog.showModal();void load();};$('close-avatar-lighting').onclick=()=>dialog.close();refresh();if(settings.toon||settings.autoProfile||settings.baseRegion||matcap.requiresLightProfile())void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};
