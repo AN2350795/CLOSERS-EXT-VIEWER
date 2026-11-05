@@ -140,7 +140,10 @@ export function setupViewerLight({state,element,onLightChange}){
   const place=element('button','모델 옆으로'),close=element('button','이동 끝내기');
   for(const button of [place,close]){button.type='button';button.className='secondary';}
   const toolbarMode=element('span');toolbarMode.className='muted';toolbarMode.id='viewer-light-gizmo-shading';
-  place.id='viewer-light-gizmo-place';close.id='viewer-light-gizmo-close';toolbar.append(toolbarLight,toolbarTarget,place,close,toolbarMode);
+  const useSource=element('button','이 광원으로 비추기');useSource.id='viewer-light-gizmo-use-source';useSource.type='button';useSource.className='secondary';
+  const collapse=element('button','접기');collapse.id='viewer-light-gizmo-collapse';collapse.type='button';collapse.className='secondary';collapse.setAttribute('aria-expanded','true');
+  collapse.onclick=()=>{const folded=toolbar.classList.toggle('is-collapsed');collapse.textContent=folded?'광원 이동 설정':'접기';collapse.setAttribute('aria-expanded',String(!folded));};
+  place.id='viewer-light-gizmo-place';close.id='viewer-light-gizmo-close';toolbar.append(collapse,toolbarLight,toolbarTarget,place,useSource,close,toolbarMode);
   document.getElementById('viewport')?.append(toolbar);
   const individualLabel=element('label'),individual=element('input');individual.type='checkbox';individual.id='viewer-light-item-enabled';individualLabel.append(individual,document.createTextNode(' 선택 조명 켜기'));details.append(individualLabel);
   const controls=new Map(),rows=new Map();
@@ -175,6 +178,8 @@ export function setupViewerLight({state,element,onLightChange}){
     toolbarMode.textContent=settings.mode==='source'?`원본 음영 기준: ${settings.lights[settings.sourceIndex].name}${settings.selected!==settings.sourceIndex?' · 편집 중인 광원은 음영에 미적용':''}`:'일반 입체 음영 · 비교용';
     helperToggle.checked=settings.showHelpers;
     const light=settings.lights[settings.selected];individual.checked=light.enabled;
+    useSource.hidden=settings.mode!=='source';useSource.disabled=light.type==='ambient'||settings.selected===settings.sourceIndex&&settings.enabled&&light.enabled;
+    useSource.textContent=useSource.disabled&&light.type!=='ambient'?'주광원 사용 중':'이 광원으로 비추기';
     list.replaceChildren();for(const [index,item] of settings.lights.entries()){const option=element('option',`${item.name} · ${viewerLightTypes[item.type].label} · ${item.enabled?'켜짐':'꺼짐'}`);option.value=index;list.append(option);}list.value=settings.selected;
     toolbarLight.replaceChildren(...[...list.options].map(option=>option.cloneNode(true)));toolbarLight.value=settings.selected;
     sourceSelect.replaceChildren(...[...list.options].map(option=>option.cloneNode(true)));sourceSelect.value=settings.sourceIndex;
@@ -195,6 +200,7 @@ export function setupViewerLight({state,element,onLightChange}){
   toolbarTarget.onchange=()=>{const field=toolbarTarget.value;gizmo?.cancel();settings.gizmoTarget=field;save();};
   edit.onclick=()=>{gizmo?.cancel();settings.gizmoEnabled=true;settings.gizmoTarget='position';settings.showHelpers=true;save();panel.closest('dialog')?.close();};
   close.onclick=()=>{gizmo?.cancel();settings.gizmoEnabled=false;save();};
+  useSource.onclick=()=>{gizmo?.cancel();if(settings.lights[settings.selected].type==='ambient')return;settings.sourceIndex=settings.selected;settings.enabled=true;settings.lights[settings.selected].enabled=true;save();};
   place.onclick=()=>{
     gizmo?.cancel();if(!state.model)return;
     const bounds=new THREE.Box3();for(const mesh of state.model.meshes||[])if(mesh.visible)bounds.expandByObject(mesh,true);

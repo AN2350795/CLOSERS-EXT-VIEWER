@@ -42,6 +42,7 @@ try{
  $('viewer-light-add').click();change('viewer-light-color','#ff0000');check(initial.materials[0].userData.toonPreview.profile.direction.join()===mainProfile.direction.join()&&initial.materials[0].userData.toonPreview.profile.color[0]===1,'extra light affected source main light');
  vector('position',[3,0,5]);change('viewer-light-source-index',1);check(initial.materials[0].userData.toonPreview.profile.color[1]===0,'main light selector not connected');
  change('viewer-light-item-enabled',false);check(!state.viewerSourceLighting&&initial.materials[0].userData.avatarLighting.avatarToonEnabled.value===0,'disabled main failed to restore original shading');
+ $('viewer-light-gizmo-use-source').click();const used=JSON.parse(localStorage.getItem('closers-viewer-light-v2'));check(used.enabled&&used.sourceIndex===1&&used.lights[1].enabled&&state.viewerSourceLighting,'viewport primary-light action');
  change('viewer-light-shading','diffuse');check(!state.viewerSourceLighting&&initial.materials[0].userData.viewerLight.viewerLightEnabled.value===1,'comparison mode');
  $('open-avatar-lighting').click();for(let i=0;i<100&&$('avatar-lighting-profile').options.length<2;i++)await new Promise(r=>setTimeout(r,10));
  change('viewer-light-enabled',false);change('avatar-lighting-profile','base');change('avatar-toon-enabled',true);change('avatar-face-sdf-enabled',true);

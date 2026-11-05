@@ -104,6 +104,21 @@ let value;for(let i=0;i<400;i++){
  const result=await call('Runtime.evaluate',{expression:'JSON.stringify({status:document.body?.dataset.checks,errors:(document.querySelector("body > pre:last-of-type")||document.querySelector("pre"))?.textContent,thumbnails:[...document.querySelectorAll(".model-thumbnail")].map(e=>e.textContent)})',returnByValue:true});
  value=JSON.parse(result.result.value);if(value.status)break;await new Promise(r=>setTimeout(r,50));
 }
+if(value.status==='ready'&&process.argv[2]==='gizmo-native'){
+ value={status:'passed'};
+ for(let i=0;i<7;i++){
+  const setup=await call('Runtime.evaluate',{expression:'window.prepareNativeGizmo('+i+')',returnByValue:true,awaitPromise:true});
+  if(setup.exceptionDetails){value={status:'failed',errors:JSON.stringify(setup.exceptionDetails)};break;}
+  const plan=setup.result.value;
+  await call('Input.dispatchMouseEvent',{type:'mouseMoved',x:plan.from.x,y:plan.from.y});
+  await call('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',buttons:1,clickCount:1,x:plan.from.x,y:plan.from.y});
+  for(const point of plan.moves)await call('Input.dispatchMouseEvent',{type:'mouseMoved',buttons:1,x:point.x,y:point.y});
+  if(plan.cancel){await call('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});await call('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});}
+  await call('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',buttons:0,clickCount:1,x:plan.to.x,y:plan.to.y});
+  const verified=await call('Runtime.evaluate',{expression:'window.verifyNativeGizmo('+i+')',returnByValue:true});
+  if(verified.exceptionDetails){value={status:'failed',errors:JSON.stringify(verified.exceptionDetails)};break;}
+ }
+}
 if(value.status==='passed'&&process.argv[2]==='responsive'){
  const setup=await call('Runtime.evaluate',{expression:'(async()=>{await addImage(9);await applyGameFrame(false,2);$("editor-status").hidden=true;$("editor-toast").hidden=true;$("layer-edit").open=true;$("animation-settings").open=true;})()',awaitPromise:true});
  if(setup.exceptionDetails)value={status:'failed',errors:JSON.stringify(setup.exceptionDetails)};
@@ -139,7 +154,7 @@ if(process.env.CLOSERS_TEST_CAPTURES){
 }
 console.log(JSON.stringify(value));ws.send(JSON.stringify({id:++id,method:'Browser.close'}));ws.close();
 if(value.status!=='passed')process.exitCode=1;
-''',port,'lighting-menu-layout' if self.checks_script=='lighting_menu_checks.js' else 'motion-layout' if self.checks_script in ('motion_library_checks.js','motion_sequence_checks.js','motion_loading_checks.js','animation_controls_checks.js') else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
+''',port,'gizmo-native' if self.checks_script=='light_gizmo_native_checks.js' else 'lighting-menu-layout' if self.checks_script=='lighting_menu_checks.js' else 'motion-layout' if self.checks_script in ('motion_library_checks.js','motion_sequence_checks.js','motion_loading_checks.js','animation_controls_checks.js') else 'viewer-layout' if self.checks_script=='viewer_layout_checks.js' else 'picker-layout' if self.checks_script=='picker_layout_checks.js' else 'responsive' if self.responsive_checks else 'standard'],capture_output=True,timeout=30)
                     self.assertEqual(result.returncode,0,result.stdout.decode(errors='replace')+result.stderr.decode(errors='replace'))
                 finally:
                     if process.poll() is None:

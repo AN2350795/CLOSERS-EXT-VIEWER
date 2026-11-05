@@ -24,9 +24,16 @@ try{
    pointer('pointerup',point(end,camera));check(commits===before+1&&!capture.size,'commit or release '+axis);
  }
  check(orbitEvents===0,'gizmo drag leaked into camera handlers');
+ // An off-center light can expose Z even with a camera looking down -Z.
+ camera.position.set(0,0,10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);
+ position=[3,0,0];activate();const offsetScale=gizmo.scene.children[0].scale.x,offsetStart=new T.Vector3(3,0,offsetScale*.6),offsetEnd=offsetStart.clone().add(new T.Vector3(0,0,offsetScale*.3));
+ const offsetOrbit=orbitEvents;pointer('pointerdown',point(offsetStart,camera));pointer('pointermove',point(offsetEnd,camera));gizmo.render(renderer);check(gizmo.scene.children[0].scale.x===offsetScale,'handle size changed during drag');pointer('pointerup',point(offsetEnd,camera));
+ check(Math.abs(position[2]-offsetScale*.3)<1e-4&&orbitEvents===offsetOrbit,'off-center Z handle failed or rotated camera: '+position);
+ camera.position.set(7,5,10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);
  position=[0,0,0];activate();const scale=gizmo.scene.children[0].scale.x,start=point(new T.Vector3(scale*.6,0,0),camera),end={x:start.x+30,y:start.y};
  const beforeCancel=commits;pointer('pointerdown',start);pointer('pointermove',end);document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));check(position.every(v=>Math.abs(v)<1e-6)&&commits===beforeCancel&&!capture.size,'Escape rollback');
  activate();pointer('pointerdown',start);pointer('pointermove',end);pointer('pointercancel',end);check(position.every(v=>Math.abs(v)<1e-6),'pointer cancellation rollback');
+ activate();pointer('pointerdown',start);pointer('pointermove',end);window.dispatchEvent(new Event('blur'));check(position.every(v=>Math.abs(v)<1e-6)&&commits===beforeCancel&&!capture.size,'window blur rollback');
  activate();const center=point(new T.Vector3(),camera);pointer('pointerdown',center);pointer('pointermove',{x:center.x+20,y:center.y+15});pointer('pointerup',{x:center.x+20,y:center.y+15});check(new T.Vector3(...position).length()>.1,'screen-plane center movement');
  position=[0,0,0];activate();pointer('pointerdown',start);pointer('pointermove',end);gizmo.update({enabled:false,position,model:null,selection:'none'});check(position.every(v=>Math.abs(v)<1e-6)&&!capture.size,'model/selection change did not cancel');
  gizmo.dispose();gizmo.dispose();renderer.dispose();canvas.onpointerdown=canvas.onpointermove=canvas.onpointerup=null;
@@ -41,6 +48,7 @@ try{
  };
  localStorage.clear();await import('/model.js');await modelViewer.loadModel([1]);await frame();
  $('open-avatar-lighting').click();$('viewer-light-edit-3d').click();check(!$('avatar-lighting-dialog').open&&!$('viewer-light-gizmo-toolbar').hidden,'modal blocked viewport editing');
+ $('viewer-light-gizmo-collapse').click();check($('viewer-light-gizmo-collapse').getAttribute('aria-expanded')==='false'&&JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoEnabled,'collapsing toolbar disabled gizmo');$('viewer-light-gizmo-collapse').click();
  $('viewer-light-gizmo-place').click();await frame();
  const values=()=>['x','y','z'].map(axis=>Number($('viewer-light-position-'+axis).value)),original=values(),savedBefore=localStorage.getItem('closers-viewer-light-v2');
  const view=modelViewer.view,rect=canvas.getBoundingClientRect(),cam=new T.PerspectiveCamera(40,rect.width/rect.height,.01,100000);

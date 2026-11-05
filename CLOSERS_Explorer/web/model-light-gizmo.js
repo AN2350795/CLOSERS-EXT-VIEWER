@@ -26,9 +26,9 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
     const view=root.position.clone().applyMatrix4(camera.matrixWorldInverse),inFront=-view.z>camera.near&&-view.z<camera.far;
     root.visible=inFront;if(!inFront)return;
     const worldHeight=camera.isPerspectiveCamera?2*(-view.z)*Math.tan(camera.fov*Math.PI/360)/camera.zoom:(camera.top-camera.bottom)/camera.zoom;
-    root.scale.setScalar(worldHeight*85/height);
+    root.scale.setScalar(drag?drag.scale:worldHeight*85/height);
     const eye=camera.isPerspectiveCamera?camera.getWorldPosition(new THREE.Vector3()).sub(root.position).normalize():camera.getWorldDirection(new THREE.Vector3()).negate();
-    handles.forEach((group,i)=>{group.visible=Math.abs(eye.dot(axes[i]))<.98;group.children.forEach(o=>{o.material.opacity=hover===i?1:.85;});});
+    handles.forEach((group,i)=>{if(!drag)group.visible=Math.abs(eye.dot(axes[i]))<.98;group.children.forEach(o=>{o.material.opacity=hover===i?1:.85;});});
     root.updateMatrixWorld(true);
   }
   function pick(event){
@@ -47,11 +47,13 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
   function down(event){
     if(drag){consume(event);return;}
     if(event.button!==0||!active)return;const axis=pick(event);if(axis===null)return;
-    const normal=camera.getWorldDirection(new THREE.Vector3());
+    // Use the same eye vector as handle visibility. Camera-forward can be
+    // parallel to an axis even when an off-center handle is clearly visible.
+    const normal=axis<3&&camera.isPerspectiveCamera?camera.getWorldPosition(new THREE.Vector3()).sub(root.position).normalize():camera.getWorldDirection(new THREE.Vector3());
     if(axis<3)normal.addScaledVector(axes[axis],-normal.dot(axes[axis]));
     if(normal.lengthSq()<1e-8)return;normal.normalize();plane.setFromNormalAndCoplanarPoint(normal,root.position);
     if(!raycaster.ray.intersectPlane(plane,hit))return;
-    consume(event);drag={id:event.pointerId,axis,origin:root.position.clone(),start:hit.clone()};hover=axis;canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
+    consume(event);drag={id:event.pointerId,axis,origin:root.position.clone(),start:hit.clone(),scale:root.scale.x};hover=axis;canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
   }
   function move(event){
     if(drag){
@@ -64,14 +66,24 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
       const axis=pick(event);if(axis!==null||hover!==null){hover=axis;canvas.style.cursor=axis===null?'':'grab';}
     }
   }
-  function up(event){if(drag?.id===event.pointerId){consume(event);finish(false);}}
+  function up(event){if(drag?.id===event.pointerId){move(event);finish(false);}}
   function cancel(event){if(drag?.id===event.pointerId){consume(event);finish(true);}}
   function lost(event){if(drag?.id===event.pointerId)finish(true);}
   function wheel(event){if(drag)consume(event);}
   function keyboard(event){if(drag&&event.key==='Escape'){consume(event);finish(true);}}
+  function blur(){finish(true);}
+  function visibility(){if(canvas.ownerDocument.hidden)finish(true);}
+  // Continue a drag across viewport overlays and outside the canvas even if
+  // the browser does not deliver subsequent events to the capture element.
+  function documentMove(event){if(drag)move(event);}
   const listeners=[['pointerdown',down],['pointermove',move],['pointerup',up],['pointercancel',cancel],['lostpointercapture',lost],['wheel',wheel]];
   for(const [name,fn] of listeners)canvas.addEventListener(name,fn,{capture:true,passive:false});
   canvas.ownerDocument.addEventListener('keydown',keyboard,true);
+  canvas.ownerDocument.addEventListener('pointermove',documentMove,{capture:true,passive:false});
+  canvas.ownerDocument.addEventListener('pointerup',up,true);
+  canvas.ownerDocument.addEventListener('pointercancel',cancel,true);
+  canvas.ownerDocument.addEventListener('visibilitychange',visibility);
+  canvas.ownerDocument.defaultView.addEventListener('blur',blur);
   return {
     scene,
     update({enabled,position,model,selection}){
@@ -85,6 +97,6 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
       const autoClear=renderer.autoClear;try{renderer.autoClear=false;renderer.render(scene,camera);}finally{renderer.autoClear=autoClear;}
     },
     cancel:()=>finish(true),
-    dispose(){if(disposed)return;finish(true);disposed=true;for(const [name,fn] of listeners)canvas.removeEventListener(name,fn,true);canvas.ownerDocument.removeEventListener('keydown',keyboard,true);for(const resource of resources)resource.dispose();scene.clear();canvas.style.cursor='';},
+    dispose(){if(disposed)return;finish(true);disposed=true;for(const [name,fn] of listeners)canvas.removeEventListener(name,fn,true);canvas.ownerDocument.removeEventListener('keydown',keyboard,true);canvas.ownerDocument.removeEventListener('pointermove',documentMove,true);canvas.ownerDocument.removeEventListener('pointerup',up,true);canvas.ownerDocument.removeEventListener('pointercancel',cancel,true);canvas.ownerDocument.removeEventListener('visibilitychange',visibility);canvas.ownerDocument.defaultView.removeEventListener('blur',blur);for(const resource of resources)resource.dispose();scene.clear();canvas.style.cursor='';},
   };
 }
