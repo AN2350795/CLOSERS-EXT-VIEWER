@@ -14,7 +14,7 @@ try{
  const model=make(),state={model,data:{sources:[]}};
  const ui=setupAvatarLighting({state,api:async()=>({profiles:[]}),element,getEmissionEnabled:()=>false});
  const shading=$('viewer-light-shading');shading.value='diffuse';shading.dispatchEvent(new Event('change',{bubbles:true}));
- check($('avatar-lighting-panel-light').contains($('viewer-light-controls')),'viewer controls not inside viewer menu');
+ check(!$('avatar-lighting-dialog').contains($('viewer-light-controls'))&&$('viewport').contains($('viewer-light-menu-toggle')),'viewer controls not moved into viewport');
  const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true,alpha:true});renderer.setSize(32,32);renderer.outputColorSpace=T.LinearSRGBColorSpace;
  const scene=new T.Scene();scene.add(model.root);const camera=new T.OrthographicCamera(-1,1,1,-1,.1,100);camera.position.set(0,0,10);camera.lookAt(0,0,0);
  const pixel=()=>{renderer.render(scene,camera);const p=new Uint8Array(4);renderer.getContext().readPixels(16,16,1,1,renderer.getContext().RGBA,renderer.getContext().UNSIGNED_BYTE,p);return [...p];};

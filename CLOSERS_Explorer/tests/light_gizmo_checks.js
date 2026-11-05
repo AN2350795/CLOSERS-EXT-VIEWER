@@ -54,8 +54,9 @@ try{
    return originalFetch(url,options);
  };
  localStorage.clear();await import('/model.js');await modelViewer.loadModel([1]);await frame();
- $('open-avatar-lighting').click();$('viewer-light-edit-3d').click();check(!$('avatar-lighting-dialog').open&&!$('viewer-light-gizmo-toolbar').hidden,'modal blocked viewport editing');
- $('viewer-light-gizmo-collapse').click();check($('viewer-light-gizmo-collapse').getAttribute('aria-expanded')==='false'&&JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoEnabled,'collapsing toolbar disabled gizmo');$('viewer-light-gizmo-collapse').click();
+ $('viewer-light-menu-toggle').click();$('viewer-light-edit-3d').click();check(!$('viewer-light-details-dialog').open&&!$('viewer-light-gizmo-toolbar').hidden,'modal blocked viewport editing');
+ $('viewer-light-menu-toggle').click();check($('viewer-light-menu-toggle').getAttribute('aria-expanded')==='false'&&JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoEnabled,'closing menu disabled gizmo');$('viewer-light-menu-toggle').click();
+ $('viewer-light-menu-toggle').click(); // Keep the viewport clear during drag.
  change('viewer-light-gizmo-snap',5);check(JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoSnap===5,'snap persistence');change('viewer-light-gizmo-snap',0);
  $('viewer-light-gizmo-place').click();await frame();
  const values=()=>['x','y','z'].map(axis=>Number($('viewer-light-position-'+axis).value)),original=values(),savedBefore=localStorage.getItem('closers-viewer-light-v2');

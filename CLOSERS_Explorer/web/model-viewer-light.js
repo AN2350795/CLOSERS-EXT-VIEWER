@@ -32,7 +32,7 @@ export function normalizeViewerLights(value){
     const {ambient,...settings}=normalizeViewerLight(light);
     return {...settings,name:typeof light?.name==='string'&&light.name.trim()?light.name.trim().slice(0,40):`조명 ${index+1}`};
   });
-  return {version:2,enabled:v.enabled===true,mode:v.mode==='diffuse'?'diffuse':'source',sourceIndex:Number.isInteger(v.sourceIndex)?Math.max(0,Math.min(lights.length-1,v.sourceIndex)):0,showHelpers:v.showHelpers===true,gizmoEnabled:v.gizmoEnabled===true,gizmoTarget:v.gizmoTarget==='target'?'target':'position',gizmoSnap:[1,5,10].includes(v.gizmoSnap)?v.gizmoSnap:0,ambient:finite(v.ambient,defaults.ambient,...ranges.ambient),selected:Number.isInteger(v.selected)?Math.max(0,Math.min(lights.length-1,v.selected)):0,lights};
+  return {version:2,enabled:v.enabled===true,mode:v.mode==='diffuse'?'diffuse':'source',sourceIndex:Number.isInteger(v.sourceIndex)?Math.max(0,Math.min(lights.length-1,v.sourceIndex)):0,showHelpers:v.showHelpers===true,hideOverlays:v.hideOverlays===true,gizmoEnabled:v.gizmoEnabled===true,gizmoTarget:v.gizmoTarget==='target'?'target':'position',gizmoSnap:[1,5,10].includes(v.gizmoSnap)?v.gizmoSnap:0,ambient:finite(v.ambient,defaults.ambient,...ranges.ambient),selected:Number.isInteger(v.selected)?Math.max(0,Math.min(lights.length-1,v.selected)):0,lights};
 }
 
 // The source shader consumes a single per-avatar light direction. Preserve
@@ -109,12 +109,21 @@ if (viewerLightEnabled > 0.5 && avatarEmissionPass < 0.5) {
   }
 }
 
-export function setupViewerLight({state,element,onLightChange}){
+export function setupViewerLight({state,element,onLightChange,onOpenDetails}){
   const storageKey='closers-viewer-light-v2';let saved;
   try{const current=localStorage.getItem(storageKey);saved=JSON.parse(current||localStorage.getItem('closers-viewer-light-v1')||'null');}catch{}
   let settings=normalizeViewerLights(saved);
   const helpers=createViewerLightHelpers();
-  let gizmo=null,suppressed=false;
+  let gizmo=null,suppressed=false,menuOpen=false;
+  const widget=element('div');widget.id='viewer-light-widget';
+  const menuButton=element('button');menuButton.id='viewer-light-menu-toggle';menuButton.type='button';menuButton.className='viewport-icon';menuButton.setAttribute('aria-label','조명 설정 열기');menuButton.title='조명 설정';menuButton.setAttribute('aria-controls','viewer-light-menu');menuButton.setAttribute('aria-expanded','false');
+  menuButton.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2"/></svg>';
+  const basic=element('section');basic.id='viewer-light-menu';basic.hidden=true;basic.setAttribute('aria-label','뷰어 조명');
+  const basicHeading=element('div');basicHeading.className='viewer-light-menu-heading';const dismiss=element('button','닫기 ×');dismiss.type='button';dismiss.id='viewer-light-menu-close';dismiss.className='secondary';basicHeading.append(element('h3','뷰어 조명'),dismiss);basic.append(basicHeading);
+  const detailDialog=element('dialog');detailDialog.id='viewer-light-details-dialog';detailDialog.setAttribute('aria-labelledby','viewer-light-details-title');
+  const detailHeading=element('div');detailHeading.className='view-settings-heading';const detailTitle=element('h2','조명 상세 설정');detailTitle.id='viewer-light-details-title';const detailClose=element('button','닫기 ×');detailClose.type='button';detailClose.id='viewer-light-close-details';detailClose.className='secondary';detailHeading.append(detailTitle,detailClose);
+  const detailBody=element('div');detailBody.id='viewer-light-details-body';detailDialog.append(detailHeading,detailBody);
+  const openDetails=element('button','상세 설정');openDetails.id='viewer-light-open-details';openDetails.type='button';openDetails.className='secondary';openDetails.setAttribute('aria-haspopup','dialog');openDetails.setAttribute('aria-controls',detailDialog.id);
   const panel=element('div');panel.id='viewer-light-controls';
   const title=element('h3','뷰어 조명'),toggleLabel=element('label'),toggle=element('input');toggle.id='viewer-light-enabled';toggle.type='checkbox';toggleLabel.append(toggle,document.createTextNode(' 뷰어 조명 사용'));
   const help=element('p',`조명을 최대 ${maxViewerLights}개 배치할 수 있습니다. 좌표는 뷰어 월드 기준이며 Y가 위쪽입니다. 방향광과 스포트라이트는 위치에서 조준점을 향합니다. 주변 밝기는 모든 조명에 공통으로 한 번 적용합니다.`);help.className='lighting-help';
@@ -125,7 +134,7 @@ export function setupViewerLight({state,element,onLightChange}){
   const sourceLabel=element('label','음영을 제어할 주광원'),sourceSelect=element('select');sourceSelect.id='viewer-light-source-index';sourceLabel.append(sourceSelect);details.before(sourceLabel);
   const sourceHelp=element('p','원본 방식은 주광원 1개로 툰 텍스처·얼굴 SDF를 제어합니다. 다른 뷰어 광원과 공통 주변 밝기는 적용하지 않습니다. 선택한 원본 조명이 있으면 색·강도·반사 수치를 이어받습니다. 실제 인게임 화면과의 일치는 미검증입니다.');sourceHelp.className='lighting-help';details.before(sourceHelp);
   const helperLabel=element('label'),helperToggle=element('input');helperToggle.id='viewer-light-show-helpers';helperToggle.type='checkbox';helperLabel.append(helperToggle,document.createTextNode(' 광원 위치·방향·범위 표시'));details.before(helperLabel);
-  const helperHelp=element('p','선택한 광원은 흰 십자로 표시합니다. 꺼진 광원은 흐리게 표시하며 환경광은 위치가 없어 표시하지 않습니다.');helperHelp.className='lighting-help';helperLabel.after(helperHelp);
+  const helperHelp=element('p','태양 아이콘은 광원, 과녁 아이콘은 조준점입니다. 환경광은 위치가 없어 표시하지 않습니다. 아이콘·선·조절기를 숨겨도 조명 효과는 유지됩니다.');helperHelp.className='lighting-help';helperLabel.after(helperHelp);
   const listLabel=element('label','편집할 조명'),list=element('select');list.id='viewer-light-list';listLabel.append(list);
   const actions=element('div');actions.className='viewer-light-actions';
   const add=element('button','조명 추가'),remove=element('button','선택 조명 삭제');
@@ -134,7 +143,6 @@ export function setupViewerLight({state,element,onLightChange}){
   const edit=element('button','3D 조절기로 이동');edit.id='viewer-light-edit-3d';edit.type='button';edit.className='secondary';actions.append(edit);
   const dragHelp=element('p','3D 조절기를 켠 뒤 빨강 X·초록 Y·파랑 Z 화살표를 드래그하세요. 작은 색 사각형은 두 축의 평면 이동, 가운데 흰 손잡이는 화면 방향 이동이며 Esc로 취소합니다.');dragHelp.className='lighting-help';actions.after(dragHelp);
   const toolbar=element('div');toolbar.id='viewer-light-gizmo-toolbar';toolbar.hidden=true;toolbar.setAttribute('aria-label','광원 3D 이동');
-  const toolbarLight=element('select');toolbarLight.id='viewer-light-gizmo-light';toolbarLight.setAttribute('aria-label','이동할 광원');
   const toolbarTarget=element('select');toolbarTarget.id='viewer-light-gizmo-target';toolbarTarget.setAttribute('aria-label','이동 대상');
   const snapSelect=element('select');snapSelect.id='viewer-light-gizmo-snap';snapSelect.setAttribute('aria-label','이동 간격');
   for(const [value,text] of [[0,'자유 이동'],[1,'1 단위 간격'],[5,'5 단위 간격'],[10,'10 단위 간격']]){const option=element('option',text);option.value=value;snapSelect.append(option);}
@@ -143,10 +151,7 @@ export function setupViewerLight({state,element,onLightChange}){
   for(const button of [place,close]){button.type='button';button.className='secondary';}
   const toolbarMode=element('span');toolbarMode.className='muted';toolbarMode.id='viewer-light-gizmo-shading';
   const useSource=element('button','이 광원으로 비추기');useSource.id='viewer-light-gizmo-use-source';useSource.type='button';useSource.className='secondary';
-  const collapse=element('button','접기');collapse.id='viewer-light-gizmo-collapse';collapse.type='button';collapse.className='secondary';collapse.setAttribute('aria-expanded','true');
-  collapse.onclick=()=>{const folded=toolbar.classList.toggle('is-collapsed');collapse.textContent=folded?'광원 이동 설정':'접기';collapse.setAttribute('aria-expanded',String(!folded));};
-  place.id='viewer-light-gizmo-place';close.id='viewer-light-gizmo-close';toolbar.append(collapse,toolbarLight,toolbarTarget,snapSelect,place,useSource,close,toolbarMode);
-  document.getElementById('viewport')?.append(toolbar);
+  place.id='viewer-light-gizmo-place';close.id='viewer-light-gizmo-close';toolbar.append(toolbarTarget,snapSelect,place,useSource,close,toolbarMode);
   const individualLabel=element('label'),individual=element('input');individual.type='checkbox';individual.id='viewer-light-item-enabled';individualLabel.append(individual,document.createTextNode(' 선택 조명 켜기'));details.append(individualLabel);
   const controls=new Map(),rows=new Map();
   function row(name,text,input){input.id='viewer-light-'+name;const label=element('label',text);label.append(input);details.append(label);controls.set(name,input);rows.set(name,label);return input;}
@@ -163,19 +168,32 @@ export function setupViewerLight({state,element,onLightChange}){
   }
   const reset=element('button','뷰어 조명 전체 초기화');reset.type='button';reset.className='secondary';reset.id='viewer-light-reset';details.append(reset);
   const status=element('p');status.id='viewer-light-status';status.setAttribute('role','status');panel.append(status);
+  const hideLabel=element('label'),hideToggle=element('input');hideToggle.type='checkbox';hideToggle.id='viewer-light-hide-overlays';hideLabel.append(hideToggle,document.createTextNode(' 아이콘·선·조절기 숨기기'));
+  // Move the existing controls rather than duplicate IDs and event bindings.
+  basic.append(toggleLabel,listLabel,individualLabel,rows.get('type'),rows.get('color'),rows.get('intensity'),actions,toolbar,helperLabel,hideLabel,status,openDetails);
+  detailBody.append(panel);widget.append(menuButton,basic,detailDialog);document.getElementById('viewport')?.append(widget);
+  function setMenuOpen(value){menuOpen=value;basic.hidden=!value;menuButton.setAttribute('aria-expanded',String(value));menuButton.setAttribute('aria-label',value?'조명 설정 닫기':'조명 설정 열기');}
+  menuButton.onclick=()=>setMenuOpen(!menuOpen);dismiss.onclick=()=>{setMenuOpen(false);menuButton.focus();};
+  openDetails.onclick=()=>{gizmo?.cancel();onOpenDetails?.();if(!detailDialog.open)detailDialog.showModal();};detailClose.onclick=()=>detailDialog.close();
+  detailDialog.addEventListener('close',()=>{(menuOpen?openDetails:menuButton).focus();});
+  function closeMenuOnEscape(event){if(event.key==='Escape'&&menuOpen&&!detailDialog.open){event.preventDefault();setMenuOpen(false);menuButton.focus();}}
+  document.addEventListener('keydown',closeMenuOnEscape);
   function refresh(){
     for(const m of state.model?.materials||[])setViewerLights(m,settings);
-    helpers.update(settings.mode==='source'?{...settings,lights:settings.lights.map((light,index)=>({...light,enabled:light.enabled&&index===settings.sourceIndex}))}:settings,!!state.model);
+    const guideSettings={...settings,showHelpers:settings.showHelpers&&!settings.hideOverlays,showIcons:(settings.gizmoEnabled||settings.showHelpers)&&!settings.hideOverlays};
+    if(settings.mode==='source')guideSettings.lights=settings.lights.map((light,index)=>({...light,enabled:light.enabled&&index===settings.sourceIndex}));
+    helpers.update(guideSettings,!!state.model);
     const light=settings.lights[settings.selected],field=settings.gizmoTarget;
     const available=!!state.model&&light.type!=='ambient'&&(field==='position'||light.type!=='point');
     toolbar.hidden=!settings.gizmoEnabled||!state.model||suppressed;edit.disabled=!state.model||light.type==='ambient';place.disabled=!available;
-    gizmo?.update({enabled:settings.gizmoEnabled&&available&&!suppressed,position:light[field],model:state.model,selection:`${settings.selected}:${field}:${light.type}`,snap:settings.gizmoSnap});
+    gizmo?.update({enabled:settings.gizmoEnabled&&available&&!suppressed&&!settings.hideOverlays,position:light[field],model:state.model,selection:`${settings.selected}:${field}:${light.type}`,snap:settings.gizmoSnap});
     const count=settings.lights.filter(light=>light.enabled).length;
     const source=settings.lights[settings.sourceIndex],sourceReady=!!state.viewerSourceLighting;
     status.textContent=!settings.enabled?'뷰어 조명 꺼짐':!state.model?'뷰어 조명 선택됨 · 모델을 선택하세요':settings.mode==='source'?(!source.enabled?'주광원 꺼짐 · 원래 음영 유지':source.type==='ambient'?'환경광은 원본 주광원으로 사용할 수 없습니다.':!sourceReady?'주광원 방향을 확인하세요.':(state.model.materials||[]).some(m=>m.userData.avatarLighting?.avatarToonEnabled.value||m.userData.avatarLighting?.avatarFaceEnabled.value)?`원본 음영 · ${source.name} · 툰·얼굴 연결에 적용`:'원본 툰·얼굴 데이터 연결 대기 · 일반 입체 음영은 적용하지 않습니다.'):!count?'모든 개별 조명 꺼짐 · 기존 화면 표시':`일반 입체 음영 · ${count}개 적용 중 · 전체 ${settings.lights.length}개`;
   }
   function sync(){
     toggle.checked=settings.enabled;
+    hideToggle.checked=settings.hideOverlays;
     mode.value=settings.mode;sourceLabel.hidden=sourceHelp.hidden=settings.mode!=='source';
     toolbarMode.textContent=settings.mode==='source'?`원본 음영 기준: ${settings.lights[settings.sourceIndex].name}${settings.selected!==settings.sourceIndex?' · 편집 중인 광원은 음영에 미적용':''}`:'일반 입체 음영 · 비교용';
     helperToggle.checked=settings.showHelpers;
@@ -183,7 +201,6 @@ export function setupViewerLight({state,element,onLightChange}){
     useSource.hidden=settings.mode!=='source';useSource.disabled=light.type==='ambient'||settings.selected===settings.sourceIndex&&settings.enabled&&light.enabled;
     useSource.textContent=useSource.disabled&&light.type!=='ambient'?'주광원 사용 중':'이 광원으로 비추기';
     list.replaceChildren();for(const [index,item] of settings.lights.entries()){const option=element('option',`${item.name} · ${viewerLightTypes[item.type].label} · ${item.enabled?'켜짐':'꺼짐'}`);option.value=index;list.append(option);}list.value=settings.selected;
-    toolbarLight.replaceChildren(...[...list.options].map(option=>option.cloneNode(true)));toolbarLight.value=settings.selected;
     sourceSelect.replaceChildren(...[...list.options].map(option=>option.cloneNode(true)));sourceSelect.value=settings.sourceIndex;
     toolbarTarget.value=settings.gizmoTarget;toolbarTarget.options[1].disabled=!['directional','spot'].includes(light.type);
     snapSelect.value=settings.gizmoSnap;
@@ -197,12 +214,13 @@ export function setupViewerLight({state,element,onLightChange}){
   sourceSelect.onchange=()=>{const index=Number(sourceSelect.value);gizmo?.cancel();settings.sourceIndex=index;save();};
   toggle.onchange=()=>{settings.enabled=toggle.checked;save();};
   helperToggle.onchange=()=>{settings.showHelpers=helperToggle.checked;save();};
+  hideToggle.onchange=()=>{gizmo?.cancel();settings.hideOverlays=hideToggle.checked;save();};
   individual.onchange=()=>{settings.lights[settings.selected].enabled=individual.checked;save();};
   function selectLight(index){gizmo?.cancel();settings.selected=index;if(settings.lights[index].type==='point')settings.gizmoTarget='position';save();}
-  list.onchange=()=>selectLight(Number(list.value));toolbarLight.onchange=()=>selectLight(Number(toolbarLight.value));
+  list.onchange=()=>selectLight(Number(list.value));
   toolbarTarget.onchange=()=>{const field=toolbarTarget.value;gizmo?.cancel();settings.gizmoTarget=field;save();};
   snapSelect.onchange=()=>{const value=Number(snapSelect.value);gizmo?.cancel();settings.gizmoSnap=value;save();};
-  edit.onclick=()=>{gizmo?.cancel();settings.gizmoEnabled=true;settings.gizmoTarget='position';settings.showHelpers=true;save();panel.closest('dialog')?.close();};
+  edit.onclick=()=>{gizmo?.cancel();settings.gizmoEnabled=true;settings.gizmoTarget='position';settings.showHelpers=true;settings.hideOverlays=false;save();if(detailDialog.open)detailDialog.close();};
   close.onclick=()=>{gizmo?.cancel();settings.gizmoEnabled=false;save();};
   useSource.onclick=()=>{gizmo?.cancel();if(settings.lights[settings.selected].type==='ambient')return;settings.sourceIndex=settings.selected;settings.enabled=true;settings.lights[settings.selected].enabled=true;save();};
   place.onclick=()=>{
@@ -240,9 +258,10 @@ export function setupViewerLight({state,element,onLightChange}){
     gizmo?.dispose();
     gizmo=createLightGizmo({camera,canvas,onChange:value=>{settings.lights[settings.selected][settings.gizmoTarget]=value;sync();onLightChange?.(true);refresh();},onCommit:save});refresh();
   }
-  function renderHelpers(renderer,camera){helpers.render(renderer,camera);gizmo?.render(renderer);}
-  function dispose(){gizmo?.dispose();helpers.dispose();toolbar.remove();}
+  function renderHelpers(renderer,camera){helpers.render(renderer,camera);gizmo?.render(renderer);helpers.renderIcons(renderer,camera);}
+  function dispose(){gizmo?.dispose();helpers.dispose();if(detailDialog.open)detailDialog.close();document.removeEventListener('keydown',closeMenuOnEscape);widget.remove();}
   function setGizmoSuppressed(value){suppressed=value;if(value)gizmo?.cancel();}
   function getSourceProfile(base){if(!state.model)return null;const origin=state.model.root?.getWorldPosition?.(new THREE.Vector3())?.toArray()||[0,0,0];return viewerSourceProfile(settings,base,origin);}
-  sync();return {panel,refresh,bindGizmo,renderHelpers,dispose,setGizmoSuppressed,getSourceProfile};
+  function setSourceSettings(...nodes){detailBody.append(...nodes);}
+  sync();return {panel:widget,refresh,bindGizmo,renderHelpers,dispose,setGizmoSuppressed,getSourceProfile,setSourceSettings};
 }

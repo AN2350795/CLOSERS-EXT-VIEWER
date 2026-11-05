@@ -353,9 +353,9 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   let settings={selected:'',excluded:[],bloom:true,bloomMode:'viewer',bloomStrength:.8,solo:false,soloExposure:4,toon:false,toonPower:1,faceSdf:false,glow:false,ext:false,rim:false};
   try{const current=localStorage.getItem(storageKey),saved=JSON.parse(current||localStorage.getItem('closers-avatar-lighting-v1')||'{}');settings={...settings,selected:typeof saved?.selected==='string'?saved.selected:'',excluded:Array.isArray(saved?.excluded)?saved.excluded.filter(v=>typeof v==='string'):[],bloom:saved?.bloom!==false,bloomMode:saved?.bloomMode==='source'?'source':'viewer',bloomStrength:Number.isFinite(saved?.bloomStrength)?Math.max(0,Math.min(2,saved.bloomStrength)):.8};}catch{}
   const excluded=new Set(settings.excluded);let profiles=[],groups=[],pending=null,gradePresets=[],conditionBusy=false;
-  const button=element('button','조명 · 재질');button.id='open-avatar-lighting';button.type='button';button.className='secondary';button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','avatar-lighting-dialog');document.querySelector('.viewport-actions').prepend(button);
+  const button=element('button','재질 · 화면 효과');button.id='open-avatar-lighting';button.type='button';button.className='secondary';button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','avatar-lighting-dialog');document.querySelector('.viewport-actions').prepend(button);
   const dialog=element('dialog');dialog.id='avatar-lighting-dialog';dialog.setAttribute('aria-labelledby','avatar-lighting-title');
-  const viewerLight=setupViewerLight({state,element,onLightChange:interactive=>{if(interactive){applyViewerSource();menu?.sync();}else apply();}});
+  const viewerLight=setupViewerLight({state,element,onLightChange:interactive=>{if(interactive){applyViewerSource();menu?.sync();}else apply();},onOpenDetails:()=>{refresh();void load();}});
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="avatar-lighting-title">조명 · 재질</h2><button id="close-avatar-lighting" type="button" class="secondary" autofocus>닫기 ×</button></div><p id="avatar-lighting-summary" role="status"></p><fieldset><legend>발광</legend><div id="avatar-emission-master"></div><label><input id="avatar-emission-solo" type="checkbox"> 발광만 보기 · 검은 배경에서 발광 부위 확인</label><label><input id="avatar-emission-bloom" type="checkbox"> 빛 번짐</label><label>번짐 강도<input id="avatar-emission-strength" type="range" min="0" max="2" step="0.05"><output id="avatar-emission-strength-value"></output></label><p class="muted">번짐은 발광 텍스처가 지정된 부위에만 적용하는 뷰어 미리보기입니다.</p><div id="avatar-emission-items"></div></fieldset><div id="avatar-lighting-profile-source"><label>조명 선택<select id="avatar-lighting-profile" aria-label="의상 조명 선택"><option value="">조명 목록 불러오기</option></select></label><p id="avatar-lighting-status" class="muted" role="status"></p><details><summary>선택한 조명 출처</summary><pre id="avatar-lighting-source"></pre></details></div>';
   document.body.append(dialog);let menu=null;
   const bloomModeLabel=element('label');bloomModeLabel.innerHTML='번짐 방식<select id="avatar-emission-mode"><option value="viewer">기본 · 가벼운 번짐</option><option value="source">5단계 · 원본 흐림 비교</option></select>';
@@ -636,7 +636,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
       if(!found.has(key))found.set(key,{key,label:source?.display_name||source?.name||m.userData.avatarMeshName||'아바타',texture:preview.texture||'발광 재질',preview,materials:[],visible:false});const group=found.get(key);group.materials.push(m);group.visible||=(state.model.meshes||[]).some(mesh=>mesh.visible&&mesh.material.some((mat,i)=>mat===m&&mesh.geometry.groups.some(g=>g.materialIndex===i&&g.count>0)));
     }
     groups=[...found.values()];const list=$('avatar-emission-items');list.replaceChildren();
-    button.textContent='조명 · 재질';
+    button.textContent='재질 · 화면 효과';
     for(const group of groups){
       const row=element('div'),label=element('label'),check=element('input');check.type='checkbox';check.checked=!excluded.has(group.key);check.setAttribute('aria-label',group.label+' 발광');
       check.onchange=()=>{if(check.checked)excluded.delete(group.key);else excluded.add(group.key);save();apply();};label.append(check,element('span',group.label));group.status=element('small');group.status.className='muted';row.append(label,group.status);
@@ -670,7 +670,8 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   sourceColorToggle.onchange=()=>{settings.sourceColor=sourceColorToggle.checked;save();apply();};
   secondToggle.onchange=()=>{settings.second=secondToggle.checked;save();apply();};
   secondU.oninput=secondV.oninput=()=>{settings.secondOffset=[Number(secondU.value),Number(secondV.value)];save();apply();};
-  menu=setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails,viewerLightPanel:viewerLight.panel});
+  menu=setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails});
+  viewerLight.setSourceSettings(toonField,menu.lightSettings,$('avatar-lighting-profile-source'));
   button.onclick=()=>{refresh();dialog.showModal();void load();};$('close-avatar-lighting').onclick=()=>dialog.close();refresh();if(settings.toon||settings.autoProfile||settings.baseRegion||matcap.requiresLightProfile())void load();
   $('avatar-emission-solo').onchange=()=>{settings.solo=$('avatar-emission-solo').checked;apply();};
   $('avatar-emission-bloom').onchange=()=>{settings.bloom=$('avatar-emission-bloom').checked;save();apply();};

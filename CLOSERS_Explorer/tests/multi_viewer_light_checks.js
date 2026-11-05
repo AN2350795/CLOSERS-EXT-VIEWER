@@ -42,7 +42,7 @@ try{
  check(model.materials[0].version===materialVersion,'editing rebuilt shader');
  select(1);const before=read();check(before.lights[1].name==='보조광','renamed light lost');
  // A controller restored on the same material must replace all uniform slots.
- $('viewer-light-controls').remove();const restored=setupViewerLight({state,element});document.body.append(restored.panel);restored.refresh();
+ $('viewer-light-widget').remove();const restored=setupViewerLight({state,element});document.body.append(restored.panel);restored.refresh();
  check($('viewer-light-list').options.length===4&&$('viewer-light-list').value==='1'&&$('viewer-light-name').value==='보조광'&&read().lights[0].enabled,'rig persistence');
  $('viewer-light-remove').click();check(read().lights.length===3&&read().lights.every(light=>light.name!=='보조광')&&model.materials[0].userData.viewerLight.viewerLights.value[3].enabled===0,'deleted slot remained active');
  while(!$('viewer-light-remove').disabled)$('viewer-light-remove').click();

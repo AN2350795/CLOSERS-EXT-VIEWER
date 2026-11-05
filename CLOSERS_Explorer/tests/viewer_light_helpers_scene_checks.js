@@ -17,6 +17,7 @@ try{
  change('viewer-light-show-helpers',true);await frame();check(capture().some((v,i)=>v!==baseline[i]),'actual viewer did not draw guides');
  check(JSON.stringify(modelViewer.view)===view&&modelViewer.state.model===model&&!$('viewer-light-enabled').checked,'guides changed camera/model/lighting');
  change('viewer-light-show-helpers',false);await frame();check(capture().every((v,i)=>v===baseline[i]),'actual viewer guide OFF failed to restore frame');
+ $('expand-viewer').click();await frame();check($('viewer-dialog').open,'fullscreen viewer unavailable');$('viewer-light-menu-toggle').click();$('viewer-light-open-details').click();check($('viewer-light-details-dialog').open,'light details blocked in fullscreen');$('viewer-light-close-details').click();await frame();check($('viewer-dialog').open,'closing details closed fullscreen');$('viewer-light-menu-toggle').click();$('expand-viewer').click();await frame();
  change('viewer-light-show-helpers',true);$('clear-model').click();await frame();check(!modelViewer.state.model&&$('viewer-light-show-helpers').checked,'clearing model lost guide preference');
  const empty=capture();change('viewer-light-show-helpers',false);await frame();check(capture().every((v,i)=>v===empty[i]),'guides remained visible with no model');
  window.dispatchEvent(new Event('pagehide'));window.dispatchEvent(new Event('pagehide'));document.body.dataset.checks='passed';

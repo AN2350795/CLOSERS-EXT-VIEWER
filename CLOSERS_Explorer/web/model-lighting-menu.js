@@ -1,15 +1,15 @@
 // Presentation only: move the existing controls so their bindings and saved
 // values stay intact. Diagnostics and manual experiments are kept out of basics.
-export function setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails,viewerLightPanel}){
+export function setupLightingMenu({dialog,state,element,toonField,colorField,conditionBox,nearLabel,nearStatus,distanceField,rotationField,regionField,extSurfaceField,secondDetails}){
   const controls=new Map([...dialog.querySelectorAll('[id]')].map(e=>[e.id,e]));
   const $=id=>controls.get(id)||dialog.querySelector('#'+id),label=id=>$(id).closest('label');
   const details=(title,...nodes)=>{const e=element('details');e.append(element('summary',title),...nodes);return e;};
   const rename=(id,text)=>{const e=label(id);for(const node of [...e.childNodes])if(node.nodeType===Node.TEXT_NODE)node.remove();e.append(document.createTextNode(' '+text));};
   const heading=dialog.querySelector('.view-settings-heading'),title=element('div');title.className='lighting-menu-title';
   title.append($('avatar-lighting-title'),$('avatar-lighting-summary'));heading.prepend(title);heading.classList.add('lighting-menu-heading');
-  $('avatar-lighting-title').textContent='조명 · 재질';
+  $('avatar-lighting-title').textContent='재질 · 화면 효과';
   const notice=element('div');notice.id='avatar-lighting-experiments-notice';notice.hidden=true;const noticeText=element('span'),review=element('button','선택된 설정 보기');review.type='button';review.className='secondary';review.id='avatar-lighting-review-advanced';notice.append(noticeText,review);heading.append(notice);
-  const nav=element('div');nav.className='lighting-menu-tabs';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','조명·재질 설정 분류');
+  const nav=element('div');nav.className='lighting-menu-tabs';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','재질·화면 효과 설정 분류');
   const scroll=element('div');scroll.id='avatar-lighting-scroll';const panels=new Map(),tabs=new Map();let current='light';
   for(const [key,text] of [['light','기본 꾸미기'],['color','화면 효과'],['advanced','고급 설정']]){
     const tab=element('button',text);tab.id='avatar-lighting-tab-'+key;tab.type='button';tab.setAttribute('role','tab');
@@ -25,7 +25,7 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
   const advanced=panels.get('advanced'),material=panels.get('light');
   const off=element('button','추가 설정 모두 끄기');off.id='avatar-lighting-experiments-off';off.type='button';off.className='secondary';
   const experimentEntries=[['avatar-source-color','화면 효과','color'],['avatar-grade-enabled','색상 조절','color'],['avatar-sharpen-enabled','또렷하게','color'],['avatar-dof-enabled','초점 밖 흐림','color'],['avatar-second-enabled','하이퍼 색상','advanced'],['avatar-camera-mix-enabled','거리별 밝기','advanced'],['avatar-toon-rotation-enabled','조명 방향 회전','advanced'],['avatar-ext-surface-enabled','표면색 가산','advanced'],['avatar-glow-enabled','표면 밝기 보조','advanced'],['avatar-ext-enabled','환경 반사','advanced'],['avatar-rim-enabled','가장자리 빛','advanced'],['avatar-matcap-mask-only','광택 범위진단','advanced'],['avatar-emission-solo','발광 전용 표시','advanced']];
-  experimentEntries.push(['avatar-lighting-base-region','지역 조명 합성','advanced']);
+  for(const id of ['avatar-camera-mix-enabled','avatar-toon-rotation-enabled']){const index=experimentEntries.findIndex(entry=>entry[0]===id);if(index>=0)experimentEntries.splice(index,1);}
   const selected=entry=>{const input=$(entry[0]);return input.type==='checkbox'?input.checked:!!input.value;};
   const note=text=>{const e=element('p',text);e.className='lighting-help';return e;};
   const activeCard=element('div');activeCard.id='avatar-lighting-active-settings';const activeList=element('div');activeList.className='lighting-active-list';activeCard.append(note('선택된 추가 설정 · 이름을 누르면 해당 위치로 이동합니다.'),activeList);advanced.prepend(activeCard);
@@ -34,16 +34,16 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
   panels.get('light').append(toonField);toonField.querySelector('legend').textContent='음영 · 밝은 면과 그림자';
   rename('avatar-toon-enabled','의상 음영 사용');rename('avatar-face-sdf-enabled','얼굴 음영 포함');rename('avatar-lighting-auto','착용 조건으로 조명 선택');
   const autoLabel=label('avatar-lighting-auto'),autoStatus=$('avatar-lighting-auto-status');$('avatar-toon-profile').after(autoLabel,autoStatus);
-  advanced.append(details('조명 선택·거리·방향',details('조명 선택 조건',conditionBox),details('지역 조명 합성',regionField),details('거리·방향 조절',nearLabel,nearStatus,distanceField,rotationField)));
+  const lightSettings=details('조명 선택·거리·방향',details('조명 선택 조건',conditionBox),details('지역 조명 합성',regionField),details('거리·방향 조절',nearLabel,nearStatus,distanceField,rotationField));
   const matcap=label('avatar-matcap-enabled').closest('fieldset'),emission=$('avatar-emission-master').closest('fieldset');material.append(matcap,emission);
   matcap.querySelector('legend').textContent='광택 · 반짝이는 표면';rename('avatar-matcap-enabled','광택 사용');
   const glossDetails=details('광택 세부 설정',label('avatar-matcap-normal'),label('avatar-matcap-specular'),label('avatar-specular-light'),$('avatar-specular-status'),$('avatar-matcap-status'),details('부위별 광택',$('avatar-matcap-items')));matcap.append(glossDetails);
   advanced.append(details('추가 표면 효과',note('의상에 해당 데이터가 있을 때만 적용됩니다. 색이나 밝기가 예상과 다르면 꺼서 비교하세요.'),label('avatar-glow-enabled'),$('avatar-glow-status'),label('avatar-ext-enabled'),$('avatar-ext-status'),label('avatar-rim-enabled'),$('avatar-rim-status'),extSurfaceField));
   advanced.append(details('표시 범위 확인',note('효과가 적용되는 부분을 흑백 또는 발광 전용 화면으로 확인합니다.'),details('광택 범위 확인',label('avatar-matcap-mask-only'),$('avatar-matcap-mask-status')),details('발광 부위 확인',label('avatar-emission-solo'),label('avatar-emission-exposure'))));
   panels.get('color').append(colorField);colorField.querySelector('legend').textContent='화면 효과';
-  secondDetails.querySelector('summary').textContent='하이퍼 모드 색상 실험';secondDetails.open=false;advanced.append(secondDetails,details('연결 정보·원본 출처',$('avatar-toon-items').closest('details'),$('avatar-lighting-profile-source')));
+  secondDetails.querySelector('summary').textContent='하이퍼 모드 색상 실험';secondDetails.open=false;advanced.append(secondDetails);
   // Keep the basic page limited to three familiar effects and their strengths.
-  panels.get('light').prepend(note('먼저 음영·광택·발광을 조절하세요. 지원하지 않는 효과는 이유를 표시합니다.'));
+  panels.get('light').prepend(note('광택·발광을 조절하세요. 조명과 음영은 뷰어 안의 둥근 조명 버튼에서 설정합니다.'));
   emission.querySelector('legend').textContent='발광 · 스스로 빛나는 부분';
   rename('avatar-emission-bloom','빛 번짐 · 발광 주변에 빛 퍼뜨리기');
   const toonDetail=details('음영 세부 설정',label('avatar-face-sdf-enabled'),autoLabel,autoStatus,$('avatar-toon-status'));
@@ -69,13 +69,13 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
   // All functional controls should now live in a section; retain any future
   // additions visibly in advanced instead of dropping them during a UI update.
   advanced.append(...unmoved);
-  if(viewerLightPanel)panels.get('light').prepend(viewerLightPanel);
+  toonField.remove();
   dialog.append(heading,nav,scroll);for(const section of dialog.querySelectorAll('details'))section.open=false;activate(current);
   function sync(){
     const active=experimentEntries.filter(selected);notice.hidden=!active.length;noticeText.textContent=`추가 설정 ${active.length}개 선택됨`;activeCard.hidden=!active.length;off.disabled=!active.length;activeList.replaceChildren();
     for(const entry of active){const jump=element('button',entry[1]);jump.type='button';jump.className='secondary';jump.onclick=()=>{activate(entry[2]);const input=$(entry[0]);for(let node=input.parentElement;node&&node!==scroll;node=node.parentElement)if(node.tagName==='DETAILS')node.open=true;input.scrollIntoView({block:'nearest'});if(!input.disabled)input.focus();else input.closest('details')?.querySelector('summary').focus();};activeList.append(jump);}
     const colorCount=active.filter(e=>e[2]==='color').length,advancedCount=active.length-colorCount;tabs.get('color').textContent=colorCount?`화면 효과 · ${colorCount}`:'화면 효과';tabs.get('advanced').textContent=advancedCount?`고급 설정 · ${advancedCount}`:'고급 설정';
-    $('avatar-lighting-summary').textContent=!state.model?'모델을 선택하면 사용할 수 있는 효과를 확인할 수 있습니다.':`기본 설정: 음영 ${$('avatar-toon-enabled').checked||state.viewerSourceLighting?'켬':'끔'} · 광택 ${$('avatar-matcap-enabled').checked?'켬':'끔'} · 발광 ${$('material-preview').checked?'켬':'끔'}`;
+    $('avatar-lighting-summary').textContent=!state.model?'모델을 선택하면 사용할 수 있는 효과를 확인할 수 있습니다.':`광택 ${$('avatar-matcap-enabled').checked?'켬':'끔'} · 발광 ${$('material-preview').checked?'켬':'끔'}`;
     const toonReady=(state.model?.materials||[]).some(m=>{const u=m.userData.avatarLighting;return u&&(u.avatarToonEnabled.value>0||u.avatarFaceEnabled.value>0||u.avatarGlowEnabled.value>0);});
     brief[0].textContent=state.viewerSourceLighting?(toonReady?'뷰어 주광원으로 원본 툰·얼굴 음영 표시':'뷰어 주광원 선택됨 · 원본 음영 데이터 연결 대기'):$('avatar-toon-enabled').disabled?'이 모델에는 연결된 음영 데이터가 없습니다.':!$('avatar-toon-enabled').checked?'음영 꺼짐':!$('avatar-lighting-profile').value?'사용할 조명을 선택하세요.':!toonReady?'음영 사용 대기 · 세부 설정에서 연결 상태를 확인하세요.':'선택한 조명으로 의상 음영 표시';
     const glossReady=(state.model?.materials||[]).some(m=>m.userData.matcapPreview?.uniforms.avatarMatcapEnabled.value>0);
@@ -89,5 +89,5 @@ export function setupLightingMenu({dialog,state,element,toonField,colorField,con
     matcap.classList.toggle('lighting-unavailable',$('avatar-matcap-enabled').disabled);
     emission.classList.toggle('lighting-unavailable',$('material-preview').disabled);
   }
-  dialog.addEventListener('change',sync);return {sync,activate};
+  dialog.addEventListener('change',sync);return {sync,activate,lightSettings};
 }
