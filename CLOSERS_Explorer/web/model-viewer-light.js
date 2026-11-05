@@ -172,6 +172,15 @@ export function setupViewerLight({state,element,onLightChange,onOpenDetails}){
   // Move the existing controls rather than duplicate IDs and event bindings.
   basic.append(toggleLabel,listLabel,individualLabel,rows.get('type'),rows.get('color'),rows.get('intensity'),actions,toolbar,helperLabel,hideLabel,status,openDetails);
   detailBody.append(panel);widget.append(menuButton,basic,detailDialog);document.getElementById('viewport')?.append(widget);
+  const viewport=document.getElementById('viewport'),message=document.getElementById('model-status');
+  function positionMenu(){
+    if(!viewport)return;
+    const inline=message&&!message.classList.contains('is-loading')&&!message.classList.contains('is-notice')&&message.getClientRects().length;
+    const top=inline?Math.max(10,Math.ceil(message.getBoundingClientRect().bottom-viewport.getBoundingClientRect().top+8)):10;
+    widget.style.setProperty('--viewer-light-top',top+'px');
+  }
+  const positionObserver=new ResizeObserver(positionMenu);if(viewport)positionObserver.observe(viewport);if(message)positionObserver.observe(message);
+  const messageObserver=new MutationObserver(positionMenu);if(message)messageObserver.observe(message,{attributes:true,attributeFilter:['class']});positionMenu();
   function setMenuOpen(value){menuOpen=value;basic.hidden=!value;menuButton.setAttribute('aria-expanded',String(value));menuButton.setAttribute('aria-label',value?'조명 설정 닫기':'조명 설정 열기');}
   menuButton.onclick=()=>setMenuOpen(!menuOpen);dismiss.onclick=()=>{setMenuOpen(false);menuButton.focus();};
   openDetails.onclick=()=>{gizmo?.cancel();onOpenDetails?.();if(!detailDialog.open)detailDialog.showModal();};detailClose.onclick=()=>detailDialog.close();
@@ -259,7 +268,7 @@ export function setupViewerLight({state,element,onLightChange,onOpenDetails}){
     gizmo=createLightGizmo({camera,canvas,onChange:value=>{settings.lights[settings.selected][settings.gizmoTarget]=value;sync();onLightChange?.(true);refresh();},onCommit:save});refresh();
   }
   function renderHelpers(renderer,camera){helpers.render(renderer,camera);gizmo?.render(renderer);helpers.renderIcons(renderer,camera);}
-  function dispose(){gizmo?.dispose();helpers.dispose();if(detailDialog.open)detailDialog.close();document.removeEventListener('keydown',closeMenuOnEscape);widget.remove();}
+  function dispose(){gizmo?.dispose();helpers.dispose();positionObserver.disconnect();messageObserver.disconnect();if(detailDialog.open)detailDialog.close();document.removeEventListener('keydown',closeMenuOnEscape);widget.remove();}
   function setGizmoSuppressed(value){suppressed=value;if(value)gizmo?.cancel();}
   function getSourceProfile(base){if(!state.model)return null;const origin=state.model.root?.getWorldPosition?.(new THREE.Vector3())?.toArray()||[0,0,0];return viewerSourceProfile(settings,base,origin);}
   function setSourceSettings(...nodes){detailBody.append(...nodes);}

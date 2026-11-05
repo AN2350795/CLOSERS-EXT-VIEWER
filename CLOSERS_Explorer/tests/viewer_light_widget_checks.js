@@ -42,6 +42,13 @@ try{
  state.model=null;ui.refresh();button.click();button.click();check(!button.disabled&&!menu.hidden,'entry cannot open without a model');state.model=model;ui.refresh();capture();
  window.checkViewerLightLayout=async()=>{
    if(menu.hidden)button.click();await frame();
+   const message=$('model-status'),originalText=message.textContent;
+   for(const text of [originalText,'메시지가 여러 줄일 때도 조명 버튼이 겹치지 않아야 합니다. '.repeat(12)]){
+     message.textContent=text;await frame();const lamp=button.getBoundingClientRect(),msg=message.getBoundingClientRect(),reset=$('reset-camera').getBoundingClientRect();
+     check(Math.abs(lamp.top-msg.bottom-8)<=1&&Math.abs(lamp.left-$('viewport').getBoundingClientRect().left-10)<=1,'light button not below message');
+     check(lamp.right<=reset.left||lamp.left>=reset.right||lamp.bottom<=reset.top||lamp.top>=reset.bottom,'light button overlaps camera reset '+innerWidth+'/'+innerHeight+' '+JSON.stringify({lamp:lamp.toJSON(),reset:reset.toJSON()}));
+   }
+   message.textContent=originalText;await frame();
    const rect=menu.getBoundingClientRect(),viewport=$('viewport').getBoundingClientRect();
    check(rect.left>=viewport.left-1&&rect.right<=viewport.right+1&&rect.bottom<=viewport.bottom+1&&menu.scrollWidth<=menu.clientWidth+1,'viewport light menu overflow '+innerWidth+'/'+innerHeight);
    $('viewer-light-open-details').click();for(const d of detail.querySelectorAll('details'))d.open=true;await frame();
