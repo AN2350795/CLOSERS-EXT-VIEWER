@@ -355,7 +355,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   const excluded=new Set(settings.excluded);let profiles=[],groups=[],pending=null,gradePresets=[],conditionBusy=false;
   const button=element('button','조명 · 재질');button.id='open-avatar-lighting';button.type='button';button.className='secondary';button.setAttribute('aria-haspopup','dialog');button.setAttribute('aria-controls','avatar-lighting-dialog');document.querySelector('.viewport-actions').prepend(button);
   const dialog=element('dialog');dialog.id='avatar-lighting-dialog';dialog.setAttribute('aria-labelledby','avatar-lighting-title');
-  const viewerLight=setupViewerLight({state,element});
+  const viewerLight=setupViewerLight({state,element,onLightChange:interactive=>{if(interactive){applyViewerSource();menu?.sync();}else apply();}});
   dialog.innerHTML='<div class="view-settings-heading"><h2 id="avatar-lighting-title">조명 · 재질</h2><button id="close-avatar-lighting" type="button" class="secondary" autofocus>닫기 ×</button></div><p id="avatar-lighting-summary" role="status"></p><fieldset><legend>발광</legend><div id="avatar-emission-master"></div><label><input id="avatar-emission-solo" type="checkbox"> 발광만 보기 · 검은 배경에서 발광 부위 확인</label><label><input id="avatar-emission-bloom" type="checkbox"> 빛 번짐</label><label>번짐 강도<input id="avatar-emission-strength" type="range" min="0" max="2" step="0.05"><output id="avatar-emission-strength-value"></output></label><p class="muted">번짐은 발광 텍스처가 지정된 부위에만 적용하는 뷰어 미리보기입니다.</p><div id="avatar-emission-items"></div></fieldset><div id="avatar-lighting-profile-source"><label>조명 선택<select id="avatar-lighting-profile" aria-label="의상 조명 선택"><option value="">조명 목록 불러오기</option></select></label><p id="avatar-lighting-status" class="muted" role="status"></p><details><summary>선택한 조명 출처</summary><pre id="avatar-lighting-source"></pre></details></div>';
   document.body.append(dialog);let menu=null;
   const bloomModeLabel=element('label');bloomModeLabel.innerHTML='번짐 방식<select id="avatar-emission-mode"><option value="viewer">기본 · 가벼운 번짐</option><option value="source">5단계 · 원본 흐림 비교</option></select>';
@@ -478,6 +478,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
       for(const m of nearRuntime.toonMaterials)setAvatarToon(m,settings.toon,profile,settings.toonPower);
       for(const m of nearRuntime.faces)setAvatarFaceSdf(m,settings.toon&&settings.faceSdf,profile,settings.toonPower);
       for(const m of nearRuntime.glowMaterials)setAvatarGlow(m,settings.toon&&settings.glow,profile);
+      applyViewerSource();
     }
     const now=performance.now();if(changedModel||dialog.open&&now-lastDistanceText>=100){distanceControls(changedModel);lastDistanceText=now;}
     return {distance,weight:info.weight,automatic:info.automatic,character};
@@ -535,6 +536,18 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     return {profile,status:!profile?'unsupported':!skin||skin.key===base.key?'base-only':'combined'};
   }
   $('avatar-lighting-condition-select').onclick=()=>{const p=conditionProfile();if(!p)return;settings.selected=p.key;$('avatar-lighting-profile').value=p.key;save();apply();};
+  function applyViewerSource(){
+    const base=nearRuntime?.model===state.model?interpolateAvatarLight(nearRuntime.profile,nearRuntime.weight):null;
+    const source=viewerLight.getSourceProfile(base),profile=source||base,on=settings.toon||!!source;
+    state.viewerSourceLighting=!!source;
+    for(const m of state.model?.materials||[]){
+      setAvatarToon(m,on,profile,settings.toonPower);
+      setAvatarFaceSdf(m,!!source||settings.toon&&settings.faceSdf,profile,settings.toonPower);
+      setAvatarGlow(m,on&&settings.glow,profile);setAvatarExt(m,on&&settings.ext,profile);
+      setAvatarRim(m,on&&settings.rim,profile);setAvatarExtSurface(m,on&&settings.extSurface&&!!profile,settings.extSurfaceFactor);
+    }
+    if(source){matcap.setLightProfile(source);$('avatar-toon-status').textContent='뷰어 주광원으로 원본 툰·얼굴 음영 사용 · 원본 프로필·효과 선택은 보존합니다.';}
+  }
   function apply(){
     const report=state.data?.lighting_conditions,candidate=conditionProfile(),conditionList=$('avatar-lighting-conditions');conditionList.replaceChildren();
     $('avatar-lighting-condition-select').disabled=settings.autoProfile||!candidate;
@@ -611,7 +624,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     if(state.model){const visible=groups.filter(g=>g.visible&&getEmissionEnabled()&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)).length;$('avatar-lighting-summary').textContent=`발광 연결 ${groups.length}개 · 현재 표시 ${visible}개${getEmissionEnabled()?'':' · 전체 발광 꺼짐'}${settings.solo?' · 발광만 보기':''}`;}
     const profileInfo=settings.baseRegion?effectiveProfile:settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
     if(profiles.length)$('avatar-lighting-status').textContent=effectiveProfile?`선택 조명: ${effectiveProfile.label}`:'현재 캐릭터에 적용할 조명을 선택하세요.';
-    viewerLight.setGizmoSuppressed(settings.solo||matcap.isMaskInspection());viewerLight.refresh();menu?.sync();
+    applyViewerSource();viewerLight.setGizmoSuppressed(settings.solo||matcap.isMaskInspection());viewerLight.refresh();menu?.sync();
   }
   function refresh(){
     matcap.refresh();

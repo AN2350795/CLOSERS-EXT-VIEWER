@@ -9,7 +9,7 @@ const select=index=>change('viewer-light-list',index),read=()=>JSON.parse(localS
 const vector=(name,values)=>['x','y','z'].forEach((axis,i)=>change('viewer-light-'+name+'-'+axis,values[i]));
 try{
  localStorage.clear();
- const legacy={enabled:false,type:'ambient',color:'#ff0000',intensity:.25,ambient:0,position:[12,34,56],target:[1,2,3]};
+ const legacy={enabled:false,mode:'diffuse',type:'ambient',color:'#ff0000',intensity:.25,ambient:0,position:[12,34,56],target:[1,2,3]};
  localStorage.setItem('closers-viewer-light-v1',JSON.stringify(legacy));
  const invalid=normalizeViewerLights({enabled:true,selected:99,ambient:NaN,lights:[null,...Array.from({length:8},()=>({enabled:true,name:'  ',type:'bad'}))]});
  check(invalid.lights.length===maxViewerLights&&invalid.selected===maxViewerLights-1&&invalid.ambient===.3&&invalid.lights[0].name==='조명 1','invalid rig normalization');

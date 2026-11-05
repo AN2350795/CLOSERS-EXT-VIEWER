@@ -13,6 +13,7 @@ try{
  const make=(count=0)=>buildModel({frames:Array.from({length:count},(_,i)=>({name:'b'+i,parent:-1,matrix:identity})),meshes:[{name:'surface',source_id:1,frame:-1,vertices:[-2,-2,0,2,-2,0,0,2,0],normals:[0,0,-1,0,0,-1,0,0,-1],indices:[0,2,1],uv:[0,0,1,0,.5,1],skin:Array.from({length:count},(_,i)=>({bone:'b'+i,offset:identity,indices:[0,1,2],weights:[1/count,1/count,1/count]})),groups:[[0,3,0]],materials:[{texture:'BODY.PNG',color:[.6,.6,.6,1],material_preview:{kind:'emissive',status:'approximate',color:[1,1,1,1],strength:1}}]}]});
  const model=make(),state={model,data:{sources:[]}};
  const ui=setupAvatarLighting({state,api:async()=>({profiles:[]}),element,getEmissionEnabled:()=>false});
+ const shading=$('viewer-light-shading');shading.value='diffuse';shading.dispatchEvent(new Event('change',{bubbles:true}));
  check($('avatar-lighting-panel-light').contains($('viewer-light-controls')),'viewer controls not inside viewer menu');
  const renderer=new T.WebGLRenderer({antialias:false,preserveDrawingBuffer:true,alpha:true});renderer.setSize(32,32);renderer.outputColorSpace=T.LinearSRGBColorSpace;
  const scene=new T.Scene();scene.add(model.root);const camera=new T.OrthographicCamera(-1,1,1,-1,.1,100);camera.position.set(0,0,10);camera.lookAt(0,0,0);

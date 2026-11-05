@@ -306,6 +306,7 @@
 #viewer-light-controls h3{margin:0 0 8px;font-size:14px}
 #viewer-light-gizmo-toolbar{position:absolute;top:52px;left:10px;right:10px;z-index:4;display:flex;flex-wrap:wrap;gap:6px;padding:8px;background:#111823ed;border:1px solid var(--line);border-radius:8px;width:fit-content;max-width:calc(100% - 20px)}
 #viewer-light-gizmo-toolbar[hidden]{display:none}#viewer-light-gizmo-toolbar select{width:auto;max-width:180px;min-width:0}#viewer-light-gizmo-toolbar button,#viewer-light-gizmo-toolbar select{font-size:11px;padding:5px}
+#viewer-light-gizmo-shading{flex-basis:100%;font-size:11px;overflow-wrap:anywhere}
 .viewer-light-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .viewer-light-vector{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0}
 .viewer-light-vector strong{grid-column:1/-1}.viewer-light-vector label{min-width:0}.viewer-light-vector input{width:100%;min-width:0}
