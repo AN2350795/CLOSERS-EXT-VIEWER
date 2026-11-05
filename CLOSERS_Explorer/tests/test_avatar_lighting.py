@@ -60,6 +60,7 @@ class AvatarLightingTests(unittest.TestCase):
                 with urlopen(base+'/model-sharpen.js') as response:self.assertIn(b'sharpenFragment',response.read())
                 with urlopen(base+'/model-lighting-menu.js') as response:self.assertIn(b'setupLightingMenu',response.read())
                 with urlopen(base+'/model-viewer-light.js') as response:self.assertIn(b'setupViewerLight',response.read())
+                with urlopen(base+'/model-viewer-light-helpers.js') as response:self.assertIn(b'createViewerLightHelpers',response.read())
                 with urlopen(base+'/model-bloom.js') as response:self.assertIn(b'createSourceBloom',response.read())
                 with urlopen(base+'/model-dof-depth.js') as response:self.assertIn(b'createDofDepthPass',response.read())
                 with urlopen(base+'/model-dof.js') as response:self.assertIn(b'createDofPipeline',response.read())

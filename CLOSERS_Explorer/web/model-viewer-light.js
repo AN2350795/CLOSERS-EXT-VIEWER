@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three/three.module.min.js';
+import {createViewerLightHelpers} from './model-viewer-light-helpers.js';
 
 // Stable type IDs are shared by storage, controls and the shader. Add new
 // type-specific controls here, and a matching shader branch below.
@@ -30,7 +31,7 @@ export function normalizeViewerLights(value){
     const {ambient,...settings}=normalizeViewerLight(light);
     return {...settings,name:typeof light?.name==='string'&&light.name.trim()?light.name.trim().slice(0,40):`조명 ${index+1}`};
   });
-  return {version:2,enabled:v.enabled===true,ambient:finite(v.ambient,defaults.ambient,...ranges.ambient),selected:Number.isInteger(v.selected)?Math.max(0,Math.min(lights.length-1,v.selected)):0,lights};
+  return {version:2,enabled:v.enabled===true,showHelpers:v.showHelpers===true,ambient:finite(v.ambient,defaults.ambient,...ranges.ambient),selected:Number.isInteger(v.selected)?Math.max(0,Math.min(lights.length-1,v.selected)):0,lights};
 }
 
 export function setViewerLights(material,settings){
@@ -92,11 +93,14 @@ export function setupViewerLight({state,element}){
   const storageKey='closers-viewer-light-v2';let saved;
   try{const current=localStorage.getItem(storageKey);saved=JSON.parse(current||localStorage.getItem('closers-viewer-light-v1')||'null');}catch{}
   let settings=normalizeViewerLights(saved);
+  const helpers=createViewerLightHelpers();
   const panel=element('div');panel.id='viewer-light-controls';
   const title=element('h3','뷰어 조명'),toggleLabel=element('label'),toggle=element('input');toggle.id='viewer-light-enabled';toggle.type='checkbox';toggleLabel.append(toggle,document.createTextNode(' 뷰어 조명 사용'));
   const help=element('p',`조명을 최대 ${maxViewerLights}개 배치할 수 있습니다. 좌표는 뷰어 월드 기준이며 Y가 위쪽입니다. 방향광과 스포트라이트는 위치에서 조준점을 향합니다. 주변 밝기는 모든 조명에 공통으로 한 번 적용합니다.`);help.className='lighting-help';
   const details=element('details');details.append(element('summary','조명 종류 · 위치 · 밝기'));
   panel.append(title,toggleLabel,help,details);
+  const helperLabel=element('label'),helperToggle=element('input');helperToggle.id='viewer-light-show-helpers';helperToggle.type='checkbox';helperLabel.append(helperToggle,document.createTextNode(' 광원 위치·방향·범위 표시'));details.before(helperLabel);
+  const helperHelp=element('p','선택한 광원은 흰 십자로 표시합니다. 꺼진 광원은 흐리게 표시하며 환경광은 위치가 없어 표시하지 않습니다.');helperHelp.className='lighting-help';helperLabel.after(helperHelp);
   const listLabel=element('label','편집할 조명'),list=element('select');list.id='viewer-light-list';listLabel.append(list);
   const actions=element('div');actions.className='viewer-light-actions';
   const add=element('button','조명 추가'),remove=element('button','선택 조명 삭제');
@@ -120,11 +124,13 @@ export function setupViewerLight({state,element}){
   const status=element('p');status.id='viewer-light-status';status.setAttribute('role','status');panel.append(status);
   function refresh(){
     for(const m of state.model?.materials||[])setViewerLights(m,settings);
+    helpers.update(settings,!!state.model);
     const count=settings.lights.filter(light=>light.enabled).length;
     status.textContent=!settings.enabled?'뷰어 조명 꺼짐':!count?'모든 개별 조명 꺼짐 · 기존 화면 표시':!state.model?'뷰어 조명 선택됨 · 모델을 선택하세요':`뷰어 조명 ${count}개 적용 중 · 전체 ${settings.lights.length}개`;
   }
   function sync(){
     toggle.checked=settings.enabled;
+    helperToggle.checked=settings.showHelpers;
     const light=settings.lights[settings.selected];individual.checked=light.enabled;
     list.replaceChildren();for(const [index,item] of settings.lights.entries()){const option=element('option',`${item.name} · ${viewerLightTypes[item.type].label} · ${item.enabled?'켜짐':'꺼짐'}`);option.value=index;list.append(option);}list.value=settings.selected;
     add.disabled=settings.lights.length>=maxViewerLights;remove.disabled=settings.lights.length<=1;
@@ -133,6 +139,7 @@ export function setupViewerLight({state,element}){
   }
   function save(){try{localStorage.setItem(storageKey,JSON.stringify(settings));}catch{}sync();refresh();}
   toggle.onchange=()=>{settings.enabled=toggle.checked;save();};
+  helperToggle.onchange=()=>{settings.showHelpers=helperToggle.checked;save();};
   individual.onchange=()=>{settings.lights[settings.selected].enabled=individual.checked;save();};
   list.onchange=()=>{settings.selected=Number(list.value);save();};
   add.onclick=()=>{
@@ -155,5 +162,5 @@ export function setupViewerLight({state,element}){
     settings=normalizeViewerLights(settings);save();
   };
   reset.onclick=()=>{settings=normalizeViewerLights(null);save();};
-  sync();return {panel,refresh};
+  sync();return {panel,refresh,renderHelpers:helpers.render,dispose:helpers.dispose};
 }
