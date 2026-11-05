@@ -30,7 +30,7 @@ try{
  change('viewer-light-distance',30);change('viewer-light-type','spot');const spot=pixel();check(spot[0]>0,'spot aimed at model');vector('target',[0,0,20]);check(pixel()[0]===0,'spot cone');
  change('viewer-light-type','ambient');change('viewer-light-intensity',.5);change('viewer-light-color','#ff0000');const ambient=pixel();check(ambient[0]>0&&ambient[1]===0&&ambient[2]===0,'ambient color');
  const mat=model.materials[0];mat.userData.avatarLighting.avatarEmissionPass.value=1;check(pixel()[0]===0,'viewer light affected emission-only pass');mat.userData.avatarLighting.avatarEmissionPass.value=0;
- const stored=localStorage.getItem('closers-viewer-light-v1');change('viewer-light-intensity','');check($('viewer-light-intensity').value==='0.5'&&localStorage.getItem('closers-viewer-light-v1')===stored,'empty input lost valid value');
+ const stored=localStorage.getItem('closers-viewer-light-v2');change('viewer-light-intensity','');check($('viewer-light-intensity').value==='0.5'&&localStorage.getItem('closers-viewer-light-v2')===stored,'empty input lost valid value');
  change('viewer-light-intensity',99);check($('viewer-light-intensity').value==='0.5','invalid input accepted');
  // Animated four- and five-weight paths share the position/normal contract.
  scene.remove(model.root);
@@ -53,9 +53,9 @@ try{
  change('viewer-light-type','ambient');
  const replacement=make();scene.remove(model.root);scene.add(replacement.root);state.model=replacement;
  // A reopened controller restores storage and applies it to a different model.
- const restored=setupViewerLight({state,element});restored.refresh();check(replacement.materials[0].userData.viewerLight.viewerLightType.value===3&&replacement.materials[0].userData.viewerLight.viewerLightEnabled.value===1,'model replacement or persistence');
+ const restored=setupViewerLight({state,element});restored.refresh();check(replacement.materials[0].userData.viewerLight.viewerLights.value[0].type===3&&replacement.materials[0].userData.viewerLight.viewerLightEnabled.value===1,'model replacement or persistence');
  state.model=null;restored.refresh();check(restored.panel.querySelector('[role=status]').textContent.includes('모델을 선택'),'empty model state');state.model=replacement;
- $('viewer-light-reset').click();check(!$('viewer-light-enabled').checked&&JSON.parse(localStorage.getItem('closers-viewer-light-v1')).type==='directional','reset');
+ $('viewer-light-reset').click();check(!$('viewer-light-enabled').checked&&JSON.parse(localStorage.getItem('closers-viewer-light-v2')).lights[0].type==='directional','reset');
  check(renderer.info.programs.every(p=>p.diagnostics?.runnable!==false),'shader compile failure');
  renderer.dispose();model.dispose();replacement.dispose();document.body.dataset.checks='passed';
 }catch(error){document.body.dataset.checks='failed';document.body.append(element('pre',error.stack));}
