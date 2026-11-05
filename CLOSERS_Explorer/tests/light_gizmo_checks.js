@@ -68,6 +68,7 @@ try{
  check(localStorage.getItem('closers-viewer-light-v2')===savedBefore,'drag wrote storage before commit');
  pointer('pointerup',to);await frame();const saved=JSON.parse(localStorage.getItem('closers-viewer-light-v2'));
  check(Math.abs(saved.lights[0].position[0]-values()[0])<1e-6&&JSON.stringify(modelViewer.view)===JSON.stringify(view),'actual drag storage or camera conflict');
+ $('viewer-light-placement-undo').click();check(values().every((v,i)=>Math.abs(v-original[i])<1e-6),'drag placement undo');
  change('viewer-light-gizmo-target','target');$('viewer-light-gizmo-place').click();await frame();check(JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoTarget==='target','target mode');
  const targetBefore=['x','y','z'].map(axis=>Number($('viewer-light-target-'+axis).value)),positionBefore=values(),targetOrigin=new T.Vector3(...targetBefore),targetDepth=-targetOrigin.clone().applyMatrix4(cam.matrixWorldInverse).z,targetSize=2*targetDepth*Math.tan(Math.PI/9)*85/rect.height;
  const targetFrom=point(targetOrigin.clone().add(new T.Vector3(0,targetSize*.9,0)),cam),targetTo=point(targetOrigin.clone().add(new T.Vector3(0,targetSize*1.2,0)),cam);

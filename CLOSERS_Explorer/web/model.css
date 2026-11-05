@@ -310,6 +310,31 @@
 #viewer-light-menu-toggle[aria-expanded=true]{border-color:#ffe18b;background:#3d3521}
 #viewer-light-menu{position:absolute;top:var(--viewer-light-top,52px);left:58px;width:min(310px,calc(100% - 68px));max-height:calc(100% - var(--viewer-light-top,52px) - 10px);overflow:auto;box-sizing:border-box;padding:12px;background:#111823f5;border:1px solid #536174;border-radius:12px;box-shadow:0 8px 24px #0007;display:grid;gap:10px;pointer-events:auto;scrollbar-width:thin}
 #viewer-light-menu[hidden]{display:none}
+#viewer-light-menu{position:fixed;width:min(320px,calc(100vw - 20px));display:flex;flex-direction:column;overflow:hidden;padding:0;gap:8px;z-index:6;background:#151c29}
+#viewer-light-menu>.viewer-light-menu-heading{padding:10px 12px 0;flex-shrink:0}
+#viewer-light-menu>.viewer-light-selection,#viewer-light-menu>#viewer-light-status{margin:0 12px;flex-shrink:0}
+#viewer-light-menu .viewer-light-menu-heading label{margin-left:auto;font-size:11px;white-space:nowrap}
+.viewer-light-selection{display:grid;gap:6px}.viewer-light-selection>label{gap:4px!important}
+.viewer-light-tabs{display:flex;gap:4px;flex-shrink:0;padding:0 12px}
+.viewer-light-tabs>[role=tab]{flex:1;min-width:0;background:transparent;color:var(--muted);border:1px solid var(--line);padding:7px 4px;border-radius:7px}
+.viewer-light-tabs>[aria-selected=true]{background:var(--soft);color:var(--accent);border-color:var(--accent)}
+.viewer-light-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#viewer-light-menu>.viewer-light-tab-body{overflow:auto;min-height:0;padding:4px 12px 8px;flex:1}
+.viewer-light-tab-panel{display:grid;align-content:start;gap:10px;min-width:0}
+.viewer-light-tab-panel[hidden]{display:none!important}
+.viewer-light-menu-footer{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--line);flex-shrink:0}
+.viewer-light-menu-footer button{flex:1}
+#viewer-light-menu .viewer-light-intensity-pair{display:flex;align-items:center;gap:8px}
+#viewer-light-menu .viewer-light-intensity-pair input[type=number]{width:66px;flex-shrink:0}
+.viewer-light-intensity-pair input[type=range]{min-width:0;flex:1}
+.viewer-light-color-pair{display:flex;align-items:center;gap:10px}.viewer-light-color-pair output{font:12px monospace;color:var(--muted)}
+#viewer-light-menu input[type=color]{width:44px;height:32px;flex-shrink:0;padding:2px;cursor:pointer}
+.viewer-light-presets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#viewer-light-manage{padding:8px;border:1px solid var(--line);border-radius:8px;display:block}
+#viewer-light-manage summary{cursor:pointer;font-size:11px;color:var(--muted)}
+#viewer-light-manage>button{margin:8px 5px 0 0}
+#viewer-light-detail-panel-light>#viewer-light-controls>details{margin-top:12px}
+#viewer-light-details-dialog>.viewer-light-tabs{padding-top:8px}
 .viewer-light-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.viewer-light-menu-heading h3{margin:0;font-size:14px}
 #viewer-light-menu label{display:flex;align-items:center;gap:8px;min-width:0;font-size:12px;flex-wrap:wrap}
 #viewer-light-menu label:has(select),#viewer-light-menu label:has(input[type=number]){display:grid;gap:4px}
@@ -318,7 +343,7 @@
 #viewer-light-menu #viewer-light-gizmo-toolbar{position:static;width:auto;max-width:none;padding:8px;pointer-events:auto}
 #viewer-light-menu [hidden]{display:none!important}#viewer-light-menu p{font-size:11px;margin:0;line-height:1.5;overflow-wrap:anywhere}
 #viewer-light-details-dialog{width:min(720px,calc(100vw - 24px));height:min(760px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);box-sizing:border-box;padding:0;overflow:hidden;pointer-events:auto}
-#viewer-light-details-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr)}
+#viewer-light-details-dialog[open]{display:grid;grid-template-rows:auto auto minmax(0,1fr)}
 #viewer-light-details-dialog>.view-settings-heading{padding:16px;border-bottom:1px solid var(--line);gap:8px}
 #viewer-light-details-body{padding:16px;overflow:auto;min-height:0;display:grid;align-content:start;gap:14px}
 #viewer-light-details-body fieldset,#viewer-light-details-body details{min-inline-size:0;min-width:0;border:1px solid var(--line);padding:12px;border-radius:8px;margin:0}
