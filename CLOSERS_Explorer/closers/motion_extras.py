@@ -14,6 +14,16 @@ def event_conditions(row):
     return {k:row[k] for k in ('m_SetID','m_SetCount','m_ItemID','m_mapEventConvertCheckData',*CUSTOM_EFFECT_FIELDS) if k in row}
 
 
+def dance_playback(clip,entries):
+    state={'EMOTION_DANCE':'USN_EMOTION_DANCE','EMOTION_DANCE_2':'USN_EMOTION_DANCE2'}.get(clip)
+    rows=[e for e in entries if e.get('state')==state] if state else []
+    speeds={e.get('state_speed') for e in rows}
+    if len(speeds)!=1:return None
+    speed=next(iter(speeds))
+    if type(speed) not in (int,float) or not math.isfinite(speed) or speed<=0:return None
+    return dict(state=state,speed=speed,sources=sorted({e.get('state_speed_source','') for e in rows}-{''}))
+
+
 class ExtraIndex(Mapping):
     """Keep the immutable index snapshot compact; decode only requested motions."""
     def __init__(self,rows):
@@ -68,7 +78,8 @@ def references(rigs,sounds=None):
                 if isinstance(row,dict) and isinstance(row.get('m_StateName'),str):
                     name=row['m_StateName'];previous=states.get(name,{})
                     origins={**previous.get('_event_sources',{}),**{key:filename for key in row if isinstance(key,str) and key.startswith('m_Event')}}
-                    states[name]={**previous,**row,'source':filename,'_event_sources':origins}
+                    speed_source=filename if 'm_fAnimSpeed' in row else previous.get('_speed_source',filename)
+                    states[name]={**previous,**row,'source':filename,'_event_sources':origins,'_speed_source':speed_source}
         clips=defaultdict(list)
         for clip,items in props.items():
             for item in items:clips[clip].append(dict(kind='model',row=item,state=''))
@@ -91,6 +102,11 @@ def references(rigs,sounds=None):
                     clips[clip].append(dict(kind='effect',row=dict(event,source=row['_event_sources']['m_EventDamageEffect']),state=state))
             for event in values(row.get('m_EventParticle')):
                 if isinstance(event,dict):clips[clip].append(dict(kind='particle',row=dict(event,source=row['_event_sources']['m_EventParticle']),state=state))
+        for items in clips.values():
+            for item in items:
+                row=states.get(item['state'],{});speed=row.get('m_fAnimSpeed',1)
+                if type(speed) in (int,float) and math.isfinite(speed) and speed>0:
+                    item.update(state_speed=speed,state_speed_source=row.get('_speed_source',''))
         result[character]=dict(clips)
     return result
 
@@ -251,7 +267,10 @@ def compile_extras(refs,damage,meshes,particles=None,sounds=None):
                     for pi,particle in enumerate(values(damage[name].get('m_EventParticle'))):
                         if not isinstance(particle,dict):continue
                         add(dict(particle,source=damage[name]['source']),'particle',state,key+f':particle:{pi}',key)
-            for index,item in enumerate(items):add(item['row'],item['kind'],item['state'],f'{character}|{clip}|{index}')
+            for index,item in enumerate(items):
+                start=len(out);add(item['row'],item['kind'],item['state'],f'{character}|{clip}|{index}')
+                for entry in out[start:]:
+                    if 'state_speed' in item:entry.update(state_speed=item['state_speed'],state_speed_source=item.get('state_speed_source',''))
             for entry in out:entry['condition_schema']=2
             result[character,clip]=out
     return result

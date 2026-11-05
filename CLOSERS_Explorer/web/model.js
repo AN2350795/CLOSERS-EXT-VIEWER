@@ -68,7 +68,7 @@ function advanceAnimation(delta){
       setBusy(state.busy);
     }
   }else{
-    const duration=state.clip.clip.duration;state.time+=delta*Number($('animation-speed').value);
+    const duration=state.clip.clip.duration;state.time+=delta*Number($('animation-speed').value)*(state.clip.playback?.speed||1);
     if(state.time>=duration){if($('animation-loop').checked&&duration>0)state.time%=duration;else{state.time=duration;stop();}}
     applyPose(state.model,state.clip,state.time);
   }

@@ -478,7 +478,9 @@ class Models:
                     xmd_matrix(tr)  # Validate every retained quaternion, not just DEFAULT.
             decorate(animation['clips'],classify(source['name'])['character'],self.catalog.game_names.motion_names)
             extras=self.extra_sources(classify(source['name'])['character'],animation['clips'][index]['name'],{f['name'] for f in scene['frames']})
+            from .motion_extras import dance_playback
             return dict(keys=keys,mapping=mapping,clip=animation['clips'][index],extras=extras,
+                        playback=dance_playback(animation['clips'][index]['name'],extras),
                         extras_index_available=bool(self.catalog.game_names.motion_extras),
                         animation_source=animation_source,skeleton_source=source)
 

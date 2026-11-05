@@ -41,6 +41,15 @@ try{
  // Explicit sequence states still win over the default clip presentation.
  await extras.select([packet],[{state:'USN_EMOTION_SNOWMAN_END'}]);check($('motion-dance-controls').hidden,'snowman sequence received dance lighting menu');
  const dance2={clip:{name:'EMOTION_DANCE_2',duration:10},extras:[{...light,state:'USN_EMOTION_DANCE2'}]};state.clip=dance2;await extras.select([dance2]);check(!$('motion-dance-controls').hidden&&lightSelect.value==='none','dance 2 default incorrect');
+ // Native half-speed changes character-key time, not the seconds used by
+ // a child effect. Root event at .1 keys, child .2 seconds later => .2 keys.
+ const timed={clip:packet.clip,playback:{speed:.5},extras:[{...light,at:.1},{...child,at:.2,anim_time:false}]};
+ state.clip=timed;state.time=.15;await extras.select([timed]);lightSelect.value='spotlight';lightSelect.dispatchEvent(new Event('change'));await wait(()=>!extras.loading&&extras.assets.size===2);extras.update();
+ check(!extras.assets.get('0:child')[0].anchor.visible,'child global clock ran ahead of native half-speed');
+ state.time=.25;extras.seek();extras.update();check(extras.assets.get('0:child')[0].anchor.visible,'child global clock was slowed twice');
+ const global={clip:packet.clip,playback:{speed:.5},extras:[{...light,at:.3,anim_time:false}]};
+ state.clip=global;state.time=.2;await extras.select([global]);lightSelect.value='spotlight';lightSelect.dispatchEvent(new Event('change'));await wait(()=>!extras.loading&&extras.assets.size===1);extras.seek();extras.update();
+ check([...extras.assets.values()][0][0].anchor.visible,'seeking did not convert native key time to global seconds');
  // Legacy indexes omitted custom conditions. Until rebuilt, dance extras
  // must stay off even if general preview preferences are already enabled.
  const legacy={clip:packet.clip,extras:[{...light,condition_schema:undefined,conditions:{}}]};state.clip=legacy;await extras.select([legacy]);

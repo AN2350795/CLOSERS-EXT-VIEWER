@@ -276,7 +276,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
       if(!known&&states.size>1){stateChoice.hidden=false;stateChoice.replaceChildren();for(const name of states){const option=element('option',name);option.value=name;stateChoice.append(option);}}
       for(const original of all){
         if(known&&original.state&&original.state!==known)continue;
-        const entry={...original,id:index+':'+original.key,packet,stateSpeed:steps[index]?.speed||original.state_speed||1,danceLightPart:lightKeys.has(original.key)};
+        const entry={...original,id:index+':'+original.key,packet,stateSpeed:steps[index]?.speed||packet.playback?.speed||1,danceLightPart:lightKeys.has(original.key)};
         entry.ambiguous=!known&&states.size>1&&entry.kind!=='model';
         entries.push(entry);
       }
@@ -291,7 +291,7 @@ export function setupMotionExtras({state,api,getScene,getCamera,onVisible,onEqui
     restoreColors();
     if(!state.clip||!state.model){equipment();for(const group of assets.values())for(const asset of group)asset.anchor.visible=false;return;}
     const changed=lastPacket!==state.clip;
-    if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time;lastTime=state.time;}
+    if(changed){lastPacket=state.clip;stageClock=state.sequence?state.sequence.elapsed/state.sequence.definition.steps[state.sequence.index].speed:state.time/(state.clip.playback?.speed||1);lastTime=state.time;}
     if(state.playing){const elapsed=delta*Number($('animation-speed').value);total+=elapsed;if(!changed)stageClock+=elapsed;}
     const wrapped=!changed&&state.time<lastTime-1e-6&&state.playing;lastTime=state.time;
     const births=new Map(),restarts=new Map(),hiddenParts=new Set();let frameNeeded=false;

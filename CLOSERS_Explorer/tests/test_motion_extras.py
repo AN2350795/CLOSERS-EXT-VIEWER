@@ -19,6 +19,19 @@ def layers():
 
 
 class MotionExtrasTests(unittest.TestCase):
+    def test_character_dance_rate_is_inherited_without_alias_guessing(self):
+        from closers.motion_extras import dance_playback
+        state=dict(m_StateName='USN_EMOTION_DANCE',m_AnimName='EMOTION_DANCE',m_EventEquipHide={1:dict(m_HideEquipPosition='EP_AVATAR_WEAPON')})
+        rigs={'STRIKER':[('base.LUA',{'GAME_UNIT_TEMPLET':{'m_mapUnitStateData':{1:state}}}),
+                         ('character.LUA',{'GAME_UNIT_TEMPLET':{'m_mapUnitStateData':{1:dict(m_StateName='USN_EMOTION_DANCE',m_fAnimSpeed=.5)}}})]}
+        entries=compile_extras(references(rigs),{},{})['STRIKER','EMOTION_DANCE']
+        self.assertEqual(entries[0]['state_speed'],.5)
+        self.assertEqual(dance_playback('EMOTION_DANCE',entries),dict(state='USN_EMOTION_DANCE',speed=.5,sources=['character.LUA']))
+        self.assertEqual(dance_playback('EMOTION_DANCE',entries+[dict(state='USN_EMOTION_SNOWMAN_END',state_speed=2)] )['speed'],.5)
+        self.assertIsNone(dance_playback('EMOTION_DANCE',entries+[dict(entries[0],state_speed=1)]))
+        self.assertIsNone(dance_playback('ASTAND',entries))
+        self.assertIsNone(dance_playback('EMOTION_DANCE',[dict(state='USN_EMOTION_DANCE')]))
+
     def test_custom_effect_conditions_survive_compilation_and_parent_resolution(self):
         from closers.motion_converts import resolve
         custom={1:13.0}

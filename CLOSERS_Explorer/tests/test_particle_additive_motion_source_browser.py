@@ -8,6 +8,7 @@ class ParticleAdditiveMotionSourceBrowserTests(source_browser.ParticleDofMotionS
 
     def check_source_conditions(self,entries):
         self.assertTrue(any(e['conditions'].get('m_vecShowEffectCustomID')=={'1':13} for e in entries))
+        self.assertTrue(all(e['state_speed']==.5 for e in entries))
 
     def source_entries(self,raw):
         names={'PE_SPOT_LIGHT_MAIN','PE_SPOT_LIGHT_MUSIC_NOTE_01','PE_SPOT_LIGHT_MUSIC_NOTE_02'}
