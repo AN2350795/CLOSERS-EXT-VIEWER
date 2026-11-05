@@ -611,7 +611,7 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
     if(state.model){const visible=groups.filter(g=>g.visible&&getEmissionEnabled()&&!excluded.has(g.key)&&g.materials.some(m=>m.userData.materialPreview.uniforms.avatarEmissiveMap.value)).length;$('avatar-lighting-summary').textContent=`발광 연결 ${groups.length}개 · 현재 표시 ${visible}개${getEmissionEnabled()?'':' · 전체 발광 꺼짐'}${settings.solo?' · 발광만 보기':''}`;}
     const profileInfo=settings.baseRegion?effectiveProfile:settings.autoProfile?selected():profiles.find(p=>p.key===settings.selected);$('avatar-lighting-source').textContent=profileInfo?JSON.stringify(profileInfo,null,2):'조명을 선택하면 원본 출처를 확인할 수 있습니다.';
     if(profiles.length)$('avatar-lighting-status').textContent=effectiveProfile?`선택 조명: ${effectiveProfile.label}`:'현재 캐릭터에 적용할 조명을 선택하세요.';
-    viewerLight.refresh();menu?.sync();
+    viewerLight.setGizmoSuppressed(settings.solo||matcap.isMaskInspection());viewerLight.refresh();menu?.sync();
   }
   function refresh(){
     matcap.refresh();
@@ -664,5 +664,5 @@ export function setupAvatarLighting({state,api,element,getEmissionEnabled,setCon
   $('avatar-emission-mode').onchange=()=>{settings.bloomMode=$('avatar-emission-mode').value==='source'?'source':'viewer';save();apply();};
   $('avatar-emission-strength').oninput=()=>{settings.bloomStrength=Number($('avatar-emission-strength').value);$('avatar-emission-strength-value').value=settings.bloomStrength.toFixed(2);save();};
   function renderHelpers(renderer,camera){if(!settings.solo&&!matcap.isMaskInspection())viewerLight.renderHelpers(renderer,camera);}
-  return {refresh,updateCamera,renderHelpers,dispose:viewerLight.dispose,getRenderOptions:()=>({dof:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.dof:null,bloom:matcap.isMaskInspection()?false:settings.bloom,bloomMode:settings.bloomMode,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null,sharpen:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.sharpen:null})};
+  return {refresh,updateCamera,renderHelpers,bindGizmo:viewerLight.bindGizmo,dispose:viewerLight.dispose,getRenderOptions:()=>({dof:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.dof:null,bloom:matcap.isMaskInspection()?false:settings.bloom,bloomMode:settings.bloomMode,solo:matcap.isMaskInspection()?false:settings.solo,strength:settings.bloomStrength,exposure:settings.soloExposure,sourceColor:settings.sourceColor&&!!state.model,colorGrading:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.colorGrading:null,sharpen:settings.sourceColor&&state.model&&!matcap.isMaskInspection()&&!settings.solo?settings.sharpen:null})};
 }

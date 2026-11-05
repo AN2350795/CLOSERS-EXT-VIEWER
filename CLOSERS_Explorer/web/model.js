@@ -78,6 +78,7 @@ function initRenderer(){
   renderer=new THREE.WebGLRenderer({canvas:$('model-canvas'),antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x111823);renderer.outputColorSpace=THREE.SRGBColorSpace;
   emissionRenderer=createEmissionRenderer(renderer);
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(40,1,.1,100000);
+  lighting.bindGizmo(camera,$('model-canvas'));
   stage=setupModelStage({scene});
   resizeObserver=new ResizeObserver(()=>{if(viewerDisposed)return;const rect=$('viewport').getBoundingClientRect();renderer.setSize(rect.width,rect.height,false);stage.resize(rect.width,rect.height);camera.aspect=rect.width/rect.height;camera.updateProjectionMatrix();});resizeObserver.observe($('viewport'));
   let pointer=null;
