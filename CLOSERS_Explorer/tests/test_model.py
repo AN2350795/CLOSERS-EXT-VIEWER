@@ -61,6 +61,20 @@ def animation(bad=False):
 
 
 class ModelTests(unittest.TestCase):
+    def test_version_three_retains_strict_layout_and_pose_validation(self):
+        original = animation()
+        version_three = original[:22] + (3).to_bytes(4, 'little') + original[26:]
+        metadata = parse_xmd(version_three)
+        self.assertEqual(metadata['version'], 3)
+        self.assertEqual(metadata['clips'], parse_xmd(original)['clips'])
+        bind_mapping(parse_x(binary_model()), metadata)
+        with self.assertRaises(ValueError):
+            parse_xmd(version_three[:-1])
+        with self.assertRaises(ValueError):
+            parse_xmd(version_three + b'extra')
+        with self.assertRaises(ValueError):
+            parse_xmd(original[:22] + (4).to_bytes(4, 'little') + original[26:])
+
     def test_effect_without_default_requires_a_full_matching_clip_start(self):
         body=animation(bad=True).replace(wide('_DEFAULT'),wide('EFFECT_START'))
         scene=parse_x(binary_model());references=parse_xmd(body,first_keys=True)

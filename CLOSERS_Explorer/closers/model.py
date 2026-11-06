@@ -353,7 +353,7 @@ def parse_xmd(data,selected=None,first_keys=False):
         raise ValueError('지원하지 않는 XMD 헤더입니다.')
     bones,version = r.unpack('II')
     r.count(bones,1024)
-    if version not in (1,2):
+    if version not in (1,2,3):
         raise ValueError(f'지원하지 않는 XMD 내부 버전 {version}')
     nclips = r.count(r.varint(),2048)
     clips,retained = [],[]
