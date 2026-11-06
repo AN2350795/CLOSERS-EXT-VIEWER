@@ -9,12 +9,13 @@ def ensure_report(catalog, kind='csv', force=False):
         raise ValueError('보고서 형식이 올바르지 않습니다.')
     with operation_lock(catalog.workspace), catalog.session():
         revision = catalog.revision()
+        names=dict(size=catalog.game_names.file_version[1],mtime=catalog.game_names.file_version[0]) if catalog.game_names.file_version else None
         path = catalog.workspace / ('catalog.csv' if kind == 'csv' else 'summary.json')
         marker = catalog.workspace / (path.name + '.revision.json')
         try:
             prior = json.loads(marker.read_text(encoding='utf-8'))
             stat = path.stat()
-            valid = prior == dict(revision=revision,size=stat.st_size,mtime=stat.st_mtime_ns)
+            valid = prior == dict(revision=revision,names=names,size=stat.st_size,mtime=stat.st_mtime_ns)
         except (OSError,ValueError):
             valid = False
         if force or not valid:
@@ -23,5 +24,5 @@ def ensure_report(catalog, kind='csv', force=False):
             else:
                 atomic_json(path,catalog.stats())
             stat = path.stat()
-            atomic_json(marker,dict(revision=revision,size=stat.st_size,mtime=stat.st_mtime_ns))
+            atomic_json(marker,dict(revision=revision,names=names,size=stat.st_size,mtime=stat.st_mtime_ns))
         return path

@@ -770,11 +770,16 @@ class Catalog:
         try:
             with self.connect() as db, temp.open('w', encoding='utf-8-sig', newline='') as stream:
                 writer = csv.writer(stream)
-                writer.writerow(['id','archive','version','original_name','category','detail','actual_format','size','stored','flag','status','output','sha256','error'])
+                writer.writerow(['id','archive','version','original_name','category','detail','actual_format','size','stored','flag','status','output','sha256','error',
+                                 'display_name','game_names','model_kind','model_character','model_part','model_family'])
                 for row in db.execute('''SELECT e.id,a.path,a.version,e.name,e.category,e.detail,e.format,e.size,e.stored,e.flag,
                                          e.status,e.output,e.sha256,e.error FROM entries e JOIN archives a ON a.id=e.archive_id ORDER BY e.id'''):
-                    # Keep spreadsheet applications from interpreting archive names as formulas.
-                    writer.writerow(["'" + v if isinstance(v, str) and v.startswith(('=', '+', '-', '@', '\t', '\r')) else v for v in row])
+                    names=self.game_names.text(row[3])
+                    group=self.game_names.group(row[3]) if row[6] in ('x','xmd','fbx','obj','mesh','skel','anim') else {}
+                    values=list(row)+[names.split('\n')[0] if names else row[3],names,
+                                      *(group.get(key,'') for key in ('kind','character','part','family'))]
+                    # Names and source paths are data, including formula-like names.
+                    writer.writerow(["'" + v if isinstance(v, str) and v.startswith(('=', '+', '-', '@', '\t', '\r')) else v for v in values])
             temp.replace(destination)
         finally:
             temp.unlink(missing_ok=True)
