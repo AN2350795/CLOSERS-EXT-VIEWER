@@ -374,6 +374,10 @@ def create_server(catalog, port=0):
                     self.respond(models.groups.facets(query))
                 elif url.path == '/api/model-browser':
                     self.respond(models.groups.browse(query))
+                elif url.path == '/api/model-catalog':
+                    report=catalog.workspace/'model-catalog.json'
+                    if not report.is_file():raise ValueError('모델·모션 분류표가 없습니다. 추출 후처리를 실행해 주세요.')
+                    self.respond(report.read_bytes())
                 elif url.path.startswith('/api/model-icon/'):
                     digest=url.path.rsplit('/',1)[1]
                     self.respond(catalog.game_names.icon_image(digest),'image/png',

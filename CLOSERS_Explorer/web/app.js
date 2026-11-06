@@ -154,6 +154,12 @@ for(const id of ['postprocess-enabled','game-executable'])$(id).addEventListener
 $('postprocess-run').onclick=async()=>{try{await api('/api/postprocess',{postprocess:postprocessOptions()});setBusy(true);}catch(e){toast(e.message);}};
 function showPostprocess(steps){
   $('postprocess-result').hidden=!steps.length;
-  $('postprocess-steps').replaceChildren(...steps.map(step=>node('p',step.status==='error'?'error':'muted',step.label+' · '+(step.status==='completed'?'완료':step.error))));
+  $('postprocess-steps').replaceChildren(...steps.map(step=>{
+    let text=step.label+' · '+(step.status==='completed'?'완료':step.error);
+    if(step.id==='model-catalog'&&step.status==='completed'){
+      const r=step.result;text+=` · 파일 ${r.files.toLocaleString()}개 · 미분류 ${r.unclassified.toLocaleString()}개 · 실제 명칭: 파일 ${r.official_file_names.toLocaleString()}개 / 모션 ${r.official_clip_names.toLocaleString()}개`;
+    }
+    return node('p',step.status==='error'?'error':'muted',text);
+  }));
   if(steps.some(step=>step.status==='error'))$('postprocess-result').open=true;
 }

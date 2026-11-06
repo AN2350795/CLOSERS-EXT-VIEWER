@@ -22,17 +22,20 @@ def executable_path(catalog, options, paths):
         if not path.is_file():
             raise ValueError('CW.EXE 경로를 확인해 주세요: '+str(path))
         return path
-    # Only inspect immediate source directories and their parent, never launch EXEs.
+    # DAT/DAT0/*.CMF is two levels below the executable. Deduplicate folders.
     with catalog.connect() as db:
         sources = [row[0] for row in db.execute('SELECT path FROM archives')]
     candidates = set()
-    for value in list(paths)+sources:
+    folders=set()
+    directories={Path(value).parent for value in sources}
+    for value in paths:
         path = Path(value).resolve()
-        directory = path if path.is_dir() else path.parent
-        for folder in (directory, directory.parent):
-            candidate = folder/'CW.EXE'
-            if candidate.is_file():
-                candidates.add(candidate)
+        directories.add(path if path.is_dir() else path.parent)
+    for directory in directories:
+        folders.update((directory,directory.parent,directory.parent.parent))
+    for folder in folders:
+        candidate=folder/'CW.EXE'
+        if candidate.is_file():candidates.add(candidate)
     if len(candidates) != 1:
         raise ValueError('CW.EXE를 하나로 찾을 수 없습니다. 게임 실행 파일 경로를 직접 입력해 주세요.')
     return candidates.pop()
@@ -53,7 +56,13 @@ class Step:
     run: Callable
 
 
-STEPS = (Step('game-data', '게임 이름·아이템 아이콘·장비·모션 연출과 사운드', build_game_data),)
+def build_model_catalog(catalog,options,paths,cancel,progress):
+    from .model_catalog import build
+    return build(catalog,cancel,progress)
+
+
+STEPS = (Step('game-data', '게임 실제 명칭·아이콘·장비·모션 연출과 사운드', build_game_data),
+         Step('model-catalog','모델·모션 전체 분류와 명칭 목록',build_model_catalog))
 
 
 def validate_options(options):

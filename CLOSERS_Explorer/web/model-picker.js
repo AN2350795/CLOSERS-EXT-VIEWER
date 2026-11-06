@@ -1,14 +1,21 @@
 import {pickerMemory} from './model-memory.js';
 import {characters,slots,partLabels,replacePart} from './avatar-navigation.js';
 // Source choices remain explicit: matching names do not imply matching bytes.
-export function setupPicker({state,api,operation,loadModel,applyEye,element,previews}){
+export function setupPicker({state,api,operation,loadModel,applyEye,connectAnimation,element,previews}){
   setupViewerLayout();
-  const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant','costume_type'];
+  const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant','costume_type','format'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
   let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1,cardSerial=0,searchController;
   const memory=pickerMemory();
   const settings=memory.data.settings;
   titles.push('\uBAA8\uB4E0 \uC544\uC774\uD15C \uD0C0\uC785');
+  titles.push('모든 형식');
+  const formatLabel=element('label','자료 형식'),formatSelect=element('select');
+  formatSelect.id='model-format';formatSelect.append(new Option('모든 형식',''),new Option('DirectX 모델 · X','x'),new Option('모션 · XMD','xmd'),new Option('FBX 모델','fbx'),new Option('Spine 모델','skel'));
+  formatSelect.value='x';formatLabel.append(formatSelect);$('model-saved').closest('label').before(formatLabel);
+  const catalogLink=element('a','모델·모션 전체 분류표 저장');catalogLink.download='model-catalog.json';
+  catalogLink.href='/api/model-catalog?token='+encodeURIComponent(document.querySelector('meta[name="explorer-token"]').content);
+  $('picker-options').querySelector('.source-tools').append(catalogLink);
   $('open-picker-options').onclick=()=>{$('model-advanced').open=true;$('picker-options').showModal();};
   $('close-picker-options').onclick=()=>$('picker-options').close();
   for(const [value,label] of Object.entries(characters))$('model-character').append(new Option(label,value));
@@ -41,7 +48,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
   function recent(item,mode){const r=record(item,mode);memory.data.recent=[r,...memory.data.recent.filter(v=>v.identity!==r.identity)].slice(0,20);save();renderMemory();}
   function favorite(row,item,mode){const r=record(item,mode),button=element('button');button.type='button';button.className='secondary favorite-button';button.dataset.favorite=r.identity;button.dataset.favoriteLabel=r.label;button.onclick=()=>{const exists=memory.data.favorites.some(v=>v.identity===r.identity);memory.data.favorites=exists?memory.data.favorites.filter(v=>v.identity!==r.identity):[r,...memory.data.favorites].slice(0,30);save();renderMemory();updateStars();};row.append(button);}
   function markSelection(){for(const row of $('model-results').children){const selected=row.dataset.appearance?(state.data?.sources||[]).some(s=>s.entry_id===Number(row.dataset.entry)&&JSON.parse(row.dataset.appearances||JSON.stringify([row.dataset.appearance])).includes(s.appearance_key)):row.dataset.eye?state.data?.eye_avatar?.key===row.dataset.eye:row.dataset.entry?state.ids.includes(Number(row.dataset.entry)):(state.data?.sources||[]).some(s=>s.model_group?.set_key===row.dataset.set);row.classList.toggle('is-selected',selected);row.querySelector('.selection-badge')?.remove();if(selected){const badge=element('span','현재 적용 중');badge.className='selection-badge';row.append(badge);}}}
-  function filters(){const p=new URLSearchParams({items:'1',sort:$('model-sort').value,format:'x',saved:$('model-saved').value,q:$('model-search').value,limit:$('model-limit').value,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);return p;}
+  function filters(){const p=new URLSearchParams({items:'1',sort:$('model-sort').value,saved:$('model-saved').value,q:$('model-search').value,limit:$('model-limit').value,page:state.page});for(const key of keys)p.set(key,$('model-'+key).value);if($('model-mode').value!=='files')p.set('format','x');return p;}
   function bundleName(label,key){const code=key.split('|').slice(1).join('|'),suffix=' · '+code;return (label.endsWith(suffix)?label.slice(0,-suffix.length):label).replace(/\s*\[[^\]]*타입\]/g,'').trim();}
   function typeBadges(target,types){for(const type of [...new Set(types)]){const badge=element('span',type+'타입');badge.className='model-type-badge';target.append(badge);}}
   function sharedHairLabel(info){return info?info.source_type+'타입 공용 헤어':'';}
@@ -224,6 +231,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
     $('picker-date-note').hidden=!browsing;
     for(const selector of ['#model-search-form','#wardrobe-tabs','#model-sort','#model-advanced','.filter-summary','.picker-pagination'])document.querySelector(selector).hidden=!browsing;
     $('model-costume_type').parentElement.hidden=['eyes','files'].includes(mode);$('model-kind').hidden=mode!=='files';$('model-variant').parentElement.hidden=mode!=='files';
+    formatLabel.hidden=mode!=='files';
     $('basic-avatar').disabled=!chosen;
     renderParts();
     if(!chosen&&mode!=='files'){
@@ -255,7 +263,23 @@ export function setupPicker({state,api,operation,loadModel,applyEye,element,prev
       }
       else{details.append(element('small',item.name),element('small',[item.character,item.family,item.part,item.variant].filter(Boolean).join(' · ')),element('small',item.archive+' · #'+item.ordinal+' · '+(item.saved_exists?'저장됨':'미저장')));const open=element('button','모델 열기'),add=element('button','부위 추가');open.title='현재 모델 교체';add.className='secondary';open.onclick=title.onclick;add.onclick=()=>operation(async()=>{const owner={...item,character:chosen},selection=itemSelection(item,componentRows);let additions=selection.ids.filter(id=>id!==item.id);if(item.item_code&&!item.appearance_key){const related=await api('/api/model-list?'+new URLSearchParams({items:'1',character:chosen,part:item.part,q:item.item_code,format:'x',limit:60}));const alpha=related.items.filter(r=>r.item_code===item.item_code&&r.set_name===item.set_name&&r.variant==='ALPHA'&&(!item.item_id||r.item_id===item.item_id));if(alpha.length===1){additions=[alpha[0].id];if(alpha[0].appearance_key)owner.alphaAppearance={[alpha[0].id]:alpha[0].appearance_key};}else if(alpha.length>1)throw Error('\uBCF4\uC870 \uBA54\uC2DC\uC758 \uCD9C\uCC98\uB97C \uC758\uC0C1 \uBB36\uC74C\uC5D0\uC11C \uC120\uD0DD\uD558\uC138\uC694.');}const ids=replacePart(state.data?.sources||[],owner,additions);if(ids.length>16)throw Error('\uBAA8\uB378 \uBD80\uC704\uB294 16\uAC1C\uAE4C\uC9C0 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.');await loadModel(ids,state.skeleton,undefined,{...Object.fromEntries((state.data?.sources||[]).filter(s=>ids.includes(s.entry_id)&&s.appearance_key).map(s=>[s.entry_id,s.appearance_key])),...selection.appearances,...owner.alphaAppearance});});if(mode==='files')actions.append(open,add);else{add.textContent='\uCC29\uC6A9';add.title='\uD604\uC7AC \uC544\uBC14\uD0C0\uC758 \uC774 \uBD80\uC704\uB9CC \uAD50\uCCB4';add.dataset.action='equip';open.textContent='\uB2E8\uB3C5 \uBCF4\uAE30';open.dataset.action='preview';open.className='secondary';add.className='';actions.append(add,open);cardDetails(row,actions,details);if(componentRows.some(c=>!c.select.value)){details.open=true;row.classList.add('needs-source');}}if(item.set_key){const group=element('button','의상 묶음');group.className='secondary';group.onclick=()=>operation(()=>showBundle(item.set_key,item.costume_type?[item.costume_type]:[]));if(mode==='files')actions.append(group);else details.append(group);}}
       if(item.shared_hair){row.dataset.sharedSet=item.shared_hair.source_set_key;const context=row.querySelector('.model-card-context')||cardContext(row,[]),note=element('span',sharedHairLabel(item.shared_hair));note.className='card-state';context.append(note);}
-      favorite(row,item,mode);row.querySelectorAll('button:not(.favorite-button)').forEach(b=>b.disabled=state.busy);$('model-results').append(row);previews?.attach(row,item,mode,$('model-saved').value);
+      favorite(row,item,mode);row.querySelectorAll('button:not(.favorite-button)').forEach(b=>b.disabled=state.busy);
+      if(mode==='files'){
+        const format=item.format||'x';
+        details.append(element('small',item.kind_label||item.kind),element('small','형식 · '+format.toUpperCase()));
+        if(format!=='x'){
+          title.onclick=null;
+          actions.replaceChildren();
+          if(format==='xmd'&&connectAnimation){
+            const connect=element('button','현재 모델에 동작 연결');
+            connect.disabled=!state.model||state.busy;
+            connect.title=state.model?'현재 모델의 뼈와 검증 후 연결합니다.':'먼저 X 모델을 여세요.';
+            connect.onclick=()=>operation(()=>connectAnimation(item.id));actions.append(connect);
+          }else details.append(element('small','이 형식은 원본 저장으로 확인할 수 있습니다.'));
+          if(item.saved_exists){const save=element('a','원본 저장');save.href='/api/download/'+item.id+'?token='+encodeURIComponent(document.querySelector('meta[name="explorer-token"]').content);actions.append(save);}
+        }
+      }
+      $('model-results').append(row);if(!item.format||item.format==='x'||mode==='eyes')previews?.attach(row,item,mode,$('model-saved').value);
     }
     if(!data.total)$('model-results').append(element('p','조건에 맞는 모델이 없습니다. 저장 상태와 필터를 확인하세요.'));
     displayedPage=state.page;markSelection();updateStars();rememberSettings();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';

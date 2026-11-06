@@ -139,6 +139,24 @@ class Catalog:
     def changed(db):
         db.execute("UPDATE catalog_meta SET value=value+1 WHERE key='revision'")
 
+    @exclusive
+    def reclassify_models(self):
+        """Upgrade derived categories while preserving source IDs and saved paths."""
+        return self._reclassify_models()
+
+    def _reclassify_models(self):
+        from .model_groups import LABELS
+        updates=[]
+        with self.connect() as db:
+            for row in db.execute("SELECT id,name,format,category,detail FROM entries WHERE flag!=2 AND format IN ('x','xmd','obj','fbx','mesh','skel','anim')"):
+                group=self.game_names.group(row['name'])
+                detail='모션' if row['format'] in ('xmd','anim') else LABELS['kind'][group['kind']]
+                if (row['category'],row['detail'])!=('models',detail):updates.append((detail,row['id']))
+            if updates:
+                db.executemany("UPDATE entries SET category='models',detail=? WHERE id=?",updates)
+                self.changed(db)
+        return len(updates)
+
     def revision(self):
         with self.connect() as db:
             return db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
@@ -156,9 +174,8 @@ class Catalog:
         db.row_factory = sqlite3.Row
         db.execute('PRAGMA foreign_keys=ON')
         db.create_function('resource_group', 4, group_key, deterministic=True)
-        from .model_groups import field
-        db.create_function('model_field', 2, field, deterministic=True)
         self.game_names.refresh()
+        db.create_function('model_field',2,lambda name,key:self.game_names.group(name).get(key,''),deterministic=True)
         db.create_function('game_name', 1, self.game_names.text, deterministic=True)
         return db
 
@@ -413,7 +430,7 @@ class Catalog:
         from .library import saved_file
         if row.get('category')=='models':
             from .model_groups import classify
-            row['model_group']=dict(classify(row['name']))
+            row['model_group']=self.game_names.group(row['name'])
         row['saved_exists'] = bool(saved_file(row))
         row['same_name_count'] = db.execute('SELECT count(*) FROM entries WHERE name=?', (row['name'],)).fetchone()[0]
         row['same_content_count'] = (db.execute('SELECT count(*) FROM entries WHERE sha256=?', (row['sha256'],)).fetchone()[0]
@@ -508,6 +525,8 @@ class Catalog:
     @exclusive
     def extract(self, output, filters=None, raw=False, cancel=None, progress=lambda **kw: None,
                 verify='sha256', batch_size=100, retry_errors=False):
+        check_cancel(cancel)
+        self._reclassify_models()
         return self.extract_impl(output, filters, raw, cancel, progress, verify, batch_size, retry_errors)
 
     @exclusive
@@ -515,6 +534,8 @@ class Catalog:
                 verify='sha256', retry_errors=False, workers=1):
         if workers not in (1,2,4):
             raise ValueError('동시 처리 수는 1, 2, 4 중에서 선택해 주세요.')
+        check_cancel(cancel)
+        self._reclassify_models()
         if workers > 1:
             from .parallel import process_parallel
             return process_parallel(self,paths,output,filters,raw,cancel,progress,verify,retry_errors,workers)

@@ -80,6 +80,12 @@ class PostprocessTests(unittest.TestCase):
         with self.assertRaises(ValueError):executable_path(self.catalog, {}, ())
         self.assertEqual(executable_path(self.catalog, {'executable': str(exe)}, ()), exe)
 
+    def test_executable_discovery_supports_dat_shards(self):
+        source=fixture(self.root/'DAT'/'DAT0'/'nested.cmf',[('one.txt',b'asset',0)])
+        self.catalog.scan([source])
+        exe=self.root/'CW.EXE';exe.write_bytes(b'exe')
+        self.assertEqual(executable_path(self.catalog,{},()),exe)
+
     def test_http_retry_and_option_validation(self):
         server = create_server(self.catalog)
         thread = threading.Thread(target=server.serve_forever, daemon=True);thread.start()

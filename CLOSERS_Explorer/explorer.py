@@ -35,6 +35,9 @@ def main():
     process.add_argument('--retry-errors', action='store_true', help='강제 재분석 후 완료 항목도 원본을 다시 읽고 실패도 재시도')
     process.add_argument('--verify', choices=['sha256', 'fast'], default='sha256')
     process.add_argument('--workers', type=int, choices=[1,2,4], default=1, help='동시에 처리할 CMF 수 (기본 1)')
+    for command in (extract,process):
+        command.add_argument('--no-postprocess',action='store_true',help='모델·모션 분류와 실제 명칭 후처리를 생략')
+        command.add_argument('--executable',default='',help='후처리용 CW.EXE 경로. 생략하면 원본 폴더에서 탐색')
     commands.add_parser('report', help='통계와 CSV 보고서 갱신')
     motions = commands.add_parser('motion-audit', help='전체 XMD와 타운·던전 등록 대조 및 원본 추출')
     motions.add_argument('--destination', required=True, help='모션 조사 JSON과 추출 파일 저장 폴더')
@@ -126,11 +129,15 @@ def main():
             ensure_report(catalog,'csv',force=True)
             ensure_report(catalog,'summary',force=True)
             result = catalog.stats()
+        if args.command in ('extract','process') and not args.no_postprocess:
+            import threading
+            from closers.postprocess import run
+            result['postprocess']=run(catalog,dict(enabled=True,executable=args.executable),threading.Event(),progress,getattr(args,'paths',()))
     except (KeyboardInterrupt, Cancelled):
         print('작업을 중단했습니다. 완료된 파일은 보존됩니다.', file=sys.stderr)
         return 130
     print(json.dumps(result, ensure_ascii=True, indent=2))
-    return 1 if result.get('failed') or result.get('entry_errors') else 0
+    return 1 if result.get('failed') or result.get('entry_errors') or result.get('postprocess',{}).get('failed') else 0
 
 
 if __name__ == '__main__':

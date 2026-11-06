@@ -28,7 +28,7 @@ const extras=setupMotionExtras({state,api,getScene:()=>scene,getCamera:()=>camer
 const lighting=setupAvatarLighting({state,api,element,getEmissionEnabled:()=>$('material-preview').checked,setConditionItems:updateConditionItems});
 const target=new THREE.Vector3(),orbit={yaw:0,pitch:.15,distance:150},textureLoader=new THREE.TextureLoader();
 function element(tag,text){const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
-function clipLabel(clip){return clip.display_name?clip.display_name+' · '+clip.name:clip.name;}
+function clipLabel(clip){return clip.display_name&&clip.display_name!==clip.name?clip.display_name+' · '+clip.name:clip.name;}
 let noticeTimer;
 function closeNotice(){clearTimeout(noticeTimer);$('model-status').classList.remove('is-notice');$('model-status').querySelector('.notice-close')?.remove();}
 function status(text,notice=false){
@@ -42,7 +42,7 @@ function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions')
 async function operation(fn,replace=false){if(viewerDisposed||state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}
 function stop(){state.playing=false;extras.pauseAudio();$('play-animation').textContent='재생';$('play-animation').setAttribute('aria-pressed','false');}
 function updateMotionName(){
-  const clip=state.clip?.clip,name=state.model?(state.sequence?.definition.label||clip?.game_names?.[0]||clip?.display_name||clip?.name||'기본 자세'):'모델을 선택하세요';
+  const clip=state.clip?.clip,name=state.model?(state.sequence?.definition.label||clip?.display_name||clip?.game_names?.[0]||clip?.name||'기본 자세'):'모델을 선택하세요';
   if($('current-motion').textContent!==name)$('current-motion').textContent=name;
   $('current-motion').title=clip?clipLabel(clip):name;
 }
@@ -269,7 +269,7 @@ async function chooseSequence(definition,onProgress){
   applyPose(state.model,state.clip,state.time);onProgress?.('묶음 동작의 보조 모델과 효과를 준비하는 중입니다.');await extras.select(clips,definition.steps);if(generation!==state.generation||version!==animationVersion||controller.signal.aborted)return;stop();updateTime();status('묶음 동작 선택: '+definition.label);
 }
 const motions=setupMotions({state,api,operation,connectAnimation,chooseClip,chooseSequence,loadModel,element});
-const {search}=setupPicker({state,api,operation,loadModel,applyEye,element,previews:setupPreviews({api})});
+const {search}=setupPicker({state,api,operation,loadModel,applyEye,connectAnimation,element,previews:setupPreviews({api})});
 $('clear-model').onclick=()=>{
   if(state.busy||!state.model)return;
   state.generation++;modelController?.abort();

@@ -66,8 +66,8 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
   const footer=$('motion-page').parentElement;footer.classList.add('motion-pagination');
   function title(clip){
     if(!clip)return '읽을 수 없는 동작';
-    if(clip.game_names?.length)return clip.game_names[0];
     if(clip.display_name)return clip.display_name;
+    if(clip.game_names?.length)return clip.game_names[0];
     return clip.name.replace(/^MOTION_[A-Z]+_/,'').replace(/_(START|LOOP|END)$/,'').replace(/_/g,' ').trim();
   }
   function phase(clip){
@@ -152,8 +152,11 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
         body.append(download);
       }
       if(clip?.game_names?.length>1)body.append(element('small','연결된 명칭 · '+clip.game_names.join(' / ')));
+      if(clip?.name_kind==='reference')body.append(element('small','공용 클립을 사용하는 스킬의 명칭입니다. 이 동작 자체의 이름으로 확정하지 않습니다.'));
       if(clip?.name_sources?.length){
-        for(const source of clip.name_sources)body.append(element('small',`${source.label} · ${source.skill_id} → ${source.state} · ${source.state_table} · ${source.string_table}: ${source.string_key}`));
+        for(const source of clip.name_sources)body.append(element('small',source.kind==='skin'
+          ?`${source.label} · 스킨 그룹 ${source.group} → ${source.state} · ${source.skill_table} · ${source.string_table}: ${source.string_key}`
+          :`${source.label} · ${source.skill_id} → ${source.state} · ${source.state_table} · ${source.string_table}: ${source.string_key}`));
       }
       if(file.error)body.append(element('p',file.error));
       if(file.skeleton_name)body.append(element('small','선택 시 전용 뼈 연결: '+file.skeleton_name));

@@ -203,8 +203,10 @@ def classify(name, prefix, flag):
     if actual in ('ogg', 'wav', 'mp3', 'flac', 'wem'):
         detail = '대사·음성' if upper.startswith(('ST_', 'VOICE')) else '효과음' if upper.startswith(('SE_', 'SFX')) else '배경음악' if upper.startswith(('BGM', 'MUSIC')) else '기타 오디오'
         return 'audio', detail, actual
-    if actual in ('x', 'obj', 'fbx', 'mesh', 'skel', 'anim'):
-        return 'models', '캐릭터·장비' if 'AVATAR' in upper else '배경·오브젝트', actual
+    if actual in ('x', 'xmd', 'obj', 'fbx', 'mesh', 'skel', 'anim'):
+        from .model_groups import classify as model_group,LABELS
+        detail='모션' if actual in ('xmd','anim') else LABELS['kind'][model_group(name)['kind']]
+        return 'models',detail,actual
     if actual in ('lua', 'tet', 'xet', 'fx', 'xml', 'json', 'csv', 'txt', 'ini'):
         return 'scripts', '셰이더' if actual == 'fx' else '스크립트·설정', actual
     return 'other', '기타 파일', actual

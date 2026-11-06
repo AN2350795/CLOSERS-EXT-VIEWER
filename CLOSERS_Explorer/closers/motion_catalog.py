@@ -32,5 +32,9 @@ def decorate(clips, character, registrations):
     for clip in clips:
         links = registrations.get((character, clip['name']), [])
         kinds = sorted({'town' if link['type'] == 'SCT_TOWN_MOTION' else 'dungeon' for link in links})
+        for source in clip.get('name_sources',[]):
+            if source.get('kind')=='skin':continue
+            kind='emotion' if source.get('skill_id','').startswith('SI_COMMON_EMOTION_') else 'skill'
+            if kind not in kinds:kinds.append(kind)
         result.append(dict(clip, motion_registrations=links, motion_categories=kinds))
     return result

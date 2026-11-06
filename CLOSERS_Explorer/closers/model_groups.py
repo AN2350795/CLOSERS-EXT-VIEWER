@@ -14,7 +14,8 @@ CHARACTERS = dict(zip(
     'STRIKER CASTER RANGER FIGHTER LANCER IDOL HUNTER WITCH ROGUE ARMS VALKYRIE VAGABOND LIBRARIAN AEGIS ASTRA MYSTIC BEAST GATEKEEPER NONAME REAPER KNIVES ALTEREGO DEVILISH'.split(),
     '이세하 이슬비 서유리 제이 미스틸테인 윤리아 나타 레비아 하피 티나 바이올렛 트리스 볼프강 루나 소마 파이 세트 모아 김철수 미래 은하 루시 애리'.split()))
 LABELS = {
-    'kind':dict(avatar='캐릭터 아바타',motion='공용 뼈·동작',npc='NPC',monster='몬스터',background='배경·오브젝트',effect='효과',unknown='미분류'),
+    'kind':dict(avatar='캐릭터 아바타',motion='공용 뼈·동작',npc='NPC',monster='몬스터',pet='펫',background='배경·오브젝트',effect='효과',camera='카메라',collision='충돌·이동 영역',cinematic='장면 연출',spine='Spine 모델',unknown='미분류'),
+    'format':dict(x='DirectX 모델 · X',xmd='모션 · XMD',fbx='FBX 모델',skel='Spine 모델',obj='OBJ 모델',mesh='메시',anim='애니메이션'),
     'part':dict(HAIR='머리',FACE='얼굴',EYES='눈동자',UPBODY='상의',LOWBODY='하의',FOOT='신발',HAND='장갑',ONE_PIECE='한 벌',WEAPON='무기',
                 ACC_HEAD_HAIR='헤어 액세서리',ACC_HEAD_EAR='귀 액세서리',ACC_HEAD_EYE='눈 액세서리',ACC_HEAD_MOUTH='입 액세서리',
                 ACC_BODY_CHEST='가슴 액세서리',ACC_BODY_WING='등·날개 액세서리',ACC_BODY_WAIST='허리 액세서리',
@@ -32,8 +33,8 @@ def classify(name):
         result.update(character='',family='ACCESSORY',set_key='',set_name='')
         return result
     value = dict(character='',kind='unknown',family='unknown',part='unknown',variant='BASE',set_key='',set_name='',item_code='',raw_part='')
-    match = re.search(r'(?:^|_)GUST_USER_([A-Z]+)_(.+?)_EP_AVATAR(?:_(.*))?$',stem)
-    if match:
+    match = re.search(r'(?:^|_)GUST_(?:USER_)?([A-Z]+)_(.+?)_EP_AVATAR(?:_(.*))?$',stem)
+    if match and match[1] in (*CHARACTERS,'SHARED'):
         character,descriptor,raw = match.groups();raw=raw or ''
         value.update(character=character,kind='avatar',raw_part=raw,item_code=stem.split('_')[0] if stem.split('_')[0].isdigit() else '')
         suffix = re.search(r'_(ALPHA|DYE|\d+)$',raw)
@@ -49,7 +50,15 @@ def classify(name):
               or re.fullmatch(r'(?:SCHOOL|SBENU|ALPHA)_[A-Z]+',descriptor)):
             value.update(set_key=character+'|'+descriptor,set_name=descriptor)
         return value
-    if stem.startswith('MOTION_'):
+    convention=stem.lstrip('_')
+    if convention.startswith(('XE_','XX_','FX_','EFF_','EF_','EFFECT_','GUST_EFFECT_')):
+        value['kind']='effect'
+    elif stem.startswith('CAMERA_'):value['kind']='camera'
+    elif stem.startswith('DI_'):value['kind']='collision'
+    elif stem.startswith('DRAMA_'):value['kind']='cinematic'
+    elif stem.startswith(('SPN_','SPINE')):value['kind']='spine'
+    elif stem.startswith(('GUST_NPC_PET_','PET_')):value['kind']='pet'
+    elif stem.startswith('MOTION_'):
         value['kind']='motion'
         match=re.match(r'MOTION_([A-Z]+)(?:_|$)',stem)
         if match:value['character']=match[1]
@@ -59,7 +68,7 @@ def classify(name):
         codes=[c for c in CHARACTERS if re.search(r'(?:^|_)'+c+r'(?:_|$)',stem)]
         if len(codes)==1:value['character']=codes[0]
     elif re.match(r'(?:FX|EFF|EFFECT|GUST_EFFECT)_',stem):value['kind']='effect'
-    elif stem.startswith(('WI_','GUST_MAP_','GUST_BG_')):value['kind']='background'
+    elif stem.startswith(('WI_','GUST_MAP_','GUST_BG_')) or re.match(r'(?:AREA\d*|AREAETC|DUNGEON|TOWN|SHOPPING|AOS|AIRPORT|EPILOGUE|RUINS|CHEONGGYECHEON|CIRCLE|DEMIPLANE\d*)_',stem):value['kind']='background'
     return value
 
 
@@ -90,7 +99,7 @@ class ModelGroups:
                 elif mode=='accessories':where+=" AND model_field(e.name,'part') LIKE 'ACC_%'"
                 rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive,a.mtime/1000000 updated_at
                     FROM entries e JOIN archives a ON a.id=e.archive_id WHERE '''+where+' ORDER BY e.id',args).fetchall()
-                self.scopes[scope]=[self.catalog.game_names.decorate(dict(r,**classify(r['name']))) for r in rows]
+                self.scopes[scope]=[self.catalog.game_names.decorate(dict(r,**self.catalog.game_names.group(r['name']))) for r in rows]
                 self.version=version
             return self.scopes[scope].copy()
 
@@ -116,13 +125,13 @@ class ModelGroups:
         return rows
 
     def facets(self,filters):
-        keys=('character','kind','family','part','variant','costume_type')
+        keys=('character','kind','family','part','variant','costume_type','format')
         base=self.filtered({k:v for k,v in filters.items() if k not in keys})
         return self.facet_rows(base,filters)
 
     @staticmethod
     def facet_rows(base,filters):
-        result={};keys=('character','kind','family','part','variant','costume_type')
+        result={};keys=('character','kind','family','part','variant','costume_type','format')
         for key in keys:
             rows=[r for r in base if all(not filters.get(k) or r.get(k)==filters[k] for k in keys if k!=key)]
             counts=Counter(r.get(key) for r in rows if r.get(key))
@@ -204,7 +213,7 @@ class ModelGroups:
             return self._browse(filters)
 
     def _browse(self,filters):
-        keys=('character','kind','family','part','variant','costume_type')
+        keys=('character','kind','family','part','variant','costume_type','format')
         # One existence pass for both the page and all facet counts.
         base=self.filtered({k:v for k,v in filters.items() if k not in keys or k=='character'})
         if filters.get('mode')=='sets':base=[r for r in base if r['set_key']]
