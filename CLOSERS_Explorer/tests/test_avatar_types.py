@@ -389,7 +389,10 @@ class AvatarTypeTests(unittest.TestCase):
         component=filename or self.model.replace('100_GUST','200_GUST').replace('.X',variant+'.X')
         record=list(rows[0]);record[2]=component
         self.tables[0]=(name,table(ntf.header(body)[0],rows+[record]))
-        self.catalog.scan([fixture(self.root/('component'+str(len(rows))+'.cmf'),[(component,binary_model(self.model[:-2]+'.PNG'),0)])])
+        # The mocked definition also changes: publish that source revision so
+        # definition caches can distinguish it from an unrelated model scan.
+        self.catalog.scan([fixture(self.root/('component'+str(len(rows))+'.cmf'),[
+            (component,binary_model(self.model[:-2]+'.PNG'),0),(name,self.tables[0][1],0)])])
         return component
 
     def test_registered_component_models_form_one_item_and_load_together(self):

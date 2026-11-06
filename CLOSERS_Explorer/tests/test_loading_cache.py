@@ -21,6 +21,32 @@ from test_explorer import fixture
 
 
 class LoadingCacheTests(unittest.TestCase):
+    def test_definition_cache_survives_unrelated_extraction_but_tracks_definition_sources(self):
+        source=fixture(self.root/'items.cmf',[('ITEM_TEMPLET.NTF',b'definition',0)])
+        self.catalog.scan([source])
+        patterns=(r'ITEM_TEMPLET[\d_]*\.NTF',)
+        key=('source-definitions',1)
+        builds=[]
+        def load(data):
+            def build():
+                builds.append(True)
+                rows=data.rows('ITEM_TEMPLET.NTF')
+                return {'rows':len(rows)}
+            return data.cached(key,build,persistent=True,source_patterns=patterns)
+        self.assertEqual(load(LoadingData(self.catalog)),{'rows':1})
+        self.catalog.extract(self.root/'another-output',{'format':'png'})
+        self.assertEqual(load(LoadingData(self.catalog)),{'rows':1})
+        self.assertEqual(len(builds),1)
+        added=fixture(self.root/'more-items.cmf',[('ITEM_TEMPLET_2.NTF',b'new definition',0)])
+        self.catalog.scan([added])
+        self.assertEqual(load(LoadingData(self.catalog)),{'rows':1})
+        self.assertEqual(len(builds),2)
+        # Even before a rescan, physical changes to an observed source invalidate it.
+        previous=source.stat()
+        os.utime(source,ns=(previous.st_atime_ns,previous.st_mtime_ns+1000000))
+        self.assertEqual(load(LoadingData(self.catalog)),{'rows':1})
+        self.assertEqual(len(builds),3)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

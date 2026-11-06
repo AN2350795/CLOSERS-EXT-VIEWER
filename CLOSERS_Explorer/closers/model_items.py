@@ -91,7 +91,8 @@ class AvatarItems(EyeAvatars):
         return result
 
     def definitions(self):
-        return self.data.cached(('avatar-items',3),self._definitions,persistent=True)
+        return self.data.cached(('avatar-items',4),self._definitions,persistent=True,
+            source_patterns=(r'ITEM_MODEL_TEMPLET[\d_]*\.NTF',r'ITEM_TEMPLET[\d_]*\.NTF',r'STRING_TABLE_ITEM\d*_KOREA\.NTF'))
 
     def _definitions(self):
         models={}

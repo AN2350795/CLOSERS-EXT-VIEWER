@@ -65,7 +65,7 @@ class LoadingData:
                 self._derived = LoadingCache(self.catalog)
             return self._derived
 
-    def cached(self, key, build, persistent=False):
+    def cached(self, key, build, persistent=False, source_patterns=None):
         cache = self.derived
         found, value = cache.get(key, persistent)
         if found:
@@ -75,7 +75,7 @@ class LoadingData:
             found, value = cache.get(key, persistent)
             if found:
                 return value
-            with cache.capture() as record:
+            with cache.capture(source_patterns) as record:
                 value = build()
             return cache.put(key, value, record, persistent)
 

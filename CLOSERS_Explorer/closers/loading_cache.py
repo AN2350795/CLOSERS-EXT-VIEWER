@@ -3,6 +3,7 @@ from collections import OrderedDict
 from contextlib import closing, contextmanager
 import hashlib
 import json
+import re
 from pathlib import Path
 import sqlite3
 import threading
@@ -30,9 +31,15 @@ class LoadingCache:
         self.lock = threading.RLock()
         self.local = threading.local()
 
-    def revision(self):
+    def revision(self, source_patterns=None):
         # Avoid Catalog.connect(): picker cache hits need no game-name index refresh.
         with closing(sqlite3.connect(self.catalog.db, timeout=30)) as db:
+            if source_patterns is not None:
+                rows = [list(row) for row in db.execute('''SELECT e.id,e.name,e.ordinal,e.size,e.stored,e.offset,e.flag,
+                    a.path,a.size,a.mtime,a.status,a.parser_version FROM entries e JOIN archives a ON a.id=e.archive_id
+                    WHERE e.format='ntf' ORDER BY e.id''') if any(re.fullmatch(pattern,row[1],re.I) for pattern in source_patterns)]
+                return ['sources', self.catalog.db.stat().st_ino,
+                        hashlib.sha256(json.dumps(rows).encode()).hexdigest()]
             revision = db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
         return [revision, self.catalog.db.stat().st_ino]
 
@@ -48,8 +55,10 @@ class LoadingCache:
                 parent['files'].setdefault(path, value)
 
     @contextmanager
-    def capture(self):
-        record = dict(version=VERSION, revision=self.revision(), files={})
+    def capture(self, source_patterns=None):
+        record = dict(version=VERSION, revision=self.revision(source_patterns), files={})
+        if source_patterns is not None:
+            record['source_patterns'] = list(source_patterns)
         records = getattr(self.local, 'records', None)
         if records is None:
             records = self.local.records = []
@@ -61,7 +70,7 @@ class LoadingCache:
 
     def valid(self, record):
         try:
-            return (record.get('version') == VERSION and record.get('revision') == self.revision()
+            return (record.get('version') == VERSION and record.get('revision') == self.revision(record.get('source_patterns'))
                     and isinstance(record.get('files'), dict)
                     and all(stamp(path) == value for path, value in record['files'].items()))
         except (OSError, TypeError, ValueError):
