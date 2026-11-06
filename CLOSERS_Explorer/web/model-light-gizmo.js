@@ -3,7 +3,7 @@ import {TransformControls} from './vendor/three/addons/TransformControls.js';
 
 // Upstream controls own picking, drag planes, axis constraints and snapping.
 // This adapter bridges viewer state, orbit arbitration and edit transactions.
-export function createLightGizmo({camera,canvas,onChange,onCommit}){
+export function createLightGizmo({camera,canvas,onChange,onRotate,onCommit}){
   const scene=new THREE.Scene(),anchor=new THREE.Object3D();scene.add(anchor);
   const controls=new TransformControls(camera),helper=controls.getHelper();scene.add(helper);
   // Use capture-phase events instead of the default bubble listeners: orbit
@@ -13,7 +13,8 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
   controls.attach(anchor);
   const touchAction=canvas.style.touchAction;canvas.style.touchAction='none';
   let active=false,disposed=false,drag=null,owner=null,key='',handleSize=1;
-  controls.addEventListener('objectChange',()=>onChange(anchor.position.toArray()));
+  function changed(){if(controls.mode==='rotate')onRotate?.(anchor.quaternion.toArray());else onChange(anchor.position.toArray());}
+  controls.addEventListener('objectChange',changed);
   function pointer(event,button=event.button){
     const rect=canvas.getBoundingClientRect();if(!rect.width||!rect.height)return null;
     return {x:(event.clientX-rect.left)/rect.width*2-1,y:-(event.clientY-rect.top)/rect.height*2+1,button};
@@ -34,7 +35,7 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
   function finish(cancel=false){
     if(!drag)return;const previous=drag;drag=null;
     controls.pointerUp({button:0});
-    if(cancel){anchor.position.copy(previous.origin);onChange(previous.origin.toArray());}else onCommit();
+    if(cancel){anchor.position.copy(previous.origin);anchor.quaternion.copy(previous.quaternion);changed();}else onCommit();
     if(canvas.hasPointerCapture?.(previous.id))canvas.releasePointerCapture(previous.id);
     canvas.style.cursor='';
   }
@@ -42,9 +43,9 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
     if(drag){consume(event);return;}
     if(event.button!==0||!layout())return;const p=pointer(event);if(!p)return;
     controls.pointerHover(p);if(!controls.axis)return;
-    scene.updateMatrixWorld(true);const origin=anchor.position.clone();controls.pointerDown(p);
+    scene.updateMatrixWorld(true);const origin=anchor.position.clone(),quaternion=anchor.quaternion.clone();controls.pointerDown(p);
     if(!controls.dragging)return;
-    consume(event);drag={id:event.pointerId,origin,size:handleSize};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
+    consume(event);drag={id:event.pointerId,origin,quaternion,size:handleSize};canvas.setPointerCapture(event.pointerId);canvas.style.cursor='grabbing';
   }
   function move(event){
     if(drag){
@@ -67,11 +68,12 @@ export function createLightGizmo({camera,canvas,onChange,onCommit}){
   doc.addEventListener('keydown',keyboard,true);doc.addEventListener('pointermove',documentMove,{capture:true,passive:false});doc.addEventListener('pointerup',up,true);doc.addEventListener('pointercancel',cancel,true);doc.addEventListener('visibilitychange',visibility);doc.defaultView.addEventListener('blur',blur);
   return {
     scene,controls,get handleSize(){return handleSize;},
-    update({enabled,position,model,selection,snap=0}){
+    update({enabled,position,model,selection,snap=0,mode='translate',quaternion=[0,0,0,1],rotationSnap=0}){
       if(disposed)return;
-      if(drag&&(!enabled||owner!==model||key!==selection||controls.translationSnap!==(snap||null)))finish(true);
+      if(drag&&(!enabled||owner!==model||key!==selection||controls.mode!==mode||controls.translationSnap!==(snap||null)||controls.rotationSnap!==(rotationSnap||null)))finish(true);
       owner=model;key=selection;active=enabled;helper.visible=enabled;controls.enabled=enabled;controls.setTranslationSnap(snap>0?snap:null);
-      if(!drag)anchor.position.fromArray(position);
+      controls.setMode(mode);controls.setRotationSnap(rotationSnap>0?rotationSnap:null);
+      if(!drag){anchor.position.fromArray(position);anchor.quaternion.fromArray(quaternion);}
       if(!active){controls.axis=null;canvas.style.cursor='';}
     },
     render(renderer){

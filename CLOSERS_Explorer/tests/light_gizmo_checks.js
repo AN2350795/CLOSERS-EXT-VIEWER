@@ -11,9 +11,9 @@ const pointer=(type,p,id=1)=>canvas.dispatchEvent(new PointerEvent(type,{bubbles
 try{
  const renderer=new T.WebGLRenderer({canvas,antialias:false});renderer.setSize(400,400,false);
  const camera=new T.PerspectiveCamera(40,1,.1,1000);camera.position.set(7,5,10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);
- let position=[0,0,0],commits=0,orbitEvents=0;
+ let position=[0,0,0],rotation=[0,0,0,1],commits=0,orbitEvents=0;
  canvas.onpointerdown=canvas.onpointermove=canvas.onpointerup=()=>orbitEvents++;
- const gizmo=createLightGizmo({camera,canvas,onChange:v=>position=v,onCommit:()=>commits++}),owner={};
+ const gizmo=createLightGizmo({camera,canvas,onChange:v=>position=v,onRotate:v=>rotation=v,onCommit:()=>commits++}),owner={};
  const axes=[new T.Vector3(1,0,0),new T.Vector3(0,1,0),new T.Vector3(0,0,1)];
  function activate(){gizmo.update({enabled:true,position,model:owner,selection:'0:position'});gizmo.render(renderer);}
  for(let axis=0;axis<3;axis++){
@@ -43,6 +43,22 @@ try{
  }
  camera.up.set(0,1,0);camera.position.set(7,5,10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);position=[0,0,0];gizmo.update({enabled:true,position,model:owner,selection:'snap',snap:1});gizmo.render(renderer);
  const snapStart=new T.Vector3(gizmo.handleSize*.9,0,0),snapEnd=snapStart.clone().add(new T.Vector3(.8,0,0));pointer('pointerdown',point(snapStart,camera));pointer('pointermove',point(snapEnd,camera));pointer('pointerup',point(snapEnd,camera));check(position[0]===1&&position[1]===0&&position[2]===0,'translation snap');
+ // Real ring picking, quaternion changes, snapping and rollback, with orbit blocked.
+ camera.position.set(0,0,10);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);position=[0,0,0];
+ function rotateReady(snap=0){gizmo.update({enabled:true,position,model:owner,selection:'rotation',mode:'rotate',quaternion:rotation,rotationSnap:snap});gizmo.render(renderer);}
+ rotateReady();
+ const ringPoint=angle=>point(new T.Vector3(Math.cos(angle)*gizmo.handleSize,Math.sin(angle)*gizmo.handleSize,0),camera);
+ const ringStart=ringPoint(Math.PI/4),ringEnd=ringPoint(Math.PI/3),rotateCommits=commits,rotateOrbit=orbitEvents;
+ pointer('pointerdown',ringStart);check(gizmo.controls.dragging&&gizmo.controls.axis==='Z','Z rotation ring picking');
+ pointer('pointermove',ringEnd);check(Math.abs(rotation[2])>.01&&position.every(v=>v===0),'ring rotation moved anchor or did not rotate');
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ check(rotation.every((v,i)=>Math.abs(v-(i===3?1:0))<1e-6)&&commits===rotateCommits&&!capture.size,'rotation Escape rollback');
+ rotateReady(Math.PI/12);pointer('pointerdown',ringStart);pointer('pointermove',ringEnd);pointer('pointerup',ringEnd);
+ const angle=2*Math.atan2(rotation[2],rotation[3]);check(Math.abs(angle)>0&&Math.abs(angle/(Math.PI/12)-Math.round(angle/(Math.PI/12)))<1e-6,'rotation angle snap');
+ check(commits===rotateCommits+1&&orbitEvents===rotateOrbit&&!capture.size,'rotation commit or orbit conflict');
+ rotateReady();const priorRotation=[...rotation];pointer('pointerdown',ringStart);pointer('pointermove',ringEnd);
+ gizmo.update({enabled:true,position,model:owner,selection:'translation',mode:'translate'});
+ check(rotation.every((v,i)=>Math.abs(v-priorRotation[i])<1e-6)&&!capture.size,'mode change rotation rollback');
  gizmo.dispose();gizmo.dispose();renderer.dispose();canvas.onpointerdown=canvas.onpointermove=canvas.onpointerup=null;
 
  // Exercise the actual model.js orbit handlers, toolbar, storage and shader path.
@@ -74,6 +90,27 @@ try{
  const targetFrom=point(targetOrigin.clone().add(new T.Vector3(0,targetSize*.9,0)),cam),targetTo=point(targetOrigin.clone().add(new T.Vector3(0,targetSize*1.2,0)),cam);
  pointer('pointerdown',targetFrom);pointer('pointermove',targetTo);pointer('pointerup',targetTo);
  const movedTarget=JSON.parse(localStorage.getItem('closers-viewer-light-v2')).lights[0];check(movedTarget.target[1]>targetBefore[1]&&movedTarget.target[0]===targetBefore[0]&&movedTarget.target[2]===targetBefore[2]&&JSON.stringify(movedTarget.position)===JSON.stringify(positionBefore),'target drag changed position');
+ change('viewer-light-gizmo-mode','rotate');change('viewer-light-rotation-snap',15);await frame();
+ check($('viewer-light-gizmo-target').hidden&&!$('viewer-light-rotation-snap').hidden,'rotation toolbar controls');
+ const rotationStored=localStorage.getItem('closers-viewer-light-v2'),uiOrigin=new T.Vector3(...values()),uiDepth=-uiOrigin.clone().applyMatrix4(cam.matrixWorldInverse).z,uiSize=2*uiDepth*Math.tan(Math.PI/9)*85/rect.height;
+ const uiRing=angle=>point(uiOrigin.clone().add(new T.Vector3(Math.cos(angle)*uiSize,Math.sin(angle)*uiSize,0)),cam);
+ const uiStart=uiRing(Math.PI/4),uiEnd=uiRing(Math.PI/3),targetValues=()=>['x','y','z'].map(axis=>Number($('viewer-light-target-'+axis).value));
+ const oldAim=targetValues(),oldPosition=values(),oldRadius=new T.Vector3(...oldAim).distanceTo(uiOrigin),oldView=JSON.stringify(modelViewer.view);
+ pointer('pointerdown',uiStart);pointer('pointermove',uiEnd);
+ check(targetValues().some((v,i)=>Math.abs(v-oldAim[i])>1e-5),'UI rotation did not change light direction');
+ check(localStorage.getItem('closers-viewer-light-v2')===rotationStored,'rotation saved before commit');
+ document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ check(targetValues().every((v,i)=>v===oldAim[i]),'UI rotation cancellation must restore exact target');
+ pointer('pointerdown',uiStart);pointer('pointermove',uiEnd);pointer('pointerup',uiEnd);await frame();
+ const rotated=JSON.parse(localStorage.getItem('closers-viewer-light-v2'));
+ check(rotated.gizmoMode==='rotate'&&rotated.rotationSnap===15&&JSON.stringify(rotated.lights[0].position)===JSON.stringify(oldPosition),'rotation state persistence or fixed position');
+ check(Math.abs(new T.Vector3(...rotated.lights[0].target).distanceTo(uiOrigin)-oldRadius)<1e-6&&JSON.stringify(modelViewer.view)===oldView,'rotation changed distance or camera');
+ $('viewer-light-placement-undo').click();check(targetValues().every((v,i)=>v===oldAim[i]),'rotation undo');
+ pointer('pointerdown',uiStart);pointer('pointermove',uiEnd);change('viewer-light-hide-overlays',true);
+ check(targetValues().every((v,i)=>v===oldAim[i])&&!capture.size,'hiding overlays did not cancel rotation');change('viewer-light-hide-overlays',false);
+ change('viewer-light-type','spot');check($('viewer-light-gizmo-mode').value==='rotate'&&!$('viewer-light-gizmo-mode').options[1].disabled,'spotlight rotation unavailable');
+ change('viewer-light-type','point');check($('viewer-light-gizmo-mode').value==='translate'&&$('viewer-light-gizmo-mode').options[1].disabled&&!$('viewer-light-gizmo-target').hidden,'point light offered direction rotation');
+ change('viewer-light-type','directional');check($('viewer-light-gizmo-mode').value==='rotate','directional rotation preference lost');
  change('avatar-emission-solo',true);check($('viewer-light-gizmo-toolbar').hidden,'diagnostic retained editing controls');change('avatar-emission-solo',false);
  $('viewer-light-gizmo-close').click();check($('viewer-light-gizmo-toolbar').hidden&&!JSON.parse(localStorage.getItem('closers-viewer-light-v2')).gizmoEnabled,'finish editing');
  $('clear-model').click();check($('viewer-light-edit-3d').disabled&&$('viewer-light-gizmo-toolbar').hidden,'empty model editing');window.dispatchEvent(new Event('pagehide'));
