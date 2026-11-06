@@ -3,6 +3,8 @@ import tempfile
 import json
 import re
 import threading
+import sqlite3
+from contextlib import closing
 import urllib.request
 from pathlib import Path
 import unittest
@@ -15,6 +17,30 @@ from test_model import animation,binary_model,numbers,IDENTITY
 
 
 class MotionLibraryTests(unittest.TestCase):
+    def test_discovery_uses_registration_without_event_inheritance(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)
+            source=fixture(root/'one.cmf',[('MOTION_STRIKER.X',binary_model(),0),
+                ('MOTION_STRIKER_COMMON_RARE_7.XMD',animation(),0)])
+            catalog=Catalog(root/'work');catalog.scan([source])
+            link=dict(source='TOWN_MOTION_CONVERT_DATA.NTF',type='SCT_TOWN_MOTION',group=210,
+                      state='USN_IDLE',character='GUST_INVALID',ambiguous=False)
+            with closing(sqlite3.connect(catalog.workspace/'game-names.sqlite3')) as db, db:
+                db.executescript('''PRAGMA user_version=1;
+                    CREATE TABLE metadata(key TEXT,value TEXT);
+                    CREATE TABLE names(filename TEXT,label TEXT,priority INTEGER);
+                    CREATE TABLE motion_catalog(character TEXT,clip TEXT,details_json TEXT);''')
+                db.executemany('INSERT INTO motion_catalog VALUES(?,?,?)',[
+                    ('STRIKER','MOVE',json.dumps([link])),('STRIKER','MISSING',json.dumps([link]))])
+            ids={r['name']:r['id'] for r in catalog.entries({})['items']}
+            library=Models(catalog).motion_library(ids['MOTION_STRIKER.X'],[])
+            self.assertTrue(library['registration_index_available'])
+            file=library['files'][0]
+            self.assertEqual(file['category'],'avatar')
+            self.assertEqual(file['clips'][0]['motion_categories'],['town'])
+            self.assertEqual(file['clips'][0]['motion_registrations'],[link])
+            self.assertEqual([c['name'] for c in library['missing_registrations']],['MISSING'])
+
     def test_http_library_uses_existing_token_and_source_ids(self):
         from closers.server import create_server
         with tempfile.TemporaryDirectory() as temp:
@@ -66,6 +92,7 @@ class MotionLibraryTests(unittest.TestCase):
             failed=[f for f in files if f['status']=='unavailable']
             self.assertEqual(len(failed),2)
             self.assertTrue(all(f['error'] for f in failed))
+            self.assertTrue(all(f['saved_exists'] for f in failed))
             self.assertTrue(next(f for f in failed if 'DAMAGE' in f['name'])['clips'])
             for f in files:
                 if f['status']=='ready':

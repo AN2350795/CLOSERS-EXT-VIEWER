@@ -36,6 +36,10 @@ def main():
     process.add_argument('--verify', choices=['sha256', 'fast'], default='sha256')
     process.add_argument('--workers', type=int, choices=[1,2,4], default=1, help='동시에 처리할 CMF 수 (기본 1)')
     commands.add_parser('report', help='통계와 CSV 보고서 갱신')
+    motions = commands.add_parser('motion-audit', help='전체 XMD와 타운·던전 등록 대조 및 원본 추출')
+    motions.add_argument('--destination', required=True, help='모션 조사 JSON과 추출 파일 저장 폴더')
+    motions.add_argument('--character', default='', help='선택 사항: STRIKER 등 캐릭터 코드')
+    motions.add_argument('--extract', action='store_true', help='재생 불가 XMD도 원본으로 추출하고 공용 뼈 X를 함께 저장')
     names = commands.add_parser('names', help='게임 NTF에서 한국어 아바타 이름 인덱스 생성')
     names.add_argument('--executable', required=True, help='해당 게임 설치본의 CW.EXE 경로 (읽기 전용)')
     compare = commands.add_parser('compare', help='원본의 추가·변경·사라짐 비교 (목록·저장 파일 유지)')
@@ -105,6 +109,9 @@ def main():
             result = catalog.scan(args.paths, progress=progress, retry_errors=args.retry_errors)
         elif args.command == 'extract':
             result = catalog.extract(args.output or catalog.workspace / 'assets', {'category': args.category, 'q': args.query}, args.raw, progress=progress, verify=args.verify,retry_errors=args.retry_errors)
+        elif args.command == 'motion-audit':
+            from closers.motion_audit import audit
+            result = audit(catalog,args.destination,args.character,args.extract,progress)
         elif args.command == 'process':
             result = catalog.process(args.paths, args.output or catalog.workspace / 'assets',
                                      {'category': args.category, 'q': args.query}, args.raw, progress=progress,

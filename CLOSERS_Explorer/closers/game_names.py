@@ -34,6 +34,7 @@ class GameNames:
         self.motion_sequences={}
         self.motion_extras={};self.motion_particles={}
         self.texture_animations={};self.motion_conversions={}
+        self.motion_catalog={}
         self.sequence_index_available=False
         self.local=threading.local()
 
@@ -68,11 +69,11 @@ class GameNames:
                 except OSError:stale=True
             if version==self.file_version:
                 if stale:
-                    self.texture_animations={};self.motion_conversions={}
+                    self.texture_animations={};self.motion_conversions={};self.motion_catalog={}
                     self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.sequence_index_available=False;self.version=(version,'stale')
                 if stale or self.version==(version,'current') or version is None:return
             labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};sequence_index_available=False
-            texture_animations={};self.motion_conversions={}
+            texture_animations={};self.motion_conversions={};self.motion_catalog={}
             if version:
                 try:
                     with closing(sqlite3.connect(self.path.resolve().as_uri()+'?mode=ro',uri=True)) as db:
@@ -101,6 +102,8 @@ class GameNames:
                             motion_extras=ExtraIndex(db.execute('SELECT character,clip,details_json FROM motion_extras'))
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_conversions'").fetchone():
                             self.motion_conversions={(c,clip):json.loads(details) for c,clip,details in db.execute('SELECT character,clip,details_json FROM motion_conversions')}
+                        if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_catalog'").fetchone():
+                            self.motion_catalog={(c,clip):json.loads(details) for c,clip,details in db.execute('SELECT character,clip,details_json FROM motion_catalog')}
                         if db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='motion_particles'").fetchone():
                             from .motion_extras import ExtraIndex
                             motion_particles=ExtraIndex(db.execute("SELECT name,'' AS clip,details_json FROM motion_particles"))
@@ -115,7 +118,7 @@ class GameNames:
                             frame_patterns=json.loads(meta[0]) if meta else []
                             for filename,priority,groups in db.execute('SELECT filename,priority,groups_json FROM model_visibility'):
                                 model_rules[filename]=dict(priority=priority,groups=json.loads(groups))
-                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};texture_animations={};sequence_index_available=False;self.sources=[]
+                except (OSError,sqlite3.Error,ValueError):labels={};model_rules={};frame_patterns=[];icons={};part_rules={};motion_names={};motion_sequences={};motion_extras={};motion_particles={};texture_animations={};sequence_index_available=False;self.sources=[];self.motion_catalog={}
             self.labels=dict(labels);self.file_version=version;self.version=(version,'current') if version else None
             self.model_rules=model_rules;self.frame_patterns=frame_patterns
             self.icons=icons
@@ -135,6 +138,7 @@ class GameNames:
                 if (stat.st_size,stat.st_mtime_ns)==(source['size'],source['mtime']):continue
             except FileNotFoundError:continue
             except OSError:pass
+            self.motion_catalog={}
             self.labels={};self.model_rules={};self.frame_patterns=[];self.icons={};self.part_overrides={};self.motion_names={};self.motion_sequences={};self.motion_extras={};self.motion_particles={};self.motion_conversions={};self.texture_animations={};self.sequence_index_available=False;self.version=(self.file_version,'stale');break
 
     def icon_image(self,digest):
@@ -322,6 +326,10 @@ def _build(workspace,executable,progress,cancel=None):
             layers={character:character_layers(character,emotion_rigs) for character in CHARACTERS}
             from .motion_converts import build as build_conversions
             conversions=build_conversions(conversion_tables,layers)
+            from .motion_catalog import build as build_motion_catalog
+            registrations=build_motion_catalog(conversion_tables,CHARACTERS)
+            db.execute('CREATE TABLE motion_catalog(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
+            db.executemany('INSERT INTO motion_catalog VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in registrations.items()])
             db.execute('CREATE TABLE motion_conversions(character TEXT,clip TEXT,details_json TEXT NOT NULL,PRIMARY KEY(character,clip))')
             db.executemany('INSERT INTO motion_conversions VALUES(?,?,?)',[(character,clip,json.dumps(details,ensure_ascii=False)) for (character,clip),details in conversions.items()])
             motion_names=join(emotion_skills,layers,emotion_strings)

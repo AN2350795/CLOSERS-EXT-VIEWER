@@ -406,6 +406,7 @@ class Models:
     def motion_library(self,skeleton_id,entry_ids):
         """Index every related pack, including failures and duplicate sources."""
         from .model_motions import CATEGORIES,category,related
+        from .motion_catalog import decorate as decorate_registrations
         from .motion_names import decorate
         if len(entry_ids)>16:raise ValueError('모델은 16개까지 선택해 주세요.')
         with self.operation():
@@ -427,9 +428,11 @@ class Models:
                 item=dict(row,category=category(row['name']),clips=[],status='unavailable',error='',skeleton_id=skeleton_id)
                 try:
                     data,_,animation_source=self.read(row['id'],'xmd')
-                    animation=self.parse(data,animation_source,'xmd')
-                    item['clips']=decorate(animation['clips'],character,self.catalog.game_names.motion_names)
                     item['sha256']=animation_source['sha256']
+                    item['saved_exists']=animation_source['saved_exists']
+                    animation=self.parse(data,animation_source,'xmd')
+                    item['clips']=decorate_registrations(decorate(animation['clips'],character,self.catalog.game_names.motion_names),
+                        character,self.catalog.game_names.motion_catalog)
                     try:
                         bind_mapping(skeleton,animation)
                     except ValueError as original:
@@ -454,9 +457,14 @@ class Models:
                 files.append(item)
             from .motion_sequences import resolve
             sequences=resolve(self.catalog.game_names.motion_sequences.get(character,[]),files)
-            return dict(character=character,skeleton_source=source,categories=CATEGORIES,files=files,sequences=sequences,
+            registrations=self.catalog.game_names.motion_catalog
+            present={clip['name'] for file in files for clip in file['clips']}
+            missing=[dict(name=clip,motion_registrations=links) for (who,clip),links in registrations.items()
+                     if who==character and clip not in present]
+            return dict(character=character,skeleton_source=source,categories=dict(CATEGORIES,town='아바타 타운',dungeon='아바타 던전'),files=files,sequences=sequences,
+                        missing_registrations=missing,registration_index_available=bool(registrations),
                         sequence_index_available=self.catalog.game_names.sequence_index_available,
-                        evidence='종류는 파일명 기준입니다. 인게임 명칭은 게임 테이블에서 연결된 경우 표시하며, 착용·해금 조건은 확정하지 않습니다.')
+                        evidence='기본 종류는 파일명, 아바타 타운·던전은 변환 테이블 등록 기준입니다. 인게임 명칭은 게임 테이블에서 연결된 경우 표시하며, 착용·해금 조건은 확정하지 않습니다.')
 
     def clip(self,skeleton_id,animation_id,index,expected,effect=False):
         from .motion_names import decorate

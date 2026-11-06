@@ -59,7 +59,7 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
   filters.after(categories);
   $('motion-category').closest('label').hidden=true;
   const searchLabel=$('motion-search').closest('label');searchLabel.firstChild.textContent='동작 찾기';
-  $('motion-search').placeholder='이름이나 동작 코드로 검색';
+  $('motion-search').placeholder='이름·동작 코드·타운 그룹으로 검색';
   const options=element('details'),optionsTitle=element('summary','탐색 옵션 · 안내');options.className='motion-options';
   options.append(optionsTitle,$('motion-defaults').closest('label'),$('motion-evidence'));
   $('motion-summary').after(options);
@@ -95,10 +95,11 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
     const query=$('motion-search').value.trim().toUpperCase(),kind=$('motion-category').value;
     const rows=[];
     for(const file of data.files){
-      if(kind&&file.category!==kind)continue;
       for(const clip of file.clips.length?file.clips:[null]){
+        if(kind&&file.category!==kind&&!clip?.motion_categories?.includes(kind))continue;
         if(!$('motion-defaults').checked&&clip?.name.startsWith('_DEFAULT'))continue;
-        if(query&&!`${file.name} ${clip?.name||''} ${clip?.secondary||''} ${clip?.display_name||''} ${(clip?.game_names||[]).join(' ')}`.toUpperCase().includes(query))continue;
+        const registrations=(clip?.motion_registrations||[]).map(r=>`${r.type==='SCT_TOWN_MOTION'?'타운':'던전'} 그룹 ${r.group} ${r.state} ${r.source}`).join(' ');
+        if(query&&!`${file.name} ${clip?.name||''} ${clip?.secondary||''} ${clip?.display_name||''} ${(clip?.game_names||[]).join(' ')} ${registrations}`.toUpperCase().includes(query))continue;
         rows.push({file,clip});
       }
     }
@@ -142,6 +143,14 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
       body.append(element('small','동작 코드 · '+(clip?.name||'없음')),element('small','종류 · '+data.categories[file.category]),
         element('small','파일 · '+file.name),element('small','출처 · '+file.archive+' · 항목 '+file.ordinal));
       if(clip?.secondary&&clip.secondary!==clip.name)body.append(element('small','보조 이름 · '+clip.secondary));
+      for(const registration of clip?.motion_registrations||[]){
+        body.append(element('small',`${registration.type==='SCT_TOWN_MOTION'?'타운':'던전'} 그룹 ${registration.group} · ${registration.state} · ${registration.source}${registration.ambiguous?' · 등록 충돌':''}`));
+      }
+      if(file.saved_exists){
+        const download=element('a','원본 XMD 저장');
+        download.href='/api/download/'+file.id+'?token='+encodeURIComponent(document.querySelector('meta[name="explorer-token"]').content);
+        body.append(download);
+      }
       if(clip?.game_names?.length>1)body.append(element('small','연결된 명칭 · '+clip.game_names.join(' / ')));
       if(clip?.name_sources?.length){
         for(const source of clip.name_sources)body.append(element('small',`${source.label} · ${source.skill_id} → ${source.state} · ${source.state_table} · ${source.string_table}: ${source.string_key}`));
@@ -203,11 +212,13 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
       if(result.skeleton_source.sha256!==state.data.skeleton_source.sha256)throw Error('뼈 파일이 변경되었습니다. 모델을 다시 열어 주세요.');
       data=result;generation=current;
       $('motion-evidence').textContent=result.evidence;
+      if(result.registration_index_available===false)$('motion-evidence').textContent+=' 타운·던전 그룹 검색을 사용하려면 라이브러리에서 후처리만 실행하세요.';
+      if(result.missing_registrations?.length)$('motion-evidence').textContent+=` 등록 테이블의 ${result.missing_registrations.length}개 동작 코드가 현재 캐릭터 파일에 없습니다. 등록은 해당 캐릭터의 착용 가능 여부를 보장하지 않습니다.`;
       $('motion-category').replaceChildren(element('option','모든 종류'));
       categories.replaceChildren();
       $('motion-category').firstChild.value='';
       for(const [key,label] of Object.entries(result.categories)){
-        const count=result.files.filter(f=>f.category===key).reduce((n,f)=>n+f.clips.length,0);
+        const count=result.files.reduce((n,f)=>n+f.clips.filter(c=>f.category===key||c.motion_categories?.includes(key)).length,0);
         const option=element('option',`${label} (${count})`);option.value=key;$('motion-category').append(option);
       }
       for(const option of $('motion-category').options){

@@ -12,7 +12,10 @@ try{
     {...pack(13,'MOTION_STRIKER_BROKEN.XMD','other',[]),status:'unavailable',error:'검증 실패'},
     {...pack(14,'MOTION_STRIKER_EMOTION_BIKE.XMD','emotion',[clip(0,'BIKE')]),skeleton_id:2,skeleton_name:'MOTION_STRIKER_EMOTION_BIKE.X'}];
   let selected=null,rig=null,release=null,delay=false;
-  const api=async()=>{if(delay)await new Promise(r=>release=r);return {files,categories:{basic:'기본',skill:'스킬',emotion:'이모션',other:'기타'},skeleton_source:{sha256:'rig'},evidence:'파일명 기준'};};
+  files[1].clips[0].motion_categories=['town'];
+  files[1].clips[0].motion_registrations=[{type:'SCT_TOWN_MOTION',group:210,state:'USN_IDLE',source:'TOWN_MOTION_CONVERT_DATA.NTF'}];
+  files[1].saved_exists=true;
+  const api=async()=>{if(delay)await new Promise(r=>release=r);return {files,categories:{basic:'기본',skill:'스킬',emotion:'이모션',other:'기타',town:'아바타 타운'},skeleton_source:{sha256:'rig'},evidence:'파일명 기준'};};
   setupMotions({state,api,element,operation:async fn=>fn(),
     connectAnimation:async id=>{state.animation={id};},chooseClip:async index=>{state.clip={clip:{index}};selected=[state.animation.id,index];},
     loadModel:async(ids,id)=>{rig=id;state.data.skeleton_source.entry_id=id;state.generation++;document.dispatchEvent(new Event('model-selection'));}});
@@ -24,7 +27,14 @@ try{
   document.querySelector('.motion-details summary').click();
   check(document.querySelector('.motion-detail-body').checkVisibility()&&document.querySelector('.motion-detail-body').textContent.includes('archive-10'),'source is available when requested');
   document.querySelector('.motion-details summary').click();
-  check(document.querySelectorAll('.motion-categories button').length===5,'categories appear as compact tabs');
+  check(document.querySelectorAll('.motion-categories button').length===6,'categories appear as compact tabs');
+  document.querySelector('.motion-categories [data-category="town"]').click();
+  check($('motion-results').children.length===1&&$('motion-results').textContent.includes('SKILL 0'),'table registration finds town clips outside TOWN filename packs');
+  check($('motion-results').textContent.includes('타운 그룹 210'),'registered town group is visible in source details');
+  check(document.querySelector('#motion-results a').getAttribute('href').startsWith('/api/download/11?token='),'original XMD download retains the exact source');
+  $('motion-category').value='';$('motion-category').dispatchEvent(new Event('change'));
+  $('motion-search').value='타운 그룹 210';$('motion-search').dispatchEvent(new Event('input'));
+  check($('motion-results').children.length===1,'town group is searchable across packs');
   $('motion-search').value='인사하기';$('motion-search').dispatchEvent(new Event('input'));
   check($('motion-results').children.length===1,'Korean game name is searchable across the library');
   $('motion-search').value='';$('motion-search').dispatchEvent(new Event('input'));

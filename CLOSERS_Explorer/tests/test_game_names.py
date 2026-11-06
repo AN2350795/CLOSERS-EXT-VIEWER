@@ -181,6 +181,7 @@ class NtfTests(unittest.TestCase):
             self.assertTrue(any(s['voice'] for s in sounds))
             self.assertEqual(catalog.game_names.motion_conversions['CASTER','CONVERTED'][0]['group'],210)
             self.assertEqual(catalog.game_names.motion_conversions['CASTER','TOWN_CONVERTED'][0]['type'],'SCT_TOWN_MOTION')
+            self.assertEqual(catalog.game_names.motion_catalog['CASTER','TOWN_CONVERTED'][0]['type'],'SCT_TOWN_MOTION')
             # The web job uses the same source-based builder without a CLI step.
             from closers.server import Jobs
             jobs=Jobs(catalog)
@@ -211,6 +212,7 @@ class NtfTests(unittest.TestCase):
             self.assertFalse(catalog.game_names.model_rules)
             self.assertFalse(catalog.game_names.part_overrides)
             self.assertFalse(catalog.game_names.motion_conversions)
+            self.assertFalse(catalog.game_names.motion_catalog)
             source.unlink()
             self.assertEqual(catalog.entries({'q':'시험 의상'})['total'],1)
             with self.assertRaises(ValueError):ntf.restore(packed(b'abc'),2,key,iv)
