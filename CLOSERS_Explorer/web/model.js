@@ -2,6 +2,7 @@ import * as THREE from './vendor/three/three.module.min.js';
 import {buildModel,applyPose,restorePose,setAvatarBaseMap} from './model-core.js';
 import {slots,partLabels} from './avatar-navigation.js';
 import {setupPicker} from './model-picker.js';
+import {readListingResponse} from './model-list-progress.js';
 import {setupPreviews} from './model-preview.js';
 import {setMaterialPreview,setMaterialPreviewMap,setMatcapPreviewMap,setMatcapNormalMap} from './model-materials.js';
 import {TextureCache,limitedMap} from './model-texture-cache.js';
@@ -36,7 +37,7 @@ function status(text,notice=false){
   if(notice){const close=element('button','×');close.type='button';close.className='notice-close';close.setAttribute('aria-label','알림 닫기');close.onclick=closeNotice;$('model-status').append(close);$('model-status').classList.add('is-notice');noticeTimer=setTimeout(closeNotice,6000);}
 }
 function updateMeshVisibility(){state.model?.meshes.forEach(m=>m.visible=!m.userData.motionHidden&&(!m.userData.helper||$('show-helpers').checked)&&(!m.userData.equipmentHidden||$('show-equipment-hidden').checked));stage?.fit(state.model);lighting.refresh();}
-async function api(url,signal){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});const data=await r.json();if(!r.ok)throw Error(data.error||'불러오기 실패');return data;}
+async function api(url,signal,onProgress){const r=await fetch(url,{headers:{'X-Explorer-Token':token},signal});return readListingResponse(r,onProgress);}
 function updatePlaybackControls(){const blocked=state.busy||state.extrasLoading;for(const id of ['play-animation','animation-seek','animation-loop','animation-speed'])$(id).disabled=blocked||!state.clip;$('animation-loop').disabled=blocked||!state.clip||!!state.sequence;$('viewport').setAttribute('aria-busy',String(!!blocked));}
 function setBusy(value){state.busy=value;extras.setBusy(value);$('open-motions').disabled=value||!state.model;$('bind-pose').disabled=value||!state.model;document.querySelectorAll('#model-results button:not(.favorite-button),#model-results select,#model-parts button,#motion-choice button,#animation-choice select,#model-textures select,#avatar-bundle button,#avatar-bundle select,#avatar-bundle input,#avatar-lighting-condition-items input').forEach(e=>e.disabled=value||e.dataset.unavailable==='true');$('clear-model').disabled=value||!state.model;$('animation-clip').disabled=value||!state.animation;updatePlaybackControls();updateSequenceControls();updateMotionName();}
 async function operation(fn,replace=false){if(viewerDisposed||state.busy&&!replace)return;const version=++operationVersion;closeNotice();setBusy(true);try{await fn();}catch(e){if(version===operationVersion)status(e.message,true);}finally{if(version===operationVersion)setBusy(false);}}

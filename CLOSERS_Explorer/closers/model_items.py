@@ -3,6 +3,7 @@ from collections import defaultdict
 import math
 from pathlib import Path
 import re
+from .listing_progress import report,rows as progress_rows
 
 from . import ntf
 from .model_eyes import EyeAvatars
@@ -97,7 +98,7 @@ class AvatarItems(EyeAvatars):
     def _definitions(self):
         models={}
         for source,body in self._tables(r'ITEM_MODEL_TEMPLET[\d_]*\.NTF'):
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'definitions','모델 정의를 확인하는 중',ntf.header(body)[1]):
                 if len(v)!=36:raise ValueError('미지원 아바타 모델 테이블입니다.')
                 if v[1].startswith('GUST_NPC_'):continue
                 refs=list(dict.fromkeys(s.upper() for s in v[3:5] if s.upper().endswith('.XET')))
@@ -118,7 +119,7 @@ class AvatarItems(EyeAvatars):
                         models[key][1]['refs']=list(dict.fromkeys(models[key][1]['refs']+refs))
         ids={k[0] for k in models};items={}
         for _,body in self._tables(r'ITEM_TEMPLET[\d_]*\.NTF'):
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'items','아이템 정보를 연결하는 중',ntf.header(body)[1]):
                 if v[1] not in ids:continue
                 record=dict(string_key=v[2],set_name=v[3],icon_name=v[5].upper(),owner=v[11])
                 if v[1] in items and items[v[1]]!=record:raise ValueError('아바타 아이템 번호가 충돌합니다.')
@@ -128,12 +129,12 @@ class AvatarItems(EyeAvatars):
             types,_,start=ntf.header(body)
             if types!=(5,8,8):raise ValueError('미지원 아바타 이름 테이블입니다.')
             body=body[:start]+ntf.decrypt(body[start:],*self.data.keys)
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'names','인게임 명칭을 연결하는 중',ntf.header(body)[1]):
                 if v[1] in keys:
                     if v[1] in strings and strings[v[1]]!=v[2]:raise ValueError('아바타 이름이 충돌합니다.')
                     strings[v[1]]=v[2]
         result=[]
-        for _,model in models.values():
+        for _,model in progress_rows(models.values(),'appearances','의상 외형을 구성하는 중'):
             item=items.get(model['item_id'])
             if not item or item['owner'].startswith('GUST_NPC_'):continue
             label=strings.get(item['string_key'],'')
@@ -174,7 +175,7 @@ class AvatarItems(EyeAvatars):
         by_model=defaultdict(list)
         roots={};components={}
         available={r['name'].upper() for r in rows}
-        for item in definitions:
+        for item in progress_rows(definitions,'appearances','캐릭터의 의상 외형을 연결하는 중'):
             dye=classify(item['model_name'])['variant']=='DYE'
             composition=[v for v in index[item['key']] if (classify(v['model_name'])['variant']=='DYE')==dye]
             group=(item['key'],classify(item['model_name'])['variant']=='DYE')

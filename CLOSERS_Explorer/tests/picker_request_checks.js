@@ -3,11 +3,13 @@ const $=id=>document.getElementById(id),check=(v,message)=>{if(!v)throw Error(me
 const element=(tag,text)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 const requests=[],state={page:1,busy:false,ids:[]};let resets=0,connected=null,opened=0;
 const data=label=>({total:1,items:[{key:'ROGUE|CLOTH_1_A',label,character:'ROGUE',parts:[],part_labels:[],count:1,costume_types:['A']}],facets:{}});
-const picker=setupPicker({state,element,api:(url,signal)=>new Promise((resolve,reject)=>requests.push({url,signal,resolve,reject})),operation:fn=>fn(),connectAnimation:async id=>{connected=id;},loadModel:async()=>{opened++;},previews:{reset(){resets++;},attach(){}}});
+const picker=setupPicker({state,element,api:(url,signal,onProgress)=>new Promise((resolve,reject)=>requests.push({url,signal,onProgress,resolve,reject})),operation:fn=>fn(),connectAnimation:async id=>{connected=id;},loadModel:async()=>{opened++;},previews:{reset(){resets++;},attach(){}}});
 try{
   $('model-mode').value='sets';$('model-character').value='ROGUE';
   const older=picker.search();$('model-search').value='new';const newer=picker.search();
   check(requests.length===2&&requests[0].signal.aborted&&!requests[1].signal.aborted,'new list did not cancel prior request');
+  requests[1].onProgress({label:'현재 의상 연결 중',done:12,total:18});requests[0].onProgress({label:'지난 요청',done:1,total:2});
+  check(document.getElementById('model-list-stage').textContent==='현재 의상 연결 중','stale progress overwrote the current request');
   requests[1].resolve(data('Newest'));await newer;
   requests[0].resolve(data('Old response'));await older;
   check($('model-results').textContent.includes('Newest')&&!$('model-results').textContent.includes('Old response'),'stale list overwrote latest results');
@@ -28,5 +30,11 @@ try{
   await Promise.resolve();check(connected===41&&opened===0,'XMD was opened as a mesh instead of connected as animation');
   check($('model-results').querySelector('a').getAttribute('href').includes('/api/download/41'),'source download lost the source ID');
   check(document.querySelector('.source-tools a[download="model-catalog.json"]'),'full classification report download is missing');
+  const stopping=picker.search(),stoppedRequest=requests.at(-1);
+  $('model-list-cancel').click();check(stoppedRequest.signal.aborted&&$('model-results').getAttribute('aria-busy')==='false','cancel left the listing request active');
+  stoppedRequest.resolve(data('Cancelled result'));await stopping;
+  check($('model-results').textContent.includes('실제 명칭')&&!$('model-results').textContent.includes('Cancelled result'),'a cancelled response replaced the previous list');
+  const count=requests.length;$('model-list-retry').click();check(requests.length===count+1,'retry did not start a fresh listing request');
+  requests.at(-1).reject(Error('retry fixture'));await new Promise(r=>setTimeout(r,0));
   document.body.dataset.checks='passed';
 }catch(e){document.body.dataset.checks='failed';document.body.append(element('pre',e.stack));}

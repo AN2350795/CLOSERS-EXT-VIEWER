@@ -66,17 +66,20 @@ class LoadingData:
             return self._derived
 
     def cached(self, key, build, persistent=False, source_patterns=None):
+        from .listing_progress import report,locked
+        report('cache','저장된 의상 정보를 확인하는 중')
         cache = self.derived
         found, value = cache.get(key, persistent)
         if found:
             return value
         # All definition builders take this lock before nested cache misses.
-        with self.lock, self.session():
+        with locked(self.lock), self.session():
             found, value = cache.get(key, persistent)
             if found:
                 return value
             with cache.capture(source_patterns) as record:
                 value = build()
+            report('cache-save','준비한 의상 정보를 저장하는 중')
             return cache.put(key, value, record, persistent)
 
     def session(self):

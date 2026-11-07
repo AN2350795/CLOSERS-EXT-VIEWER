@@ -290,6 +290,26 @@ def create_server(catalog, port=0):
     request_gate = RequestGate()
 
     class Handler(BaseHTTPRequestHandler):
+        def listing(self,query,load):
+            if query.get('progress')!='1':
+                self.respond(load(query));return
+            from .listing_progress import reporting,report
+            self.send_response(200)
+            self.send_header('Content-Type','application/x-ndjson; charset=utf-8')
+            self.send_header('Cache-Control','no-store')
+            self.send_header('X-Content-Type-Options','nosniff')
+            self.send_header('Content-Security-Policy',"default-src 'none'; frame-ancestors 'none'")
+            self.send_header('Connection','close');self.end_headers();self.close_connection=True
+            def send(value):
+                self.wfile.write((json.dumps(value,ensure_ascii=False)+'\n').encode('utf-8'));self.wfile.flush()
+            try:
+                with reporting(lambda value:send(dict(progress=value))):
+                    data=load(query)
+                    report('complete','목록 준비 완료',len(data['items']),len(data['items']))
+                    send(dict(result=data))
+            except (BrokenPipeError,ConnectionResetError,ConnectionAbortedError):pass
+            except Exception as exc:send(dict(error=str(exc)))
+
         def log_message(self, *args):
             pass
 
@@ -352,7 +372,7 @@ def create_server(catalog, port=0):
                     self.respond((STATIC / 'model.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
                 elif url.path in ('/avatar-navigation.js', '/resource-dates.js', '/app.js', '/library.js', '/updates.js', '/management.js', '/style.css','/compose.js','/composition-core.js','/particle-effects.js','/animation-png.js','/animation-loop.js','/compose.css','/model.js','/model-core.js','/model-stage.js','/model-motions.js','/model-motion-extras.js','/effect-timeline.js','/particle-model.js','/motion-sequence-player.js','/model-materials.js','/model-texture-cache.js','/face-preview.js','/model-picker.js','/model-memory.js','/model-preview.js','/model.css','/vendor/three/three.module.min.js','/vendor/three/three.core.min.js'):
                     self.respond((STATIC / url.path[1:]).read_bytes(), 'text/javascript; charset=utf-8' if url.path.endswith('.js') else 'text/css; charset=utf-8')
-                elif url.path in EFFECT_MODULES or url.path in ('/model-effect-formats.js','/model-effect-dissolve.js','/model-x-animation.js','/model-texture-animation.js','/model-motion-audio.js','/model-lighting.js','/model-lighting-menu.js','/model-viewer-light.js','/model-viewer-light-helpers.js','/model-light-gizmo.js','/model-emission.js','/model-bloom.js','/model-dof-depth.js','/model-dof.js','/model-color-grading.js','/model-sharpen.js','/model-tangents.js','/model-occlusion.js','/model-alpha-sort.js','/model-texture-alpha.js'):
+                elif url.path in EFFECT_MODULES or url.path in ('/model-list-progress.js','/model-effect-formats.js','/model-effect-dissolve.js','/model-x-animation.js','/model-texture-animation.js','/model-motion-audio.js','/model-lighting.js','/model-lighting-menu.js','/model-viewer-light.js','/model-viewer-light-helpers.js','/model-light-gizmo.js','/model-emission.js','/model-bloom.js','/model-dof-depth.js','/model-dof.js','/model-color-grading.js','/model-sharpen.js','/model-tangents.js','/model-occlusion.js','/model-alpha-sort.js','/model-texture-alpha.js'):
                     self.respond((STATIC/url.path[1:]).read_bytes(),'text/javascript; charset=utf-8')
                 elif url.path == '/api/model-effect-resource':
                     self.respond(models.effect_resource(int(query['entry'])))
@@ -366,14 +386,14 @@ def create_server(catalog, port=0):
                                               int(query['eye_texture']) if query.get('eye_texture') else None,json.loads(query.get('items','{}')),json.loads(query.get('condition_items','[]')))
                     self.respond(result['lighting_conditions'] if url.path=='/api/model-lighting-conditions' else result,preparation=time.perf_counter()-started)
                 elif url.path == '/api/model-eyes':
-                    self.respond(models.eyes.browse(query))
+                    self.listing(query,models.eyes.browse)
                 elif url.path == '/api/model-lighting':
                     from .avatar_lighting import profiles
                     self.respond(profiles(loading))
                 elif url.path == '/api/model-facets':
                     self.respond(models.groups.facets(query))
                 elif url.path == '/api/model-browser':
-                    self.respond(models.groups.browse(query))
+                    self.listing(query,models.groups.browse)
                 elif url.path == '/api/model-catalog':
                     report=catalog.workspace/'model-catalog.json'
                     if not report.is_file():raise ValueError('모델·모션 분류표가 없습니다. 추출 후처리를 실행해 주세요.')

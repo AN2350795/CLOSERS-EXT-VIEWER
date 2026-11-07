@@ -2,6 +2,7 @@
 from collections import defaultdict
 from pathlib import Path
 import re
+from .listing_progress import report,rows as progress_rows,batch
 
 from . import ntf
 from .loading import LoadingData
@@ -20,13 +21,15 @@ class EyeAvatars:
         with self.catalog.connect() as db:
             names=[r[0] for r in db.execute('SELECT DISTINCT name FROM entries WHERE format=\'ntf\' ORDER BY name')
                    if re.fullmatch(pattern,r[0],re.I)]
-        for name in names:
-            yield name,self.data.body(name)
+        for index,name in enumerate(names,1):
+            with batch(index,len(names)):
+                report('definitions','의상 원본 데이터를 읽는 중')
+                yield name,self.data.body(name)
 
     def _definitions(self):
         models={};priorities={}
         for _,body in self._tables(r'ITEM_MODEL_TEMPLET[\d_]*\.NTF'):
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'definitions','눈동자 모델을 확인하는 중',ntf.header(body)[1]):
                 if len(v)!=36:raise ValueError('미지원 눈동자 모델 테이블입니다.')
                 face=classify(v[2])
                 if face['kind']!='avatar' or face['part'] not in ('FACE','ACC_RING_RIGHT') or not v[2].upper().endswith('.X'):continue
@@ -46,7 +49,7 @@ class EyeAvatars:
         variants=[row for rows in models.values() for row in rows]
         wanted={v['item_id'] for v in variants};items={}
         for _,body in self._tables(r'ITEM_TEMPLET[\d_]*\.NTF'):
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'items','눈동자 아이템을 연결하는 중',ntf.header(body)[1]):
                 if v[1] not in wanted:continue
                 item=dict(string_key=v[2],icon_name=v[5].upper())
                 if v[1] in items and items[v[1]]!=item:raise ValueError('눈동자 아이템 이름 연결이 충돌합니다.')
@@ -56,7 +59,7 @@ class EyeAvatars:
             types,_,start=ntf.header(body)
             if types!=(5,8,8):raise ValueError('미지원 눈동자 이름 테이블입니다.')
             body=body[:start]+ntf.decrypt(body[start:],*self.data.keys)
-            for v in ntf.rows(body):
+            for v in progress_rows(ntf.rows(body),'names','눈동자 명칭을 연결하는 중',ntf.header(body)[1]):
                 if v[1] in keys:
                     if v[1] in strings and strings[v[1]]!=v[2]:raise ValueError('눈동자 이름이 충돌합니다.')
                     strings[v[1]]=v[2]

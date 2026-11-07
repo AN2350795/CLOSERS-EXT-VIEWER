@@ -1,4 +1,5 @@
 import {pickerMemory} from './model-memory.js';
+import {createListingStatus} from './model-list-progress.js';
 import {characters,slots,partLabels,replacePart} from './avatar-navigation.js';
 // Source choices remain explicit: matching names do not imply matching bytes.
 export function setupPicker({state,api,operation,loadModel,applyEye,connectAnimation,element,previews}){
@@ -6,6 +7,13 @@ export function setupPicker({state,api,operation,loadModel,applyEye,connectAnima
   const $=id=>document.getElementById(id),keys=['character','kind','family','part','variant','costume_type','format'];
   const titles=['모든 캐릭터','모든 종류','모든 의상 분류','모든 부위','모든 메시'];
   let bundle=null,request=0,total=0,bundleRequest=0,displayedPage=1,cardSerial=0,searchController;
+  const listStatus=createListingStatus({anchor:$('picker-status'),element,onCancel:cancelSearch,onRetry:()=>search()});
+  function cancelSearch(){
+    request++;searchController?.abort();state.page=displayedPage;updateNavigation();
+    $('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
+    listStatus.failed('목록 불러오기를 취소했습니다.');
+  }
+  window.addEventListener('pagehide',()=>{request++;searchController?.abort();listStatus.stop();});
   const memory=pickerMemory();
   const settings=memory.data.settings;
   titles.push('\uBAA8\uB4E0 \uC544\uC774\uD15C \uD0C0\uC785');
@@ -235,18 +243,20 @@ export function setupPicker({state,api,operation,loadModel,applyEye,connectAnima
     $('basic-avatar').disabled=!chosen;
     renderParts();
     if(!chosen&&mode!=='files'){
+      listStatus.finish();
       previews?.reset();$('model-results').replaceChildren(element('p','먼저 캐릭터를 선택하세요. 선택한 캐릭터의 아바타만 불러옵니다.'));$('picker-status').textContent='';$('model-page').textContent='';$('model-results').setAttribute('aria-busy','false');
       for(const id of ['model-first','model-prev','model-next','model-last'])$(id).disabled=true;
       return;
     }
     if(mode==='parts')p.set('variant','BASE');
-    p.set('mode',mode);$('picker-status').textContent='목록 불러오는 중…';$('model-results').setAttribute('aria-busy','true');
+    p.set('mode',mode);p.set('progress','1');$('picker-status').textContent='목록 불러오는 중…';$('picker-status').hidden=true;$('model-results').setAttribute('aria-busy','true');listStatus.start();
     let data;
-    try{data=await api((mode==='eyes'?'/api/model-eyes?':'/api/model-browser?')+p,searchController.signal);}catch(e){if(serial===request){state.page=displayedPage;updateNavigation();$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');}return;}
+    try{data=await api((mode==='eyes'?'/api/model-eyes?':'/api/model-browser?')+p,searchController.signal,value=>{if(serial===request)listStatus.update(value);});}catch(e){if(serial===request){state.page=displayedPage;updateNavigation();$('picker-status').textContent='목록을 불러오지 못했습니다: '+e.message;$('model-results').setAttribute('aria-busy','false');listStatus.failed($('picker-status').textContent);}return;}
     if(serial!==request)return;
     total=data.total;
     const pages=Math.max(1,Math.ceil(total/Number(p.get('limit'))));
     if(state.page>pages){state.page=pages;return search();}
+    listStatus.update({label:'목록을 화면에 표시하는 중',done:0,total:data.items.length});
     const metadata=data;
     keys.forEach((key,i)=>{if(key==='character')return;const select=$('model-'+key),value=select.value;select.replaceChildren(new Option(titles[i],''));for(const f of metadata.facets[key]||[])select.append(new Option(f.label+' · '+f.count.toLocaleString(),f.value));if(value&&!Array.from(select.options).some(o=>o.value===value))select.append(new Option(value+' · 0',value));select.value=value;});renderParts();
     document.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===mode)));
@@ -282,7 +292,7 @@ export function setupPicker({state,api,operation,loadModel,applyEye,connectAnima
       $('model-results').append(row);if(!item.format||item.format==='x'||mode==='eyes')previews?.attach(row,item,mode,$('model-saved').value);
     }
     if(!data.total)$('model-results').append(element('p','조건에 맞는 모델이 없습니다. 저장 상태와 필터를 확인하세요.'));
-    displayedPage=state.page;markSelection();updateStars();rememberSettings();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';
+    displayedPage=state.page;markSelection();updateStars();rememberSettings();$('model-results').scrollTop=0;$('model-results').setAttribute('aria-busy','false');$('picker-status').textContent='';listStatus.finish();
     $('model-page').textContent=state.page+' / '+pages+' · '+total.toLocaleString()+(mode==='sets'?'묶음':'개');
     $('model-jump').value=state.page;$('model-jump').max=pages;
     $('model-first').disabled=$('model-prev').disabled=state.page<=1;$('model-last').disabled=$('model-next').disabled=state.page>=pages;

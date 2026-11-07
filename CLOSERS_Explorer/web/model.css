@@ -388,3 +388,16 @@
   .motion-select{gap:8px;font-size:12px}.motion-select-icon{width:24px;height:24px}.motion-row-meta{flex-direction:column;align-items:flex-end;gap:1px;font-size:10px}
   .motion-details>summary{right:4px;top:22px}.motion-categories button{padding:5px 9px;font-size:11px}
 }
+
+/* Listing work and image loading have independent, measured status. */
+.picker-list-area{display:flex;flex-direction:column}
+.picker-list-area>#model-results{height:auto;min-height:0;flex:1}
+.model-list-progress{flex:none;padding:9px 10px;border-bottom:1px solid var(--line);background:var(--panel);font-size:12px}
+.model-list-progress p{margin:0 0 5px;font-size:11px}
+.model-list-progress #model-list-stage{color:var(--accent);font-weight:600;font-size:12px}
+.model-list-progress progress{width:100%;height:6px;display:block;margin:6px 0;accent-color:var(--accent)}
+.model-list-progress progress[hidden]{display:none}
+.model-list-progress button{padding:3px 10px;margin:3px 6px 0 0;font-size:11px}
+.model-list-progress #model-list-detail,.model-icon-progress{color:var(--muted)}
+.model-list-progress.is-delayed{border-left:3px solid #d6a353}
+.model-icon-progress{flex:none;margin:0;padding:4px 10px;font-size:11px;border-bottom:1px solid var(--line)}

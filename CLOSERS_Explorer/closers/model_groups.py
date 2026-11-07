@@ -9,6 +9,7 @@ from pathlib import Path
 import json
 import re
 import threading
+from .listing_progress import report,rows as progress_rows,locked
 
 CHARACTERS = dict(zip(
     'STRIKER CASTER RANGER FIGHTER LANCER IDOL HUNTER WITCH ROGUE ARMS VALKYRIE VAGABOND LIBRARIAN AEGIS ASTRA MYSTIC BEAST GATEKEEPER NONAME REAPER KNIVES ALTEREGO DEVILISH'.split(),
@@ -81,7 +82,8 @@ class ModelGroups:
         self.catalog=catalog;self.lock=threading.RLock();self.version=None;self.rows=[];self.scopes={}
 
     def snapshot(self,refresh=False,character='',mode=''):
-        with self.lock, self.catalog.connect() as db:
+        report('sources','원본 모델 목록을 확인하는 중')
+        with locked(self.lock), self.catalog.connect() as db:
             db.execute('BEGIN')
             revision=db.execute("SELECT value FROM catalog_meta WHERE key='revision'").fetchone()[0]
             version=(revision,self.catalog.game_names.version)
@@ -99,7 +101,7 @@ class ModelGroups:
                 elif mode=='accessories':where+=" AND model_field(e.name,'part') LIKE 'ACC_%'"
                 rows=db.execute('''SELECT e.id,e.name,e.format,e.flag,e.status,e.output,e.archive_id,e.ordinal,a.path archive,a.mtime/1000000 updated_at
                     FROM entries e JOIN archives a ON a.id=e.archive_id WHERE '''+where+' ORDER BY e.id',args).fetchall()
-                self.scopes[scope]=[self.catalog.game_names.decorate(dict(r,**self.catalog.game_names.group(r['name']))) for r in rows]
+                self.scopes[scope]=[self.catalog.game_names.decorate(dict(r,**self.catalog.game_names.group(r['name']))) for r in progress_rows(rows,'sources','모델 분류·명칭을 확인하는 중')]
                 self.version=version
             return self.scopes[scope].copy()
 
@@ -110,6 +112,7 @@ class ModelGroups:
     def filtered(self,filters,exclude=None):
         rows=self.snapshot(filters.get('refresh')=='1',filters.get('character',''),filters.get('mode',''))
         if filters.get('items')=='1' and filters.get('character'):
+            report('items','의상 정보를 연결하는 중')
             if not hasattr(self,'items'):
                 from .model_items import AvatarItems
                 self.items=AvatarItems(self.catalog)
@@ -117,8 +120,9 @@ class ModelGroups:
         for key in ('character','kind','part','family','variant','format','costume_type'):
             if key!=exclude and filters.get(key):rows=[r for r in rows if r.get(key)==filters[key] or key=='character' and filters.get('mode')=='accessories' and not r[key]]
         saved=filters.get('saved','')
-        if saved=='existing':rows=[r for r in rows if self.saved(r)]
-        elif saved=='missing':rows=[r for r in rows if not self.saved(r)]
+        report('filters','검색 조건과 저장 파일을 확인하는 중')
+        if saved=='existing':rows=[r for r in progress_rows(rows,'saved','저장 파일을 확인하는 중') if self.saved(r)]
+        elif saved=='missing':rows=[r for r in progress_rows(rows,'saved','저장 파일을 확인하는 중') if not self.saved(r)]
         if filters.get('q'):
             q=filters['q'].casefold()
             rows=[r for r in rows if q in (r['name']+' '+r['archive']+' '+CHARACTERS.get(r['character'],'')+' '+r.get('display_name','')+' '+r.get('type_label','')+' '+str(r.get('item_id',''))+' '+(' ['+r['costume_type']+'타입]' if r.get('shared_hair') else '')+' '+('' if r.get('appearance_key') else self.catalog.game_names.text(r['name']))).casefold()]
@@ -157,7 +161,7 @@ class ModelGroups:
 
     def set_rows(self,rows,filters):
         groups=defaultdict(list)
-        for row in rows:
+        for row in progress_rows(rows,'sets','의상 세트를 묶는 중'):
             if row['set_key'] and row['format']=='x':groups[row['set_key']].append(row)
         items=[]
         for key,rows in sorted(groups.items()):
@@ -221,11 +225,12 @@ class ModelGroups:
         elif filters.get('mode')=='parts':base=[r for r in base if r['part']!='FACE']
         if filters.get('items')=='1' and filters.get('mode') in ('parts','accessories','sets'):
             base=self.merge_appearances(base)
-        rows=[r for r in base if all(not filters.get(k) or r.get(k)==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
+        rows=[r for r in progress_rows(base,'filters','목록의 검색 조건을 적용하는 중') if all(not filters.get(k) or r.get(k)==filters[k] or k=='character' and filters.get('mode')=='accessories' and not r[k] for k in keys)]
         if filters.get('mode')=='sets':result=self.set_rows(rows,filters)
         else:
             result=self.paginate(rows,filters)
             result['items']=[dict(r,saved_exists=self.saved(r)) for r in result['items']]
+        report('facets','분류별 개수를 집계하는 중')
         result.update(self.facet_rows(base,filters))
         return result
 
