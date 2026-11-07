@@ -272,6 +272,8 @@ class Media:
 
 
 def create_server(catalog, port=0):
+    from .launcher import APPLICATION,workspace_key
+    instance_id=secrets.token_urlsafe(24)
     preservations = PreservationLinks(catalog.workspace)
     jobs = Jobs(catalog, preservations)
     media = Media(catalog)
@@ -351,7 +353,7 @@ def create_server(catalog, port=0):
 
         def do_GET(self):
             try:
-                if urlparse(self.path).path == '/api/state':
+                if urlparse(self.path).path in ('/api/state','/instance'):
                     self.get_request()
                 else:
                     with request_gate.read():
@@ -364,7 +366,10 @@ def create_server(catalog, port=0):
                 url = urlparse(self.path)
                 self.authorized(url.path.startswith('/api/'))
                 query = {k: v[0] for k, v in parse_qs(url.query).items()}
-                if url.path == '/':
+                if url.path == '/instance':
+                    self.respond(dict(application=APPLICATION,protocol=1,instance_id=instance_id,
+                                      workspace_key=workspace_key(catalog.workspace)))
+                elif url.path == '/':
                     self.respond((STATIC / 'index.html').read_bytes().replace(b'__TOKEN__', token.encode()), 'text/html; charset=utf-8')
                 elif url.path == '/compose':
                     self.respond((STATIC / 'compose.html').read_bytes().replace(b'__TOKEN__',token.encode()),'text/html; charset=utf-8')
@@ -738,22 +743,27 @@ def create_server(catalog, port=0):
 
     server = ExplorerHTTPServer(('127.0.0.1', port), Handler)
     server.jobs = jobs
+    server.instance_id = instance_id
     return server
 
 
 def serve(catalog, port=8765, open_browser=True):
-    server = create_server(catalog, port)
-    jobs = server.jobs
-    url = f'http://127.0.0.1:{server.server_port}'
-    print(f'CLOSERS Explorer: {url}\n작업 폴더: {catalog.workspace}\n종료: Ctrl+C', flush=True)
-    if open_browser:
-        webbrowser.open(url)
+    from .launcher import start_or_reuse,forget
+    server,url = start_or_reuse(catalog,port,create_server)
+    print(f'CLOSERS Explorer: {url}\n작업 폴더: {catalog.workspace}'+ ('\n종료: Ctrl+C' if server else ''), flush=True)
     try:
+        if open_browser:
+            try:
+                if not webbrowser.open(url):print('브라우저를 열지 못했습니다. 위 주소를 직접 열어 주세요.',flush=True)
+            except OSError as exc:print(f'브라우저를 열지 못했습니다: {exc}\n위 주소를 직접 열어 주세요.',flush=True)
+        if server is None:return
         server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
         pass
     finally:
-        jobs.cancel.set()
-        if jobs.thread:
-            jobs.thread.join()
-        server.server_close()
+        if server is not None:
+            server.jobs.cancel.set()
+            if server.jobs.thread:
+                server.jobs.thread.join()
+            server.server_close()
+            forget(catalog,server)
