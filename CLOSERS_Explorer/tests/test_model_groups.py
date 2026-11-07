@@ -14,6 +14,20 @@ def avatar(character='STRIKER',costume='CLOTH_212_A',part='UPBODY',number=1):
 
 
 class ModelGroupTests(unittest.TestCase):
+    def test_recovered_categories_use_specific_conventions_without_claiming_names(self):
+        cases={'DLG_LOGIN_2024_IDOL_1ST.XMD':'cinematic','DLG_AEGIS_CREATE.X':'cinematic',
+               'IMPASSABLE_AREA1_STAGE1_BUILDING01.X':'collision','MESH_CAMERA1.X':'camera',
+               'UNIT_SELECT_OFFICE_CAMERA1.X':'camera','UNIT_SELECT_OFFICE.X':'background',
+               'HAN_RIVER2_BACK.X':'background','ABANDONED_STATION2_STAGE1_BARRICADE01.X':'background',
+               'PE_AEGIS_ENCHANT_08.X':'effect','TRAIL_ASTAROTH_SKILL_3.X':'effect'}
+        for name,kind in cases.items():
+            with self.subTest(name=name):
+                group=classify(name)
+                self.assertEqual(group['kind'],kind)
+                self.assertFalse(group['set_name'])
+        for name in ('MON_BOSS_PUPPET_BLUE_PUPPET.X','UNIT_UNKNOWN.X','MESH_UNKNOWN.X'):
+            self.assertEqual(classify(name)['kind'],'unknown')
+
     def test_character_scope_excludes_unrelated_files_before_saved_checks(self):
         from unittest.mock import patch
         self.add([avatar(),avatar(character='CASTER'),avatar(costume='A',part='ACC_BODY_WING'),

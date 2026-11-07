@@ -54,9 +54,9 @@ def classify(name):
     convention=stem.lstrip('_')
     if convention.startswith(('XE_','XX_','FX_','EFF_','EF_','EFFECT_','GUST_EFFECT_')):
         value['kind']='effect'
-    elif stem.startswith('CAMERA_'):value['kind']='camera'
-    elif stem.startswith('DI_'):value['kind']='collision'
-    elif stem.startswith('DRAMA_'):value['kind']='cinematic'
+    elif stem.startswith(('CAMERA_','MESH_CAMERA')) or re.fullmatch(r'UNIT_SELECT_.*_CAMERA\d*',stem):value['kind']='camera'
+    elif stem.startswith(('DI_','IMPASSABLE_')):value['kind']='collision'
+    elif stem.startswith(('DRAMA_','DLG_LOGIN_')) or re.fullmatch(r'DLG_[A-Z]+_CREATE',stem):value['kind']='cinematic'
     elif stem.startswith(('SPN_','SPINE')):value['kind']='spine'
     elif stem.startswith(('GUST_NPC_PET_','PET_')):value['kind']='pet'
     elif stem.startswith('MOTION_'):
@@ -68,8 +68,8 @@ def classify(name):
         # An NPC bearing a playable class is still kept in the NPC category.
         codes=[c for c in CHARACTERS if re.search(r'(?:^|_)'+c+r'(?:_|$)',stem)]
         if len(codes)==1:value['character']=codes[0]
-    elif re.match(r'(?:FX|EFF|EFFECT|GUST_EFFECT)_',stem):value['kind']='effect'
-    elif stem.startswith(('WI_','GUST_MAP_','GUST_BG_')) or re.match(r'(?:AREA\d*|AREAETC|DUNGEON|TOWN|SHOPPING|AOS|AIRPORT|EPILOGUE|RUINS|CHEONGGYECHEON|CIRCLE|DEMIPLANE\d*)_',stem):value['kind']='background'
+    elif stem.startswith(('PE_','TRAIL_','WARN_','SWORD_ENCHANT_')):value['kind']='effect'
+    elif stem.startswith(('WI_','GUST_MAP_','GUST_BG_','UNIT_SELECT_','UNIT_CREAT_')) or re.match(r'(?:AREA\d*|AREAETC|AREAEX|DUNGEON|TOWN|SHOPPING|AOS|AIRPORT|EPILOGUE|RUINS|CHEONGGYECHEON|CIRCLE|DEMIPLANE\d*|HAN_RIVER\d*|CGV_ALLEY|GRAND_PARK\d*|NK_PLAZA\d*|PLANT_FOREST|ABANDONED_STATION\d*|GANGNAM_CHASE|PLANEGATE|ESCAPE_SUBWAY|SKY_LAMBSKEEPER)_',stem):value['kind']='background'
     return value
 
 
