@@ -7,7 +7,9 @@ import {buildModel,setAvatarBaseMap} from './model-core.js';
 export function setupPreviews({api}){
   let renderer,running=0,stopped=false,generation=0;
   const queue=[],active=new Set();
-  const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);queue.push(entry.target);pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
+  let stats={requested:0,done:0,unavailable:0};
+  const notify=()=>document.dispatchEvent(new CustomEvent('model-preview-progress',{detail:{...stats}}));
+  const observer=new IntersectionObserver(entries=>{for(const entry of entries)if(entry.isIntersecting){observer.unobserve(entry.target);if(!entry.target.isConnected||entry.target.preview.generation!==generation)continue;stats.requested++;queue.push(entry.target);notify();pump();}},{root:document.getElementById('model-results'),rootMargin:'80px'});
   function placeholder(target,mode,missing=false){
     const shape=mode==='eyes'?'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>':mode==='accessories'?'<path d="m12 3 3 6 6 3-6 3-3 6-3-6-6-3 6-3Z"/>':'<path d="m12 3 9 5v8l-9 5-9-5V8Z M3 8l9 5 9-5 M12 13v8"/>';
     target.classList.add('is-placeholder');target.setAttribute('role','img');target.setAttribute('aria-label',missing?'아이콘 없음':'아이콘 불러오는 중');
@@ -83,23 +85,24 @@ export function setupPreviews({api}){
   }
   function pump(){
     while(queue.length&&running<4&&!stopped){
-      const target=queue.shift();if(!target.isConnected||target.preview.generation!==generation)continue;
+      const target=queue.shift();if(!target.isConnected||target.preview.generation!==generation){if(target.preview.generation===generation){stats.done++;notify();}continue;}
       running++;const controller=new AbortController();active.add(controller);
       const current=()=>!controller.signal.aborted&&target.isConnected&&target.preview.generation===generation;
       const {item,mode,saved}=target.preview;
+      const taskGeneration=generation;let unavailable=false;
       void (async()=>{
       try{
         const img=await render(item,mode,saved,controller.signal);
         if(!current())return;
-        if(!img){placeholder(target,mode,true);target.title='표시할 아이템 아이콘이 없습니다.';return;}
+        if(!img){unavailable=true;placeholder(target,mode,true);target.title='표시할 아이템 아이콘이 없습니다.';return;}
         const icon=img.src.includes('/api/model-icon/')||item.preview_kind==='icon';img.alt=(item.label||item.display_name||item.name)+(mode==='eyes'?(item.preview_kind==='icon'?' 인게임 아이템 아이콘':' 눈동자 텍스처'):icon?' 인게임 아이템 아이콘':' 3D 미리보기');target.classList.remove('is-placeholder');target.removeAttribute('role');target.removeAttribute('aria-label');target.classList.toggle('is-item-icon',icon||mode==='eyes');if(mode==='eyes')target.title=img.alt;else if(icon)target.title=mode==='sets'?'의상 대표 · 인게임 '+(item.item_icon?.part_label||'부위')+' 아이콘':'인게임 아이템 아이콘';target.replaceChildren(img);
-      }catch(e){if(current()){target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
-      finally{active.delete(controller);running--;pump();}
+      }catch(e){if(current()){unavailable=true;target.textContent=e.message;target.title='부위 구성을 열어 출처를 확인하세요.';}}
+      finally{if(taskGeneration===generation){stats.done++;if(unavailable)stats.unavailable++;notify();}active.delete(controller);running--;pump();}
       })();
     }
   }
   function attach(row,item,mode,saved){const target=document.createElement('div');target.className='model-thumbnail';placeholder(target,mode);target.title='인게임 아이템 아이콘';target.preview={item,mode,saved,generation};row.prepend(target);observer.observe(target);}
-  function reset(){generation++;observer.disconnect();queue.length=0;for(const controller of active)controller.abort();}
+  function reset(){generation++;observer.disconnect();queue.length=0;stats={requested:0,done:0,unavailable:0};notify();for(const controller of active)controller.abort();}
   window.addEventListener('pagehide',()=>{stopped=true;reset();renderer?.dispose();});
   return {attach,reset};
 }
