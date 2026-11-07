@@ -160,6 +160,8 @@ export function setupMotions({state,api,operation,connectAnimation,chooseClip,ch
       }
       if(file.error)body.append(element('p',file.error));
       if(file.skeleton_name)body.append(element('small','선택 시 전용 뼈 연결: '+file.skeleton_name));
+      if(file.rig_validation?.animated_default)body.append(element('small','기본 자세의 첫 프레임으로 뼈를 검증했습니다. 이후 프레임은 애니메이션입니다.'));
+      if(file.rig_validation?.utility_pose_differences?.length)body.append(element('small','변형에 쓰이지 않는 보조 뼈의 자세 차이: '+file.rig_validation.utility_pose_differences.join(', ')));
       details.append(body);row.append(button,meta,details);
       $('motion-results').append(row);
     }

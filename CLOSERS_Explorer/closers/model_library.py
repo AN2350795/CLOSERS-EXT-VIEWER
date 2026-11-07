@@ -30,7 +30,8 @@ class Models:
     def animation_mapping(self,scene,animation,body,source,animation_source,effect=False):
         try:return bind_mapping(scene,animation)
         except ValueError:
-            if not effect:raise
+            legacy=animation.get('version')==0 and not animation.get('retained')
+            if not effect and not legacy:raise
         if Path(source['name']).stem.upper()!=Path(animation_source['name']).stem.upper():raise ValueError('연출 모델과 동명인 XMD를 선택해 주세요.')
         references=self.parsed.get(('xmd-first-keys',animation_source['sha256']),lambda:parse_xmd(body,first_keys=True))
         return bind_effect_mapping(scene,references)
@@ -434,7 +435,7 @@ class Models:
                     item['clips']=decorate_registrations(decorate(animation['clips'],character,self.catalog.game_names.motion_names),
                         character,self.catalog.game_names.motion_catalog)
                     try:
-                        bind_mapping(skeleton,animation)
+                        mapping=self.animation_mapping(skeleton,animation,data,source,animation_source)
                     except ValueError as original:
                         # Bikes, transformations and taskforce packs may carry extra bones.
                         # Only an independently verified companion X may replace the rig.
@@ -445,12 +446,15 @@ class Models:
                             for candidate in self.matches(name):
                                 try:
                                     rig,_,rig_source=self.read(candidate['id'],'x')
-                                    bind_mapping(self.parse(rig,rig_source,'x'),animation)
-                                    verified.append(rig_source)
+                                    candidate_mapping=self.animation_mapping(self.parse(rig,rig_source,'x'),animation,data,rig_source,animation_source)
+                                    verified.append((rig_source,candidate_mapping))
                                 except (ValueError,OSError):pass
                             if verified:break
                         if len(verified)!=1:raise original
-                        item.update(skeleton_id=verified[0]['entry_id'],skeleton_name=verified[0]['name'])
+                        rig_source,mapping=verified[0]
+                        item.update(skeleton_id=rig_source['entry_id'],skeleton_name=rig_source['name'])
+                    item['rig_validation']={key:mapping[key] for key in ('method','verified_bones','verified_keys',
+                        'animated_default','validated_default_keys','utility_pose_differences') if key in mapping}
                     item['status']='ready'
                 except (ValueError,OSError) as exc:
                     item['error']=str(exc)

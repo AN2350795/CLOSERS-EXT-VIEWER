@@ -5,6 +5,7 @@ XMD research: https://github.com/nbreeze/closers-rev/wiki/.XMD
 No extraction/catalog changes; viewer data is derived from original bytes.
 """
 import math
+import re
 from collections import defaultdict
 import struct
 import zlib
@@ -349,13 +350,16 @@ def parse_x(data):
 def parse_xmd(data,selected=None,first_keys=False):
     """Scan all clips; retain transforms only for the requested/default pose clip."""
     r = Reader(data)
-    if r.take(18)!=b'\x91CLOSERS_XMD_0001\0':
+    if data.startswith(b'\x91CLOSERS_XMD_0001\0'):
+        r.take(18);bones,version=r.unpack('II')
+        if version not in (1,2,3):raise ValueError(f'지원하지 않는 XMD 내부 버전 {version}')
+    elif len(data)>=5 and 1<=struct.unpack_from('<I',data)[0]<=1024:
+        bones=r.unpack('I')[0];version=0
+    else:
         raise ValueError('지원하지 않는 XMD 헤더입니다.')
-    bones,version = r.unpack('II')
     r.count(bones,1024)
-    if version not in (1,2,3):
-        raise ValueError(f'지원하지 않는 XMD 내부 버전 {version}')
     nclips = r.count(r.varint(),2048)
+    if version==0 and not nclips:raise ValueError('구형 XMD에 동작이 없습니다.')
     clips,retained = [],[]
     total = 0;reference_transforms=0
     for index in range(nclips):
@@ -372,8 +376,9 @@ def parse_xmd(data,selected=None,first_keys=False):
                 raise ValueError('XMD 키프레임 시간이 올바르지 않습니다.')
             last = time
             ns = r.count(r.varint(),bones)
+            if version==0 and ns!=bones:raise ValueError('구형 XMD 변환 개수가 뼈 수와 일치하지 않습니다.')
             scales = r.floats(ns*10) if keep else r.take(ns*40)
-            nt = r.count(r.varint(),bones)
+            nt = r.count(r.varint(),bones) if version else 0
             if ns+nt!=bones:
                 raise ValueError('XMD 변환 개수가 뼈 수와 일치하지 않습니다.')
             transforms = r.floats(nt*7) if keep else r.take(nt*28)
@@ -412,17 +417,45 @@ def xmd_matrix(transform):
 
 
 def bind_mapping(scene,animation):
-    """Require every DEFAULT local matrix to match before enabling game playback."""
+    """Verify the complete time-zero bind pose; DEFAULT may animate afterwards."""
     defaults = animation['retained']
     ordered = sorted(range(len(scene['frames'])),key=lambda i:scene['frames'][i].get('original_name',scene['frames'][i]['name']))
     if len(ordered)!=animation['bones'] or len(defaults)!=1 or not defaults[0]['keys']:
         raise ValueError('XMD 뼈 연결을 검증할 수 없습니다: 뼈 수 또는 _DEFAULT 자세가 일치하지 않습니다.')
-    return _pose_mapping(scene,ordered,defaults[0]['keys'])
+    keys=defaults[0]['keys']
+    if abs(keys[0]['time'])>1e-6:raise ValueError('XMD 기본 자세의 기준 시점이 0이 아닙니다.')
+    for key in keys:
+        if len(key['transforms'])!=len(ordered):raise ValueError('XMD 기본 자세의 뼈 변환 개수가 다릅니다.')
+        for transform in key['transforms']:xmd_matrix(transform)
+    helpers=isolated_helpers(scene)
+    reference=_pose_mapping(scene,ordered,keys[:1],helpers)
+    try:return _pose_mapping(scene,ordered,keys,helpers)
+    except ValueError:
+        return dict(reference,method='alphabetical/default-first-frame/direct-coordinates',
+                    reference_time=keys[0]['time'],validated_default_keys=len(keys),animated_default=True)
 
 
-def _pose_mapping(scene,ordered,keys):
+def isolated_helpers(scene):
+    """Only known non-deforming utility subtrees may differ in DEFAULT pose."""
+    frames=scene['frames']
+    candidates={i for i,f in enumerate(frames) if re.fullmatch(
+        r'(?:BIP01_FOOTSTEPS|(?:WSM_)?COLLISION_SPHERE_[A-Z0-9_]+)',f.get('original_name',f['name']).upper())}
+    used={s['bone'] for mesh in scene.get('meshes',[]) for s in mesh.get('skin',[])}
+    candidates.difference_update(i for i,f in enumerate(frames) if f['name'] in used)
+    for mesh in scene.get('meshes',[]):
+        # A rigid collision debug mesh is allowed; equipment/body geometry is not.
+        if mesh.get('skin') or not re.fullmatch(r'COLLISION_SPHERE_[A-Z0-9_]+_MC',mesh['name'].upper()):
+            candidates.discard(mesh.get('frame',-1))
+    while True:
+        parents={f['parent'] for i,f in enumerate(frames) if i not in candidates}
+        reduced=candidates-parents
+        if reduced==candidates:return candidates
+        candidates=reduced
+
+
+def _pose_mapping(scene,ordered,keys,helpers=()):
     scales = [[math.sqrt(sum(f['matrix'][j+k]**2 for k in range(3))) for j in (0,4,8)] for f in scene['frames']]
-    maximum = 0
+    maximum = 0;helper_maximum=0;deviations=set()
     for key in keys:
         for ti,(i,tr) in enumerate(zip(ordered,key['transforms'])):
             tr = tr.copy()
@@ -431,10 +464,16 @@ def _pose_mapping(scene,ordered,keys):
             expected = scene['frames'][i]['matrix']
             actual = xmd_matrix(tr)
             error = max(abs(a-b)/max(1,abs(b)) for a,b in zip(actual,expected))
+            if i in helpers and error>0.005:
+                helper_maximum=max(helper_maximum,error);deviations.add(i);continue
             maximum = max(maximum,error)
     if maximum>0.005:
         raise ValueError(f'XMD 기본 자세가 X 뼈 행렬과 일치하지 않습니다 (최대 상대 오차 {maximum:.6f}). 동작 재생을 보류합니다.')
-    return dict(frames=ordered,scales=scales,maximum_error=maximum,method='alphabetical/default-local-matrix/direct-coordinates',verified_bones=len(ordered),verified_keys=len(keys))
+    result=dict(frames=ordered,scales=scales,maximum_error=maximum,method='alphabetical/default-local-matrix/direct-coordinates',verified_bones=len(ordered)-len(deviations),verified_keys=len(keys))
+    if deviations:
+        result.update(utility_pose_differences=[frame['name'] for i,frame in enumerate(scene['frames']) if i in deviations],
+                      utility_maximum_error=helper_maximum)
+    return result
 
 
 def bind_effect_mapping(scene,references):

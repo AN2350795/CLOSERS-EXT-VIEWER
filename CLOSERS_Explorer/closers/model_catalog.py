@@ -36,6 +36,7 @@ def build(catalog,cancel=None,progress=lambda **kw:None):
                     character=group['character'] if group['kind'] in ('avatar','motion') else ''
                     item['clips']=registrations(decorate(parsed['clips'],character,catalog.game_names.motion_names),character,catalog.game_names.motion_catalog)
                     item['source']=source;item['parse_status']='ready'
+                    item['xmd_version']=parsed['version']
                 except (ValueError,OSError) as exc:item.update(parse_status='unavailable',parse_error=str(exc))
                 progress(current='모션 분류·명칭 '+row['name'],done=index+1,total=len(rows))
             elif index%500==0:progress(current='모델 분류·명칭 '+row['name'],done=index+1,total=len(rows))
@@ -50,6 +51,7 @@ def build(catalog,cancel=None,progress=lambda **kw:None):
             related_clip_names=sum(clip.get('name_kind')=='reference' for clip in clips),
             unnamed_clips=sum(not clip.get('name_kind') for clip in clips),
             parse_unavailable=sum(item.get('parse_status')=='unavailable' for item in files),
+            legacy_xmd_files=sum(item.get('xmd_version')==0 for item in files),
             classifications=dict(kinds),formats=dict(formats),reclassified=changed,
             naming_index_available=bool(catalog.game_names.version))
         target=catalog.workspace/'model-catalog.json'
